@@ -73,4 +73,36 @@ export function registerCorePoses(reg: PoseRegistry): void {
       camera: { position: drift.toWorld({ x: 150, y: 22, z: 120 }), target: drift.toWorld({ x: 0, y: 0, z: 0 }), fov: 55 },
     }
   })
+
+  registerArtPoses(reg)
+}
+
+const ART_ALIASES: Record<string, { base: string; hour?: number }> = {
+  'art-atrium': { base: 'atrium-vista', hour: 10 },
+  'art-refectoire': { base: 'refectoire-window', hour: 7.7 },
+  'art-cartes': { base: 'salle-des-cartes', hour: 15 },
+  'art-serre': { base: 'serre-cathedrale', hour: 11.5 },
+  'art-sortie': { base: 'sortie', hour: 7.2 },
+  'art-ilo': { base: 'heros', hour: 8 },
+}
+
+function registerArtPoses(reg: PoseRegistry): void {
+  for (const [name, { base, hour }] of Object.entries(ART_ALIASES)) {
+    reg.registerFactory(name, (ctx) => {
+      const p = reg.resolve(base, ctx) ?? fallbackPose(ctx)
+      return hour === undefined ? p : { ...p, hour }
+    })
+  }
+  const local = (hour: number, from: Vec3, to: Vec3, fov: number, hero: Vec3 & { yaw: number }) => (ctx: GameContext): DebugPose => {
+    const drift = ctx.services.drift
+    if (!drift) return fallbackPose(ctx)
+    return {
+      hour,
+      hero: { position: drift.toWorld(hero), yaw: hero.yaw + drift.pose().heading },
+      camera: { position: drift.toWorld(from), target: drift.toWorld(to), fov },
+    }
+  }
+  reg.registerFactory('art-cabine', local(5.9, { x: -8.7, y: 1.75, z: 63.5 }, { x: -5.4, y: 1.0, z: 66.5 }, 64, { x: -6.1, y: 0, z: 66.7, yaw: Math.PI / 2 }))
+  reg.registerFactory('art-cuisine', local(7.2, { x: 11.0, y: 1.6, z: 55.2 }, { x: 16.0, y: 1.15, z: 49.4 }, 62, { x: 12.0, y: 0, z: 50.2, yaw: Math.PI / 2 }))
+  reg.registerFactory('art-marche', local(10.5, { x: -86.5, y: 2.6, z: 4 }, { x: -89, y: 3.2, z: 40 }, 60, { x: -87.2, y: 0, z: 9, yaw: Math.PI }))
 }
