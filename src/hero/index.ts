@@ -10,6 +10,7 @@ import { Fader, Footprints, Particles } from './fx'
 import { Longe } from './longe'
 import { buildHero, type HeroModel } from './model'
 import { Scarf } from './scarf'
+import { Secondary } from './secondary'
 import { createHeroMaterials, type HeroMaterials } from './shading'
 
 export type { HeroAnchor } from './anchors'
@@ -40,6 +41,7 @@ export function createHeroSystem(): System {
   let cam: HeroCamera | null = null
   let anim: Animator | null = null
   let scarf: Scarf | null = null
+  let second: Secondary | null = null
   let prints: Footprints | null = null
   let drops: Particles | null = null
   let fader: Fader | null = null
@@ -66,6 +68,10 @@ export function createHeroSystem(): System {
   const qLean = new THREE.Quaternion()
   const leanAxis = new THREE.Vector3()
   const lastDrift = new THREE.Vector3()
+  const driftNow = new THREE.Vector3()
+  const driftDelta = new THREE.Vector3()
+  let lastHeading = 0
+  let hasFrame = false
   const carryVel = new THREE.Vector3()
   const lastHold = new THREE.Vector3()
   let hasLastDrift = false
@@ -139,6 +145,8 @@ export function createHeroSystem(): System {
         model.root.updateMatrixWorld(true)
         scarf?.reset(model.scarfAnchor.getWorldPosition(v))
       }
+      second?.reset()
+      hasFrame = false
       prints?.clear()
       drops?.clear()
       longe?.hide()
@@ -212,6 +220,7 @@ export function createHeroSystem(): System {
       ctx.scene.add(longe.mesh)
       scarf = new Scarf(mats.cloth)
       ctx.scene.add(scarf.mesh)
+      second = new Secondary(model)
       prints = new Footprints(PRINTS.high)
       prints.setCapacity(PRINTS[ctx.quality.level])
       ctx.scene.add(prints.mesh)
@@ -308,6 +317,24 @@ export function createHeroSystem(): System {
       headW.y += 0.1
       thighLW.y -= 0.2
       thighRW.y -= 0.2
+      const driftSvc = ctx.services.drift
+      if (driftSvc) {
+        const dp = driftSvc.pose()
+        driftNow.set(dp.position.x, dp.position.y, dp.position.z)
+        if (hasFrame && !inWater) {
+          driftDelta.subVectors(driftNow, lastDrift)
+          const turn = dp.heading - lastHeading
+          if (driftDelta.lengthSq() < 4 && Math.abs(turn) < 0.2) {
+            scarf.carry(driftDelta, turn, lastDrift)
+            second?.carry(driftDelta, turn, lastDrift)
+          }
+        }
+        lastHeading = dp.heading
+      }
+      second?.update(dt, ctrl.gravity, {
+        lids: anim?.current === 'sleep' || anim?.current === 'lie-down' ? 1 : ctx.state.hero.exhausted || anim?.current === 'exhausted' ? 0.45 : anim?.current === 'eat' ? 0.25 : 0,
+        inWater, flow,
+      })
       scarf.update(dt, {
         anchor: model.scarfAnchor.getWorldPosition(v),
         right, flow, inWater, wetness: ctrl.wetness, t: ctx.clock.elapsed, colliders,
@@ -321,13 +348,14 @@ export function createHeroSystem(): System {
         lastHold.copy(v2)
       }
 
-      const drift = ctx.services.drift
-      if (drift && !inWater) {
-        const p = drift.pose().position
-        if (hasLastDrift) prints.shift(p.x - lastDrift.x, p.y - lastDrift.y, p.z - lastDrift.z)
-        lastDrift.set(p.x, p.y, p.z)
+      if (driftSvc && !inWater) {
+        if (hasLastDrift) prints.shift(driftNow.x - lastDrift.x, driftNow.y - lastDrift.y, driftNow.z - lastDrift.z)
         hasLastDrift = true
       } else hasLastDrift = false
+      if (driftSvc) {
+        lastDrift.copy(driftNow)
+        hasFrame = true
+      }
       prints.update(ctx.clock.elapsed, ctrl.wetness, INDOOR.wetnessDrySeconds)
 
       if (!inWater && ctrl.wetness > 0.02) {
@@ -390,6 +418,8 @@ export function createHeroSystem(): System {
         model.scrubber.geometry.dispose()
         model.voile.geometry.dispose()
         model.poulie.geometry.dispose()
+        model.eyes.geometry.dispose()
+        model.tuft.geometry.dispose()
       }
       longe?.dispose()
       scarf?.mesh.removeFromParent()

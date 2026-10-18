@@ -163,10 +163,17 @@ const CLIPS: Record<ClipId, Clip> = {
   },
   'idle-dry'(o, s) {
     breathe(o, s, 0.8)
-    o.r('head', 0.02 + sin(s.t * 0.5) * 0.03, sin(s.t * 0.27) * 0.3)
-    arms(o, 0.04, 0.1, 0.18)
-    legs(o, 0.02, -0.04, -0.02, -0.02, 0.06)
-    o.r('spine', 0, 0, sin(s.t * 0.6) * 0.02)
+    const w = sin(s.t * 0.23 + sin(s.t * 0.11) * 1.3)
+    const ws = w * w * w
+    o.r('head', 0.02 + sin(s.t * 0.5) * 0.03, sin(s.t * 0.27) * 0.3, ws * 0.05)
+    arms(o, 0.04, 0.12, 0.2 + sin(s.t * 1.7 - 0.6) * 0.02)
+    o.r('upperArmL', 0.04 + ws * 0.04, 0, -0.12 - max(0, ws) * 0.04)
+    o.r('upperArmR', 0.04 - ws * 0.04, 0, 0.12 + max(0, -ws) * 0.04)
+    legs(o, 0.02 + max(0, ws) * 0.08, -0.04 - max(0, ws) * 0.16, -0.02 + max(0, -ws) * 0.08, -0.02 - max(0, -ws) * 0.16, 0.06)
+    o.r('spine', 0, 0, sin(s.t * 0.6) * 0.02 - ws * 0.035)
+    o.r('chest', sin(s.t * 1.7) * 0.02, 0, ws * 0.03)
+    o.buf.roll = ws * 0.022
+    o.buf.hipsY = -abs2(ws) * 0.012
   },
   'walk-dry'(o, s) {
     gait(o, s, { stride: 0.38, knee: 0.6, arm: 0.3, lean: 0.03, bounce: 0.035, floaty: 0 })

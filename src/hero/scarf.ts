@@ -24,8 +24,8 @@ interface TailDef {
 }
 
 const TAILS: readonly TailDef[] = [
-  { n: 14, length: 1.6, width0: 0.09, width1: 0.05, side: 0.035, drop: 0.0, phase: 0 },
-  { n: 6, length: 0.42, width0: 0.075, width1: 0.055, side: -0.045, drop: 0.02, phase: 1.7 },
+  { n: 16, length: 1.05, width0: 0.075, width1: 0.062, side: 0.035, drop: 0.0, phase: 0 },
+  { n: 7, length: 0.4, width0: 0.068, width1: 0.058, side: -0.045, drop: 0.02, phase: 1.7 },
 ]
 
 class Tail {
@@ -55,6 +55,8 @@ export class Scarf {
   private rel = new THREE.Vector3()
   private lastAnchor = new THREE.Vector3()
   private anchorVel = new THREE.Vector3()
+  private settle = true
+  private hasRight = false
 
   constructor(material: THREE.Material) {
     let verts = 0
@@ -75,8 +77,9 @@ export class Scarf {
       for (let i = 0; i < n; i++) {
         const k = i / (n - 1)
         c.copy(base)
-        if (tail.def.n > 8 && (Math.abs(k - 0.72) < 0.025 || Math.abs(k - 0.79) < 0.025)) c.copy(band)
-        if (k > 0.9) c.lerp(tip, (k - 0.9) / 0.1 * 0.7)
+        if (tail.def.n > 8 && (Math.abs(k - 0.74) < 0.03 || Math.abs(k - 0.84) < 0.03)) c.copy(band)
+        if (k > 0.93) c.lerp(tip, (k - 0.93) / 0.07 * 0.6)
+        c.multiplyScalar(i % 2 === 0 ? 1.0 : 0.9)
         for (let j = 0; j < 2; j++) col.set([c.r, c.g, c.b], (tail.vertexOffset + i * 2 + j) * 3)
       }
       for (let i = 0; i < n - 1; i++) {
@@ -95,14 +98,35 @@ export class Scarf {
   }
 
   reset(anchor: THREE.Vector3): void {
+    const bx = this.hasRight ? this.back.x : 0
+    const bz = this.hasRight ? this.back.z : 1
     for (const tail of this.tails) {
       for (let i = 0; i < tail.def.n; i++) {
-        tail.p[i]!.set(anchor.x, anchor.y - i * tail.seg, anchor.z + i * 0.03)
+        const back = Math.min(i, 3) * tail.seg * 0.5
+        tail.p[i]!.set(anchor.x + bx * back, anchor.y - i * tail.seg * 0.9, anchor.z + bz * back)
         tail.prev[i]!.copy(tail.p[i]!)
       }
     }
     this.lastAnchor.copy(anchor)
     this.anchorVel.set(0, 0, 0)
+    this.settle = true
+  }
+
+  carry(delta: THREE.Vector3, turn: number, pivot: THREE.Vector3): void {
+    const move = (p: THREE.Vector3) => {
+      if (turn !== 0) {
+        this.tmp.subVectors(p, pivot).applyAxisAngle(THREE.Object3D.DEFAULT_UP, -turn)
+        p.copy(pivot).add(this.tmp)
+      }
+      p.add(delta)
+    }
+    for (const tail of this.tails) {
+      for (let i = 0; i < tail.def.n; i++) {
+        move(tail.p[i]!)
+        move(tail.prev[i]!)
+      }
+    }
+    move(this.lastAnchor)
   }
 
   update(dt: number, s: ScarfInput): void {
@@ -111,6 +135,12 @@ export class Scarf {
     this.anchorVel.subVectors(s.anchor, this.lastAnchor).divideScalar(dt)
     this.lastAnchor.copy(s.anchor)
     this.back.set(-s.right.z, 0, s.right.x)
+    this.hasRight = true
+    if (this.settle) {
+      this.settle = false
+      this.anchorVel.set(0, 0, 0)
+      for (let st = 0; st < 150; st++) for (const tail of this.tails) this.stepTail(tail, s, 1 / 90, 1)
+    }
     const steps = 3
     const h = Math.min(dt, 1 / 30) / steps
     for (let st = 0; st < steps; st++) {
