@@ -161,7 +161,7 @@ export function createFloraSystem(): System {
     const inMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x5e4a5c })
     glowMat = createPlantMaterial(ctx, uIn, { indoor: true, emissive: PLANT_COLORS.bio1 })
     const hullMat = createPlantMaterial(ctx, uHull, { indoor: false, rim: 0.7 })
-    const serreMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x4a3a4e, translucent: 0.6 })
+    const serreMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x4a3a4e, translucent: 0.9 })
     materials.push(inMat, glowMat, hullMat, serreMat)
     fx = createFxUniforms()
     const tank = tankMaterial(fx)

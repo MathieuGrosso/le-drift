@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import { DECKS, DISTRICTS, NEF_VOID, districtAt } from '../core/layout'
 import type { DistrictId, GameContext, Vec3 } from '../core/types'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GeoBuilder } from './builder'
 import type { Mats } from './materials'
 import { NOISE_GLSL } from './materials'
@@ -117,20 +118,36 @@ function keelGeometry(): THREE.BufferGeometry {
   const b = new GeoBuilder()
   b.jitter = 0
   b.pat = SURF.hullShell
-  const cap = new THREE.CapsuleGeometry(0.5, 1, 4, 14)
+  const cap = new THREE.CapsuleGeometry(0.5, 1, 6, 18)
   cap.rotateX(Math.PI / 2)
+  cap.deleteAttribute('normal')
+  cap.deleteAttribute('uv')
+  const pa = cap.getAttribute('position') as THREE.BufferAttribute
+  for (let i = 0; i < pa.count; i++) {
+    const z = pa.getZ(i)
+    const bow = THREE.MathUtils.smoothstep(z, 0.15, 1.0)
+    const stern = THREE.MathUtils.smoothstep(-z, 0.55, 1.0)
+    const y = pa.getY(i)
+    pa.setX(i, pa.getX(i) * (1 - 0.42 * bow * bow - 0.12 * stern))
+    pa.setY(i, y * (1 - (y < 0 ? 0.38 : 0.12) * bow) + 0.06 * bow * bow)
+  }
+  const hull = mergeVertices(cap)
+  hull.computeVertexNormals()
   const paint = (p: THREE.Vector3) => {
-    if (p.y < -0.24) return new THREE.Color(0.66, 0.42, 0.4)
-    if (p.y < -0.2) return new THREE.Color(0.5, 0.42, 0.46)
-    if (Math.abs(p.y - 0.12) < 0.035) return new THREE.Color(1.2, 1.02, 0.72)
-    if (p.y > 0.32) return new THREE.Color(1.06, 1.04, 1.0)
+    if (p.y < -0.26) return new THREE.Color(0.62, 0.46, 0.44)
+    if (p.y < -0.22) return new THREE.Color(0.5, 0.44, 0.48)
+    if (Math.abs(p.y - 0.12) < 0.03) return new THREE.Color(1.15, 1.0, 0.76)
+    if (p.y > 0.34) return new THREE.Color(1.04, 1.03, 1.0)
     return new THREE.Color(1, 1, 1)
   }
-  b.add(cap, new THREE.Matrix4(), paint)
-  b.box(0, -0.55, 0, 0.06, 0.25, 1.5, new THREE.Color(0.5, 0.45, 0.5))
-  b.box(0, 0.58, -0.1, 0.45, 0.28, 0.42, new THREE.Color(0.86, 0.84, 0.82))
-  b.box(0, 0.73, -0.1, 0.5, 0.04, 0.47, new THREE.Color(0.55, 0.5, 0.56))
-  b.cyl(0.12, 0.85, -0.2, 0.04, 0.35, new THREE.Color(0.55, 0.52, 0.6))
+  b.add(hull, new THREE.Matrix4(), paint)
+  b.box(0, -0.52, -0.1, 0.05, 0.16, 1.3, new THREE.Color(0.5, 0.45, 0.5))
+  b.rbox(0, 0.5, -0.22, 0.24, 0.12, 0.62, new THREE.Color(0.84, 0.82, 0.8), 0.04)
+  b.rbox(0, 0.565, -0.22, 0.27, 0.025, 0.66, new THREE.Color(0.55, 0.5, 0.56), 0.01)
+  b.with(SURF.brass, () => {
+    for (const z of [-0.45, -0.05]) b.cyl(0, 0.62, z, 0.012, 0.1, new THREE.Color(1.2, 1.02, 0.74))
+    b.cyl(0.06, 0.66, -0.5, 0.012, 0.22, new THREE.Color(0.7, 0.66, 0.72))
+  })
   return b.build()
 }
 
@@ -178,26 +195,45 @@ void main() {
   vec2 c = vUv - 0.5;
   float r = length(c) * 2.0;
   if (r > 1.0) discard;
-  float lit = step(0.2, fract(vSeed * 7.31));
-  vec3 col = uWarm * (0.75 + 0.25 * sin(uTime * 0.7 + vSeed * 40.0)) * mix(0.35, 1.0, lit);
+  float lit = step(0.24, fract(vSeed * 7.31));
+  float flick = 0.88 + 0.12 * sin(uTime * 0.7 + vSeed * 40.0);
+  vec3 room = mix(uWarm * 1.25, uWarm * vec3(0.78, 0.55, 0.42), smoothstep(-0.5, 0.45, -c.y + 0.15 * c.x));
+  vec3 col = room * flick;
   float sil = 0.0;
-  for (int i = 0; i < 2; i++) {
-    float fi = float(i);
-    float px = fract(vSeed * (3.7 + fi * 5.1) + uTime * 0.01 * (fi - 0.5)) - 0.5;
-    vec2 head = vec2(px * 0.8, -0.05);
-    sil = max(sil, 1.0 - smoothstep(0.1, 0.13, length(c - head)));
-    sil = max(sil, 1.0 - smoothstep(0.2, 0.24, length((c - head - vec2(0.0, -0.3)) * vec2(1.0, 0.8))));
-  }
-  col = mix(col, uWarm * 0.25, sil * 0.75 * lit);
-  float n = dFbm(c * 6.0 + vSeed * 11.0);
-  float coat = smoothstep(0.55, 0.75, r * 0.6 + n * 0.6 + fract(vSeed * 3.3) * 0.25);
-  col = mix(col, uCoat, coat);
+  float px = fract(vSeed * 3.7 + uTime * 0.004) - 0.5;
+  vec2 head = vec2(px * 0.7, -0.08);
+  sil = max(sil, 1.0 - smoothstep(0.1, 0.13, length(c - head)));
+  sil = max(sil, 1.0 - smoothstep(0.2, 0.24, length((c - head - vec2(0.0, -0.3)) * vec2(1.0, 0.8))));
+  col = mix(col, uWarm * vec3(0.32, 0.2, 0.2), sil * 0.7 * step(0.6, fract(vSeed * 13.7)));
+  vec3 dark = vec3(0.1, 0.2, 0.24) + vec3(0.12, 0.2, 0.2) * smoothstep(0.2, -0.4, c.y - c.x * 0.4);
+  col = mix(dark, col, lit);
+  float n = dFbm(c * 7.0 + vSeed * 11.0);
+  float coat = smoothstep(0.62, 0.8, r * 0.55 + n * 0.55 - c.y * 0.35 + fract(vSeed * 3.3) * 0.18);
+  col = mix(col, uCoat * (0.55 + 0.45 * n), coat * 0.85);
   col *= uGlow;
-  col = mix(col, uWarm * 0.6, smoothstep(0.86, 1.0, r));
+  float rim = smoothstep(0.76, 0.8, r);
+  vec3 brass = vec3(0.62, 0.48, 0.32) * (0.7 + 0.5 * smoothstep(0.2, -0.6, c.y));
+  col = mix(col, brass, rim);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`
+
+const COAT_FRAG = /* glsl */ `
+if (vPat > 10.5) {
+  vec3 cp = vPatP;
+  float fur = sFbm(cp.xz * vec2(0.9, 0.35) + cp.y * 0.6);
+  float strand = sNoise(vec2(cp.z * 9.0 + cp.x * 9.0, cp.y * 1.4));
+  float low = smoothstep(0.6, -1.6, cp.y);
+  float m = smoothstep(0.42, 0.7, fur * 0.75 + low * 0.55 + strand * 0.12);
+  vec3 coatC = vec3(0.30, 0.42, 0.24) * (0.8 + 0.4 * strand) * (0.85 + 0.3 * fur);
+  diffuseColor.rgb = mix(diffuseColor.rgb, coatC, m * 0.62);
+}`
+
+export function hullOutsidePatch(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  surfacePatch(shader)
+  shader.fragmentShader = shader.fragmentShader.replace('normalize(vPatN + vec3(1e-5)));', 'normalize(vPatN + vec3(1e-5)));\n' + COAT_FRAG)
+}
 
 const UP = new THREE.Vector3(0, 1, 0)
 
@@ -219,7 +255,8 @@ export class Hulls {
     this.gangways = gen.gangways
     this.group.name = 'drift-coques'
     parent.add(this.group)
-    const hullMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: surfacePatch })
+    const hullMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: hullOutsidePatch })
+    const sea = new THREE.Color(PAL.teal)
     this.cardMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
@@ -273,7 +310,7 @@ export class Hulls {
           tmpQ.setFromAxisAngle(UP, -h.yaw)
           tmpM.compose(new THREE.Vector3(h.x, h.y, h.z), tmpQ, new THREE.Vector3(h.w, h.h, h.l / 2))
           im.setMatrixAt(i, tmpM)
-          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.2).offsetHSL(0, 0.06, (((i * 37) % 11) / 11 - 0.5) * 0.08 - 0.05))
+          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.15).offsetHSL(0, -0.1, (((i * 37) % 11) / 11 - 0.5) * 0.08 - 0.02).lerp(sea, 0.12))
         })
         im.computeBoundingSphere()
         im.name = `coques-${d.id}-${kind}`
@@ -282,15 +319,17 @@ export class Hulls {
       const cards: THREE.Matrix4[] = []
       const seeds: number[] = []
       list.forEach((h, hi) => {
-        const n = Math.max(2, Math.floor((h.l * 0.62) / 2.2))
+        const span = h.l * (h.kind === 'keel' ? 0.5 : 0.56)
+        const n = Math.max(3, Math.floor(span / 1.25))
         const q = new THREE.Quaternion().setFromAxisAngle(UP, -h.yaw)
         for (const side of [-1, 1]) {
           const faceQ = q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, (side * Math.PI) / 2))
           for (let i = 0; i < n; i++) {
-            const zz = (i / (n - 1) - 0.5) * h.l * 0.62
+            if (n > 4 && i % 4 === 3) continue
+            const zz = (i / (n - 1) - 0.5) * span - (h.kind === 'keel' ? h.l * 0.06 : 0)
             const yy = h.kind === 'keel' ? h.h * 0.08 : 0
             const local = new THREE.Vector3(side * (h.w / 2 + 0.04), yy, zz).applyQuaternion(q).add(new THREE.Vector3(h.x, h.y, h.z))
-            const sc = h.kind === 'keel' ? 0.62 : 0.56
+            const sc = h.kind === 'keel' ? 0.64 : 0.58
             cards.push(new THREE.Matrix4().compose(local, faceQ, new THREE.Vector3(sc, sc, 1)))
             seeds.push(((hi * 13 + (side > 0 ? 3 : 0)) * 0.61803 + i * 0.001) % 1)
           }
@@ -392,7 +431,7 @@ export class Hulls {
     this.cardMat.uniforms.uTime!.value = this.time
     const h = this.ctx.state.time.hours
     const night = h >= 19.5 || h < 5.5 ? 1 : h >= 17 ? (h - 17) / 2.5 : h < 7 ? (7 - h) / 1.5 : 0
-    this.cardMat.uniforms.uGlow!.value = 0.95 + 0.45 * night
+    this.cardMat.uniforms.uGlow!.value = 1.25 + 0.45 * night
     const q = new THREE.Quaternion().setFromAxisAngle(UP, -pose.heading)
     for (const dm of this.districts.values()) {
       const body = dm.body

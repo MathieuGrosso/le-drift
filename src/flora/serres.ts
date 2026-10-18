@@ -247,7 +247,7 @@ function laminaria(g: PlantGeo, rng: () => number, base: THREE.Vector3, L: numbe
   const yaw = rng() * Math.PI * 2
   const leanA = rng() * Math.PI * 2
   const lean = 0.05 + rng() * 0.12
-  const wMax = 0.22 + rng() * 0.14
+  const wMax = 0.26 + rng() * 0.16
   const twist = (rng() - 0.5) * 1.6
   const gold = rng() < 0.22 ? 0.45 : 0
   const hue = (rng() - 0.5) * 0.04
@@ -275,7 +275,7 @@ function laminaria(g: PlantGeo, rng: () => number, base: THREE.Vector3, L: numbe
     nrm.crossVectors(side, along).normalize()
     const stipe = 0.07
     const w = u < stipe ? 0.025 : wMax * Math.min(1, (u - stipe) / 0.1) * (1 - 0.7 * Math.pow(u, 1.6)) + 0.01
-    c.copy(LAM_ROOT).lerp(LAM_BODY, Math.min(1, u / 0.35)).lerp(LAM_TIP, Math.max(0, (u - 0.35) / 0.65) * 0.85)
+    c.copy(LAM_ROOT).lerp(LAM_BODY, Math.min(1, u / 0.22)).lerp(LAM_TIP, Math.pow(Math.max(0, (u - 0.22) / 0.78), 0.8))
     if (gold) c.lerp(LAM_GOLD, gold * (1 - u * 0.5))
     c.offsetHSL(hue, 0, 0)
     const row: number[] = []
@@ -287,7 +287,7 @@ function laminaria(g: PlantGeo, rng: () => number, base: THREE.Vector3, L: numbe
       const z = p.z + side.z * w * k + nrm.z * ruffle
       const shade = k === 0 ? 1.16 : edge === 1 ? 1.08 : 0.9
       const vc = c.clone().multiplyScalar(shade)
-      if (k === 0) vc.lerp(LAM_TIP, 0.12)
+      if (k === 0) vc.lerp(LAM_TIP, 0.3)
       row.push(g.vert(x, y, z, nrm.x + side.x * ruffle * 3, nrm.y, nrm.z + side.z * ruffle * 3, vc, s))
     }
     if (prev) for (let j = 0; j < ACROSS.length - 1; j++) g.quad(prev[j]!, prev[j + 1]!, row[j + 1]!, row[j]!)

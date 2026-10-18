@@ -752,7 +752,8 @@ export class HeroController {
       this.phase += dt * (0.45 + Math.max(h, Math.abs(this.vel.y)) * 0.12)
       return this.clip('swim', 0.3)
     }
-    return this.clip('idle', 0.4)
+    this.phase += dt * 0.14
+    return this.clip('swim', 0.6)
   }
 
   private steerHorizontal(dt: number, speed: number, accel: number, turn: number): void {

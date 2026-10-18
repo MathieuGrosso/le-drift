@@ -134,6 +134,9 @@ const gableGeo = (() => {
   return new THREE.ShapeGeometry(s, 18)
 })()
 
+const SEA_TEAL = new THREE.Color(PAL.teal)
+const outerHull = (hex: number) => new THREE.Color(hex).offsetHSL(0, -0.28, -0.06).lerp(SEA_TEAL, 0.3)
+
 export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
   const T = WALL_T
   const cx = (p.x0 + p.x1) / 2
@@ -145,10 +148,10 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     return n.x * _v.x + n.z * _v.z
   }
   const wallColor = (pp: THREE.Vector3, n: THREE.Vector3) => {
-    if (Math.abs(n.y) > 0.5) return new THREE.Color(p.hull).multiplyScalar(0.8)
+    if (Math.abs(n.y) > 0.5) return outerHull(p.hull).multiplyScalar(0.8)
     const d = inner(n, pp)
     if (d > 0.05) return new THREE.Color(pp.y < fy + 1.0 + 1e-3 ? p.wainscot : p.wall)
-    return new THREE.Color(p.hull)
+    return outerHull(p.hull)
   }
 
   const metal = p.wall === PAL.bleuDoux || p.wall === PAL.metal
@@ -159,7 +162,7 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     return pp.y < fy + 1.0 + 1e-3 ? SURF.boards : SURF.plaster
   }
   if (p.floor !== 'none') {
-    b.box(cx, fy - 0.15, cz, p.x1 - p.x0, 0.3, p.z1 - p.z0, (_pp, n) => new THREE.Color(n.y > 0.5 ? PAL.boisOmbre : p.hull))
+    b.box(cx, fy - 0.15, cz, p.x1 - p.x0, 0.3, p.z1 - p.z0, (_pp, n) => n.y > 0.5 ? new THREE.Color(PAL.boisOmbre) : outerHull(p.hull))
     out.colliders.push({ part: p.id, kind: 'interior', climbable: false, hx: (p.x1 - p.x0) / 2, hy: 0.15, hz: (p.z1 - p.z0) / 2, x: cx, y: fy - 0.15, z: cz })
   }
 
@@ -261,7 +264,7 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     for (const r of panelRects(p.x0, p.x1, p.z0, p.z1, holes)) {
       const x = (r.u0 + r.u1) / 2
       const z = (r.v0 + r.v1) / 2
-      b.box(x, top + T / 2, z, r.u1 - r.u0, T, r.v1 - r.v0, (_pp, n) => new THREE.Color(n.y < -0.5 ? p.wall : p.hull))
+      b.box(x, top + T / 2, z, r.u1 - r.u0, T, r.v1 - r.v0, (_pp, n) => n.y < -0.5 ? new THREE.Color(p.wall) : outerHull(p.hull))
       out.colliders.push({ part: p.id, kind: 'hull', climbable: true, hx: (r.u1 - r.u0) / 2, hy: T / 2, hz: (r.v1 - r.v0) / 2, x, y: top + T / 2, z })
     }
     if (p.roofHole) {
@@ -297,7 +300,7 @@ function buildArch(p: PartDef, b: GeoBuilder, out: ShellOut): void {
   const outer = new THREE.Matrix4().copy(B).multiply(new THREE.Matrix4().makeScale(W / 2, L, p.archH + T))
   outer.setPosition(center)
   b.pat = SURF.hull
-  b.add(archGeo, outer, p.hull)
+  b.add(archGeo, outer, outerHull(p.hull))
   b.pat = p.wall === PAL.bleuDoux || p.wall === PAL.metal ? SURF.steel : SURF.plaster
   const innerM = new THREE.Matrix4().copy(B).multiply(new THREE.Matrix4().makeScale(W / 2 - T, L - 2 * T, p.archH))
   innerM.setPosition(center)
@@ -344,7 +347,7 @@ function buildGable(p: PartDef, side: Side, b: GeoBuilder, out: ShellOut): void 
   const mo = new THREE.Matrix4().makeBasis(uOut, up, outward).multiply(new THREE.Matrix4().makeScale(W / 2, p.archH + T, 1))
   mo.setPosition(outerPos)
   b.pat = SURF.hull
-  b.add(gableGeo, mo, p.hull)
+  b.add(gableGeo, mo, outerHull(p.hull))
   b.pat = p.wall === PAL.bleuDoux || p.wall === PAL.metal ? SURF.steel : SURF.plaster
   const innerPos = wallPoint(f, cU, top, T / 2)
   const uIn = new THREE.Vector3().crossVectors(up, f.inward)

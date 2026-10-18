@@ -81,10 +81,10 @@ const FRAGMENT_BODY = /* glsl */ `
     if (c > cover) { cover = c; t = tk; }
   }
   if (cover < 0.5) discard;
-  vec3 base = mix(vec3(0.17, 0.16, 0.07), vec3(0.62, 0.52, 0.2), smoothstep(0.0, 0.9, t));
-  float lit = mix(0.28, 1.0, rdDay);
-  vec3 col = base * lit * (rdPlafond * 0.55 + 0.45);
-  col += rdSunColor * rdSunI * 0.22 * t * t * vec3(1.0, 0.85, 0.45);
+  vec3 base = mix(vec3(0.05, 0.08, 0.06), vec3(0.2, 0.26, 0.14), smoothstep(0.1, 1.0, t));
+  float lit = mix(0.3, 1.0, rdDay);
+  vec3 col = base * lit * (rdPlafond * 0.4 + 0.3);
+  col += rdSunColor * rdSunI * 0.1 * pow(t, 3.0) * vec3(0.8, 0.9, 0.5);
   outgoingLight = col;
   diffuseColor.a = 1.0;
 }

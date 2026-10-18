@@ -37,7 +37,7 @@ function seaVisible(ctx: GameContext): boolean {
   return true
 }
 
-function registerPoses(ctx: GameContext): void {
+function registerPoses(ctx: GameContext, space: () => SortieSpace | null): void {
   ctx.services.debug.registerPose('monde', {
     hour: 10,
     camera: { position: { x: -120, y: 116, z: 980 }, target: { x: 60, y: 10, z: -200 }, fov: 70 },
@@ -53,6 +53,28 @@ function registerPoses(ctx: GameContext): void {
   reg.registerFactory?.('anneaux', (c) => local(c, { x: 26, y: 7, z: 100 }, { x: 6, y: 3, z: 78 }, 7.5, 55))
   reg.registerFactory?.('sillage', (c) => local(c, { x: 14, y: -6, z: 128 }, { x: 0, y: -16, z: 84 }, 8, 60))
   reg.registerFactory?.('nuit-bio', (c) => ({ ...local(c, { x: 20, y: -30, z: 40 }, { x: -30, y: TRENCH.floorY - 55, z: -60 }, 22.5, 62), hour: 22.5 }))
+  reg.registerFactory?.('art-sortie', (c) => {
+    const drift = c.services.drift
+    const sp = space()
+    if (!drift || !sp) return local(c, { x: 9, y: 4, z: 89 }, { x: 2, y: 1.5, z: 77 }, 7.2)
+    const lock = sp.lockRing('sas')
+    const L = new THREE.Vector3(lock.local.x, lock.local.y, lock.local.z)
+    const ring = sp.allRings()
+      .filter((r) => r.level === 0)
+      .map((r) => ({ r, d: L.distanceTo(new THREE.Vector3(r.local.x, r.local.y, r.local.z)) }))
+      .filter((e) => e.d > 3)
+      .sort((a, b) => a.d - b.d)[0]?.r
+    const n = new THREE.Vector3(lock.normal.x, 0, lock.normal.z).normalize()
+    const t = new THREE.Vector3(n.z, 0, -n.x)
+    if (ring && t.dot(new THREE.Vector3(ring.local.x - L.x, 0, ring.local.z - L.z)) < 0) t.negate()
+    const hero = L.clone().addScaledVector(t, 4).addScaledVector(n, 1.6).setY(L.y - 0.6)
+    const eye = hero.clone().addScaledVector(n, 4.2).addScaledVector(t, -5.5).setY(hero.y + 1.4)
+    const at = hero.clone().addScaledVector(t, 6).addScaledVector(n, -1.5).setY(hero.y + 1.6)
+    const camera = { position: drift.toWorld(eye), target: drift.toWorld(at), fov: 55 }
+    if (c.state.mode !== 'sortie') return { hour: 7.2, place: 'sortie', camera }
+    const yaw = Math.atan2(t.x, -t.z) + drift.pose().heading
+    return { hour: 7.2, hero: { position: drift.toWorld(hero), yaw }, camera }
+  })
   ctx.services.debug.registerPose('epaves', {
     hour: 11,
     place: 'sortie',
@@ -120,7 +142,7 @@ export function createWorldSystem(): System {
         sortie?.lockRing(lockId)
         sortie?.invalidate()
       }))
-      registerPoses(ctx)
+      registerPoses(ctx, () => sortie)
     },
     update(dt, ctx) {
       if (!streamer) return

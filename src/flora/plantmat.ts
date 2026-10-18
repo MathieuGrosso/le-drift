@@ -94,13 +94,18 @@ export interface PlantMaterialOptions {
   translucent?: number
 }
 
-function injectTranslucency(shader: THREE.WebGLProgramParametersWithUniforms, k: number): void {
+function injectTranslucency(shader: THREE.WebGLProgramParametersWithUniforms, k: number, indoor: boolean): void {
   shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', /* glsl */ `{
     vec3 plV = normalize(vRdW - cameraPosition);
     float plBack = pow(max(dot(plV, normalize(rdSunDir)), 0.0), 2.0);
     float plSky = smoothstep(-0.1, 0.7, plV.y);
     vec3 plTint = diffuseColor.rgb * vec3(1.0, 1.08, 0.72);
-    outgoingLight += plTint * rdSunColor * rdSunI * (plBack * 0.7 + plSky * 0.18) * ${k.toFixed(2)} * mix(0.35, 1.0, rdDay);
+    outgoingLight += plTint * rdSunColor * rdSunI * (plBack * 0.7 + plSky * 0.18) * ${k.toFixed(2)} * mix(0.35, 1.0, rdDay);${indoor ? `
+    float plLum = dot(diffuseColor.rgb, vec3(0.3, 0.55, 0.15));
+    float plTip = smoothstep(0.32, 0.7, plLum);
+    float plVault = smoothstep(-0.35, 0.55, plV.y) * 0.75 + 0.25;
+    vec3 plGlass = mix(vec3(0.91, 0.95, 0.75), rdPlafond, 0.3);
+    outgoingLight += diffuseColor.rgb * vec3(0.95, 1.08, 0.62) * plGlass * plVault * (0.18 + 0.9 * plTip) * ${k.toFixed(2)} * mix(0.45, 1.0, rdDay);` : ''}
   }
   #include <opaque_fragment>`)
 }
@@ -120,9 +125,12 @@ export function createPlantMaterial(ctx: GameContext, u: PlantUniforms, opts: Pl
       ...(opts.shadow !== undefined ? { shadowColor: opts.shadow } : {}),
       onShader: (shader) => {
         inject(shader, u)
-        if (opts.translucent) injectTranslucency(shader, opts.translucent)
+        if (opts.translucent) injectTranslucency(shader, opts.translucent, opts.indoor)
       },
     })
+    const baseKey = mat.customProgramCacheKey.bind(mat)
+    const variant = `:flora:${opts.translucent ?? 0}:${opts.indoor ? 1 : 0}`
+    mat.customProgramCacheKey = () => baseKey() + variant
     mat.userData.flora = true
     return mat
   }

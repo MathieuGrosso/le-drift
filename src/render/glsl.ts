@@ -140,11 +140,13 @@ float rd_caustics(vec3 wp) {
   float b = rd_cellEdge(uv * 1.43 + vec2(5.2, 1.3) - drift * 0.6, rdTime * 0.7 + 1.7);
   float ea = 1.0 - smoothstep(0.0, 0.09, a);
   float eb = 1.0 - smoothstep(0.0, 0.12, b);
-  return mix(0.35, ea * 1.1 + eb * 0.7 + ea * eb * 1.4, aa);
+  float raw = ea * 1.1 + eb * 0.7 + ea * eb * 1.4;
+  return mix(0.35, 0.42 + (raw - 0.42) * 0.45, aa);
 }
 float rd_causticsStrength(vec3 wp) {
   float depth = clamp(rdCeilY - wp.y, 0.0, rdCeilY);
-  return 0.35 * (1.0 - 0.55 * depth / rdCeilY) * rdDay * (1.0 - rdIndoor);
+  float far = smoothstep(6.0, 48.0, distance(wp, cameraPosition));
+  return 0.24 * (1.0 - 0.75 * depth / rdCeilY) * (1.0 - 0.7 * far) * rdDay * (1.0 - rdIndoor);
 }
 float rd_shadow(vec3 wp, float ndl) {
   if (rdShadowOn < 0.5) return 1.0;
