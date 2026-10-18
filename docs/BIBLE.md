@@ -41,6 +41,7 @@ impressionist painting references), and the shipped game.
 | Minimal HUD | Everything appears only when it matters; stamina wheel beside Link | Souffle wheel beside the hero, nothing else by default |
 | Music | Sparse piano phrases, lots of silence, context stingers | Generative WebAudio, mostly silence, stingers at discoveries |
 | No fail states that block | You die, you reload a few seconds back | No death at all; exhaustion and gentle returns only |
+| Villages (Kakariko, Hateno) | Dense, hand-made, safe places where the story and the daily life happen | **The walkable Drift** (§2.7): real 3D interiors, entered through the sas without a loading screen |
 
 ### 0.1 Chemistry rules (the "elements" of the sea)
 
@@ -88,6 +89,7 @@ All systems honour these; puzzles are built only from them.
 | Shiekah Slate | **Le stylo du grand-père** (act 3) | Draws your own measures on the white |
 | Calamity Ganon | none; the mystery is **La Chose** | The bird that dives through the ceiling twice a day |
 | Rain | **La pluie**, seen from below as rings on the ceiling | Only in the finale and post-game |
+| Villages, houses, inn bed | **L'intérieur du Drift**: sas, coursives, réfectoire, cuisine, salle des cartes, cabine | Walkable 3D, every porthole looks at the real sea; the bed passes time (§2.7) |
 
 ---
 
@@ -200,6 +202,74 @@ Rain rings cover the ceiling. The hero takes off the lest, rises, places a hand 
 appears with the first line in the white drawn in the hero's hand. Credits. Then post-game free roam,
 with occasional rain.
 
+### 2.7 Inside the Drift (walkable interiors)
+
+Owner's requirement: **« je veux pouvoir marcher dans le sous-marin en 3D »**. The Drift is not a
+backdrop with lit windows: a quarter of it is a real place you walk through, where the story's day
+loop happens (BotW's Kakariko). Warm lamp light, Ghibli cosiness, lived-in clutter, the hull creaking.
+
+**Seamless, one world.** Interiors are not a separate scene or level. They are built inside the hulls,
+at the hulls' positions, and move with the Drift. There is no loading screen, ever. Consequences:
+
+- Every porthole and the big window look out at the real sea: fish, sun shafts, the whale, La Chose,
+  rain rings on the ceiling in act 3. Nothing is faked with a picture.
+- A window is **one object with two faces**: same `windowId`, same `state.windows` coat. The coat the
+  player left (or scrubbed) outside is visible from inside as a fuzzy green silhouette on the glass,
+  dimming the light that comes through. Coat never grows on the inner face.
+- From outside, through a scrubbed window, you see the real interior (the same meshes, at LOD).
+
+**Walkable quarter.** Of the 400 hulls, **12 are walkable** (around the lock, the southern hulls); the
+other 388 keep the cheap "interior seen through glass" (lit card + silhouettes). The walkable set:
+
+| Id (`RoomId`) | Nom (FR, shown on entering) | Hull | What happens there |
+|---|---|---|---|
+| `sas` | Le Sas | lock hull | Airlock (below), the forecast board, Mme Rouille's stool, hooks for the scrubber |
+| `coursive-sud` | La Coursive | lock hull → refectory | Main corridor: pipes, lanterns, laundry, kids running |
+| `refectoire` | Le Réfectoire | the big hull | The whole Drift eats breakfast on long benches **facing the big window** (the most popular thing down here). ~40 seated NPCs at 07:30 |
+| `rebord` | Le Rebord | inside the big window | The deep window sill where Mila, Tao and Pépin play the clapping game; their « musée du rebord » of trouvailles on shelves |
+| `cuisine` | La Cuisine | next to the refectory | The Cuistot, pots swinging with the sway, the "bread"; the cooking marmite of the Drift |
+| `marche` | Le Marché | a wide barrel hull | Stalls, trades (ingredients, trouvailles shown to collectors), gossip |
+| `passerelle-1..3` | La Passerelle | between hulls | Enclosed gangway tubes with portholes on both sides, they flex and creak |
+| `salle-des-cartes` | La Salle des Cartes | grandfather's hull | Grandfather, his window, **the chart on the table** you can lean over and open |
+| `cabine` | Ta cabine | small hull | Bunk (sleep / save / pass time), your things, a porthole, the six-year-old's drawings of La Chose |
+| `cabines-voisins` | Les Cabines | two hulls | Residents' cabins for the « petites demandes » |
+| `echelle-toit` | La Trappe | top of the lock hull | A ladder to a small vertical sas: second way out, onto the roof of the Drift |
+
+Doors are open passages or hand-operated doors (round hatches with a wheel). No locked door ever
+traps the hero; story-gated doors only stay closed from the outside of a room.
+
+**The sas (airlock) sequence**, in-engine, 6 s, input locked but camera free:
+
+1. In: the hero swims into the chamber, the outer hatch closes (clang, bubbles).
+2. Pumps; the water level drops (a flat animated water plane, foam line on the walls). Light switches
+   from cold blue to warm amber, one bulb at a time.
+3. The hero sinks with the water and **lands on his feet** (`land-dry`), shakes off water, the scarf
+   goes from floating to hanging. Medium becomes air.
+4. The inner hatch opens. The hero is **dripping**: drops fall from scarf and hair, and he leaves
+   **wet footprints that dry** (wetness 1 → 0 over 2 real minutes; footprints fade with it).
+5. Out is the same in reverse: chamber floods, scarf lifts, the hero floats, outer hatch opens.
+
+First pass plays at full length; later passes can be sped up ×3 by holding E. The roof hatch uses the
+same sequence vertically (climb the ladder in, swim up out).
+
+**The Drift moves**, so interiors sway and creak: a slow roll ±0.5° (period 9-14 s) and pitch ±0.3°,
+hanging lamps and pots swing as pendulums, cups slide a little, a creak every 8-20 s, the hull groans
+when the Drift turns. Sway is **visual only** (applied to the interior's render group and the camera);
+colliders follow only the Drift's translation and heading, so walking never jitters.
+
+**Day loop** (indoors is where the story's rhythm lives; NPCs follow an hourly schedule):
+
+| Hour | Where people are |
+|---|---|
+| 06:00 | Ilo wakes in `cabine`; Mme Rouille posts the forecast in `sas` |
+| 06:15-07:30 | The tournée outside; residents wake, corridors fill |
+| 07:30-08:30 | Breakfast in `refectoire`, everyone facing the big window; Ilo served last, still dripping |
+| 08:30-12:00 | Kids on `rebord`; market open; Cuistot in `cuisine` |
+| 12:00-17:00 | Market, errands, grandfather in `salle-des-cartes` |
+| 17:30 | Second La Chose dive: residents gather at portholes |
+| 19:00-21:00 | Supper in `refectoire`, lamps low, songs |
+| 21:00 | Quarter asleep; snoring behind doors; grandfather awake over the chart |
+
 ---
 
 ## 3. Story and quests
@@ -212,13 +282,13 @@ Characters: **Ilo** (hero, unnamed in dialogue: people say "toi" / "petit·e"), 
 
 Game day 1, starts 06:00. Teaches every core verb in a bounded space around the Drift.
 
-1. `a1-reveil` Wake in the bunk, walk to the lock. Forecast board: « Visibilité 30 m. Courant du sud. Risque de méduses. »
+1. `a1-reveil` Wake in the bunk in `cabine` (indoor walk, doors, ladder). Walk the coursive to `sas`. Forecast board: « Visibilité 30 m. Courant du sud. Risque de méduses. » First airlock out.
 2. `a1-corde` Lock → rope guide line → hull. Teaches walk, kick, sink, climb (hull), souffle.
-3. `a1-grande-vitre` Scrub the big window (scrub minigame). The whole Drift eats breakfast in front of it. A turtle swims by: « Une tortue ! Une première ! »
-4. `a1-petit-dejeuner` Breakfast with the Cuistot (cooking tutorial: « poisson, poisson, et quelque chose que le Cuistot appelle du pain »). You get yours last, still dripping.
-5. `a1-rebord` The kids' clapping game on the sill (rhythm minigame): « Pluie, pluie, va-t'en… » « C'est quoi, une pluie ? » « Un poisson. »
-6. `a1-chose` 07:00 scripted: La Chose falls through the ceiling near the Drift, grabs a fish, goes back up. First sighting from outside.
-7. `a1-grand-pere` Scrub grandfather's window last. He shows the chart, the groove of the route, the white. « Cette année, la nourriture est partie au nord. Vers le blanc. »
+3. `a1-grande-vitre` Scrub the big window (scrub minigame). Behind it, the whole Drift eats breakfast facing you. A turtle swims by: « Une tortue ! Une première ! »
+4. `a1-chose` 07:00 scripted: La Chose falls through the ceiling near the Drift, grabs a fish, goes back up. First sighting from outside.
+5. `a1-petit-dejeuner` First airlock **in**. Wet footprints along the coursive to `refectoire`, then `cuisine`: breakfast with the Cuistot (cooking tutorial: « poisson, poisson, et quelque chose que le Cuistot appelle du pain »). You get yours last, still dripping (« Tu gouttes partout. »). Sit on the bench facing the window you just cleaned: the coat you missed is visible from inside.
+6. `a1-rebord` The kids' clapping game on the sill, inside, in front of the big window (rhythm minigame): « Pluie, pluie, va-t'en… » « C'est quoi, une pluie ? » « Un poisson. »
+7. `a1-grand-pere` Back out: scrub grandfather's window last, from outside, while he watches. Then in, through the passerelle, to `salle-des-cartes`: lean over the table, the chart opens. The groove of the route, the white. « Cette année, la nourriture est partie au nord. Vers le blanc. »
 8. `a1-sonde` Reactivate the Sonde du Promontoire (tutorial tower). Vista. Chart draws the Prairie.
 9. `a1-voile` Grandfather gives his old **voile**. Leaving the Prairie's ridge requires it (the Great Plateau exit). → act 2.
 
@@ -227,7 +297,8 @@ Game day 1, starts 06:00. Teaches every core verb in a bounded space around the 
 The Drift turns north. The world opens. Visibility forecasts climb: 60 m, 90 m, « beaucoup ».
 Coat regrows faster: windows need a round each time you come back.
 
-- `a2-sondes` Activate **any 3** of the 5 remaining sondes (any order). Each one: chart region + vista + grandfather's remark.
+- `a2-sondes` Activate **any 3** of the 5 remaining sondes (any order). Each one: chart region + vista. Going home to `salle-des-cartes` after each one triggers grandfather's remark at the table (optional; the chart updates anyway).
+- Coming home is the rhythm of act 2: sleep in `cabine`, breakfast in `refectoire`, residents' lines change as the Drift goes north (the light through the portholes changes too).
 - `a2-raie` Feed a manta caught in a current eddy → it follows your whistle (ride unlock). Optional but signposted.
 - `a2-chose` Each La Chose dive happens closer to the hero (scripted dive positions approach the Drift's front).
 - `a2-halte` At `halte-coques` the Drift waits until 3 sondes are done, then proceeds to `bord-du-blanc`.
@@ -235,8 +306,8 @@ Coat regrows faster: windows need a round each time you come back.
 
 ### Act 3 — Le Blanc
 
-1. `a3-matin` Third morning. At the big window, La Chose comes close: arms too wide, layered like a book, an eye turned toward you, holding the fish like grandfather holds a pen. It goes up, leaving rings.
-2. `a3-pluie` Hundreds of rings with no fish under them; a soft sound through the glass. Grandfather, hand flat on his window, mouths « pluie ». He looks at you, at the pen, at the white. He gives you **le stylo**.
+1. `a3-matin` Third morning, **inside**, breakfast in `refectoire`. Through the big window, La Chose comes close: arms too wide, layered like a book, an eye turned toward you, holding the fish like grandfather holds a pen. The whole room stands up. It goes up, leaving rings.
+2. `a3-pluie` In `salle-des-cartes`: hundreds of rings with no fish under them seen through his window; a soft sound through the glass (and the hull). Grandfather, hand flat on his window, mouths « pluie ». He looks at you, at the pen on the chart table, at the white. He gives you **le stylo**. You leave through the sas.
 3. `a3-mesures` Enter Le Blanc (chart blank). Place your **repères** (pen) at 3 of hf-09/10/11 or their summits (puzzle optional: the summit is reachable by climbing). Each draws your line on the chart.
 4. `a3-seuil` Reach hf-12 Le Seuil. Ending (§2.6).
 
@@ -250,6 +321,9 @@ Coat regrows faster: windows need a round each time you come back.
 - Out of souffle never kills: you let go, sink, and recover on the floor.
 - Le Bleu: a current carries you back to the last safe position (fade 1 s).
 - `setAct(n)` must produce a consistent state (grant all prerequisites of earlier acts).
+- Indoors: no door can lock the hero inside a room; the sas always works both ways. If the hero is
+  stuck (controller blocked > 3 s) or below an interior floor, snap him to the room's spawn point.
+- « Revenir à l'écluse » from indoors puts the hero inside `sas`, dry, in air.
 
 ### Side activities
 
@@ -261,6 +335,8 @@ Coat regrows faster: windows need a round each time you come back.
 - **Recensement** : count fish species for grandfather's chart margins (bestiary).
 - **Petites demandes** : 8 Drift residents' errands (deliver, find, scrub a special window).
 - **Le jeu de mains** : the clapping game, harder verses unlocked by trouvailles.
+- **Le marché** : trade ingredients; show trouvailles to collectors for gossip and a recipe hint.
+- **Dormir** : the bunk in `cabine` saves and passes time (BotW campfire): « Dormir jusqu'à l'aube », « jusqu'à midi », « jusqu'au soir ».
 
 ### Items (`ItemId`)
 
@@ -290,17 +366,34 @@ src/core/                  engine, loop, input, physics, event bus, state, save,
 src/render/                renderer setup, cel materials, post, haze, god rays, caustics, ceiling, sun cycle
 src/world/                 terrain heightfield chunks, rocks, ridges, arches, shallows, colliders, current field
 src/flora/                 kelp, sea grass, coral, anemones (instanced, sway, LOD)
-src/hero/                  model, skeleton, animations, scarf, controller, camera
-src/drift/                 hulls, windows + coat, interiors seen through glass, NPCs, lock, rope
+src/hero/                  model, skeleton, animations, scarf, controller, camera; indoor locomotion
+                           (walk/run with gravity, stairs, ladders, sit, lean), indoor camera, wetness,
+                           drips and wet footprints
+src/drift/                 hulls, windows + coat (both faces), far interiors seen through glass, NPCs,
+                           lock, rope; walkable interiors (src/drift/interiors/): geometry, props,
+                           lamps, colliders, doors and hatches (mesh + collider + open/close anim),
+                           airlock machinery (water plane, pumps, lights), sway/creak, NPC placement
+                           and hourly schedules, room graph
 src/fauna/                 fish schools, jellyfish, whale, manta, turtle, La Chose
 src/gameplay/              souffle, climbing costs, glide rules, sondes, hauts-fonds, trouvailles, cooking,
-                           inventory, quests, dialogue, weather, chart UI, HUD, menus
+                           inventory, quests, dialogue, weather, chart UI, HUD, menus; indoor interactions
+                           (doors, seats, bed + sleep, chart table, market, sas prompts, room-name toast)
 src/audio/                 adaptive music, ambience, sfx
 assets/                    CREDITS.md (anyone appends, one line per asset)
 docs/                      BIBLE.md
 ```
 
 Each folder exposes `src/<folder>/index.ts` exporting a factory `create<Folder>System(): System`.
+
+Interiors split (one owner per concern, never two):
+
+| Concern | Owner | Contract |
+|---|---|---|
+| Rooms, props, lamps, colliders, doors/hatches/ladders as objects, airlock machinery, sway, NPC bodies + schedules | `drift` | `DriftService` interior methods (§4.7), colliders tagged `interior`/`stair`/`ladder`/`door`/`seat` |
+| How the hero moves and is filmed indoors, footprints, drips | `hero` | Reads `drift.mediumAt`, `roomAt`, ladder/seat anchors; `HeroService.sit/stand/lean` |
+| When something is interactable and what it does (prompt, open, sit, sleep, chart, market, airlock trigger, quests) | `gameplay` | Emits `interact`, calls `drift.openDoor`, `drift.cycleAirlock`, `hero.sit`, `sleepUntil` |
+| Indoor shading (lamp term, no caustics, god-ray pass off) | `render` | `cel({ indoor: true })`, `uIndoor` uniform |
+| Muffled outside, creaks, footsteps on wood/metal | `audio` | Reads `state.hero.medium`, listens to `airlock:*`, `hero:step` |
 
 ### 4.2 Core types (`src/core/types.ts`)
 
@@ -316,6 +409,12 @@ export type DayPhase = 'aube' | 'jour' | 'crepuscule' | 'nuit'
 export type QualityLevel = 'low' | 'medium' | 'high'
 export type HeroMode =
   | 'idle' | 'walk' | 'swim' | 'sink' | 'climb' | 'glide' | 'scrub' | 'ride' | 'exhausted' | 'cutscene'
+  | 'fall' | 'ladder' | 'sit' | 'lean' | 'sleep' | 'airlock'
+export type Medium = 'water' | 'air'
+export type RoomId =
+  | 'sas' | 'coursive-sud' | 'refectoire' | 'rebord' | 'cuisine' | 'marche'
+  | 'passerelle-1' | 'passerelle-2' | 'passerelle-3' | 'salle-des-cartes' | 'cabine'
+  | 'cabines-voisins' | 'echelle-toit'
 
 export interface System {
   readonly id: SystemId
@@ -363,6 +462,7 @@ folders are built in parallel and may be stubs.
 ```ts
 export type ColliderKind =
   | 'terrain' | 'rock' | 'hull' | 'window' | 'kelp' | 'coral' | 'sonde' | 'shrine' | 'prop' | 'trigger' | 'fauna'
+  | 'interior' | 'stair' | 'ladder' | 'door' | 'seat'
 export interface ColliderTag { kind: ColliderKind; climbable: boolean; ownerId?: string }
 export interface RayHit { point: Vec3; normal: Vec3; distance: number; tag?: ColliderTag; handle: number }
 
@@ -381,6 +481,13 @@ Fixed step 1/60 s with accumulator (max 4 substeps). Water is not simulated by R
 zero in the Rapier world; each controller applies its own buoyancy/drag. The hero uses Rapier's
 `KinematicCharacterController`. Rapier colliders have no user data: tags live in core's map, so
 **call `untag` when removing a collider** or the map leaks and handles get reused with a stale tag.
+
+Interiors: each walkable hull is **one kinematic rigid body** (drift moves it with
+`setNextKinematicTranslation/Rotation` from the Drift pose, never with the visual sway) carrying cuboid
+and convex colliders (floors, walls, steps, furniture), ≤ 60 per hull. Indoors the hero applies his own
+gravity (−9.81 m/s²) and adds the hull's velocity when grounded on `interior`/`stair` (same rule as
+`hull`). Trap: a trimesh floor lets the KCC snag on internal edges; use cuboids for floors and steps.
+Open doors remove their collider (and `untag` it), closed doors restore it.
 
 ### 4.4 Input (`ctx.input`)
 
@@ -421,7 +528,18 @@ export interface GameEvents {
   'hero:breathFull': {}
   'hero:stung': { by: 'meduse' }
   'interact:hint': { id: string; label: string } | null
-  'interact': { targetId: string; kind: 'npc' | 'sonde' | 'window' | 'item' | 'marmite' | 'shrine' | 'manta' }
+  'interact': {
+    targetId: string
+    kind: 'npc' | 'sonde' | 'window' | 'item' | 'marmite' | 'shrine' | 'manta'
+      | 'door' | 'seat' | 'bed' | 'chart-table' | 'ladder' | 'stall' | 'airlock'
+  }
+  'hero:medium': { medium: Medium }
+  'hero:step': { surface: 'sable' | 'bois' | 'metal' | 'tapis'; wet: boolean }
+  'room:entered': { roomId: RoomId }
+  'room:left': { roomId: RoomId }
+  'airlock:cycle': { lockId: 'sas' | 'echelle-toit'; dir: 'in' | 'out'; phase: 'close' | 'pump' | 'open' | 'done' }
+  'door:changed': { doorId: string; open: boolean }
+  'sleep:done': { fromHour: number; toHour: number; day: number }
   'scrub:progress': { windowId: string; coat: number }
   'scrub:done': { windowId: string }
   'sonde:activated': { sondeId: string; region: RegionId }
@@ -470,8 +588,13 @@ export interface GameState {
     position: Vec3; velocity: Vec3; yaw: number; mode: HeroMode
     breath: number; breathMax: number; exhausted: boolean
     lestOn: boolean; lastSafe: Vec3
+    medium: Medium; room: RoomId | null; wetness: number      // wetness 1 = just out of water, 0 = dry
+    localPosition: Vec3 | null                                // hull-local while indoors (survives the Drift moving)
   }
-  drift: { progress: number; position: Vec3; heading: number; velocity: Vec3; gate: string }
+  drift: {
+    progress: number; position: Vec3; heading: number; velocity: Vec3; gate: string
+    doors: Record<string, boolean>                            // doorId -> open
+  }
   chart: { sondes: string[]; reperes: string[]; pins: { x: number; z: number; icon: string }[] }
   inventory: { items: Record<string, number>; slots: number }
   shallows: string[]
@@ -485,6 +608,8 @@ export interface GameState {
 Writers: `time`, `debug`, `settings.quality` → core. `env`, `act`, `quests`, `flags`, `chart`,
 `inventory`, `shallows`, `trouvailles`, `hero.breath*`/`exhausted` → gameplay. `hero` (rest) → hero.
 `drift` → drift. `windows` → drift. Everybody may read everything.
+Indoors the save stores `hero.localPosition` + `hero.room`; on load the hero is placed from them, not from
+the world `position` (the Drift moved since). Save written on `sleep:done` too.
 
 Save: `localStorage` key `le-drift:save:v1`, every read/write in try/catch (private windows throw).
 Autosave every 60 s real time and on `sonde:activated`, `shallow:completed`, `act:changed`,
@@ -497,6 +622,7 @@ export interface CelMaterialParams {
   color: number; shadowColor?: number; rim?: number; emissive?: number
   map?: THREE.Texture; vertexColors?: boolean; caustics?: boolean; transparent?: boolean
   side?: THREE.Side; onShader?: (shader: THREE.WebGLProgramParametersWithUniforms) => void
+  indoor?: boolean   // no caustics, no red absorption, adds the uLamps term (§5.2)
 }
 export interface RenderService {
   cel(params: CelMaterialParams): THREE.Material   // every visible object uses this or patchWater
@@ -505,6 +631,9 @@ export interface RenderService {
     uTime: { value: number }; uSunDir: { value: THREE.Vector3 }; uSunColor: { value: THREE.Color }
     uCurrent: { value: THREE.Vector3 }; uHeroPos: { value: THREE.Vector3 }
     uHazeDist: { value: number }; uHazeMax: { value: number }
+    uIndoor: { value: number }                      // 0..1, eased by render from state.hero.medium
+    uLamps: { value: THREE.Vector4[] }              // 8 nearest lamps: xyz world, w radius (drift fills)
+    uLampColors: { value: THREE.Color[] }
   }
   addRipple(x: number, z: number, strength: number): void
   draw(ctx: GameContext): void                      // called by core once per frame
@@ -529,7 +658,18 @@ export interface DriftService {
   nearestWindow(p: Vec3, maxDist: number): { id: string; coat: number; position: Vec3; normal: Vec3 } | null
   scrub(windowId: string, amount: number): number   // returns remaining coat
   npcPosition(npcId: string): Vec3 | null
-  playScene(id: 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie'): Promise<void>
+  playScene(id: 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie' | 'chose-vitre'): Promise<void>
+  // interiors
+  mediumAt(p: Vec3): Medium                         // 'air' inside a sealed walkable room
+  roomAt(p: Vec3): RoomId | null
+  toLocal(p: Vec3): Vec3                            // world <-> Drift-local (translation + heading, no sway)
+  toWorld(p: Vec3): Vec3
+  roomSpawn(room: RoomId): { position: Vec3; yaw: number }
+  ladders(room: RoomId): { id: string; bottom: Vec3; top: Vec3; normal: Vec3 }[]
+  seat(id: string): { position: Vec3; yaw: number } | null
+  openDoor(doorId: string, open: boolean): void
+  cycleAirlock(lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void>   // emits airlock:cycle
+  roomCeilingAt(p: Vec3): number | null             // for the indoor camera
 }
 export interface FaunaService {
   choseDive(target: Vec3, close: boolean): Promise<void>
@@ -543,6 +683,9 @@ export interface HeroService {
   setMode(m: HeroMode): void
   setCameraPose(pose: CameraPose | null): void      // null = return to gameplay camera
   headPosition(): Vec3
+  sit(seatId: string): void                         // walks to the seat anchor, then 'sit'
+  lean(target: Vec3): void                          // chart table, sill
+  stand(): void
 }
 export interface GameplayService {
   breath: {
@@ -554,6 +697,8 @@ export interface GameplayService {
   giveItem(id: string, n?: number): void
   hasItem(id: string): boolean
   setWeather(env: Partial<EnvState>): void
+  sleepUntil(hour: number): Promise<void>           // fade, advance time, save, emits sleep:done
+  chartCanvas(): HTMLCanvasElement | null           // the same chart the M menu draws; drift maps it on the table
 }
 export interface AudioService { cue(c: MusicCue): void; sfx(id: string, at?: Vec3): void; unlock(): Promise<void> }
 export type MusicCue = 'explore' | 'drift' | 'sonde' | 'shallow' | 'danger' | 'night' | 'wonder' | 'rain' | 'silence'
@@ -603,6 +748,26 @@ gameplay (in-world markers) 15, spare 37. Instancing is mandatory for grass, kel
 windows, fish, jellyfish. No per-frame allocations in hot loops. Auto-quality: if the average frame
 is > 24 ms over 5 s, drop one level once and toast « Qualité réduite ».
 
+Interiors (same totals as above, redistributed while `state.hero.medium === 'air'`):
+
+| Indoors | high | medium | low |
+|---|---|---|---|
+| Rooms drawn in full | current + graph neighbours | current + neighbours | current + neighbours |
+| Interior draw calls (drift) | ≤ 70 | ≤ 50 | ≤ 35 |
+| Interior triangles | ≤ 250 k | ≤ 150 k | ≤ 80 k |
+| Lamps in `uLamps` | 8 | 6 | 4 |
+| Lamp shadows | none (baked AO in vertex colours) | none | none |
+| Outside chunk radius (full / LOD) | 2 / 4 | 1 / 3 | 1 / 2 |
+| Grass blades | 30 k | 15 k | 6 k |
+| Seated/walking NPCs animated | 40 / 12 | 25 / 8 | 12 / 4 (rest frozen poses) |
+| Footprint decals | 64 (1 instanced draw) | 48 | 24 |
+
+Rooms not adjacent to the current room are `visible = false`. From outside, walkable interiors are
+drawn only within 40 m of the camera and at LOD (no small props); beyond, the far-interior cards. All
+props instanced or merged per room (one merged static mesh per room + instanced repeats: bowls, bench
+legs, rivets). God-ray radial pass and sun shadows off indoors (light through portholes is a cheap
+additive cone per porthole, ≤ 1 draw per room).
+
 ```ts
 export interface QualitySettings {
   level: QualityLevel
@@ -618,11 +783,16 @@ export interface QualitySettings {
 - **render**: cel material + haze + caustics + shafts + ceiling with Snell's window; sun cycle; vista pose looks like §5.4.
 - **world**: 256 chunks streamed; heightfield colliders tagged; regions and landmarks in place; `heightAt` pure.
 - **flora**: kelp forests and grass fields swaying with `uCurrent` and gust waves; grass bends around the hero.
-- **hero**: Ilo modeled and animated, controller per §6/§3 tuning, BotW camera.
-- **drift**: 400 hulls moving on the route, scrubbable windows with coat, NPCs, lock and rope.
+- **hero**: Ilo modeled and animated, controller per §6/§3 tuning, BotW camera; indoor mode (walk/run,
+  stairs, ladders, sit, lean) with the close indoor camera, drips and drying footprints.
+- **drift**: 400 hulls moving on the route, scrubbable windows with coat (visible from both faces), NPCs,
+  lock and rope; the 12 walkable rooms of §2.7 with colliders, doors, airlock sequence, sway and creak,
+  NPC schedules; you can walk from `cabine` to `refectoire` and out through `sas` with no loading screen.
 - **fauna**: schools, jellyfish, whale, manta, turtle, La Chose dives twice a day.
-- **gameplay**: the whole quest line playable start to end, HUD, chart, inventory, cooking, weather.
-- **audio**: music cues, ambience, sfx, unlocks on first user gesture.
+- **gameplay**: the whole quest line playable start to end, HUD, chart, inventory, cooking, weather; indoor
+  interactions (doors, seats, bed/sleep, chart table, market, sas prompts, room-name toast).
+- **audio**: music cues, ambience, sfx, unlocks on first user gesture; indoor mix (muffled sea, creaks).
+- **render**: also `indoor` cel variant with the lamp term, `uIndoor` easing, porthole light cones.
 
 ---
 
@@ -655,6 +825,11 @@ export interface QualitySettings {
 | `cheminee-coeur` / `cheminee-fumee` | `#FF8A4C` / `#5A4B5E` | Vent |
 | `blanc` / `blanc-ombre` | `#F4F1E6` / `#DCEFF0` | Le Blanc |
 | UI `texte` / `accent` / `souffle` / `souffle-bas` | `#F6F2E8` / `#E8674A` / `#9EE6C9` / `#F2C14E` | HUD |
+| `lampe` / `lampe-chaude` | `#FFC27A` / `#FF9E5E` | Interior lamps, lamp pools |
+| `bois` / `bois-ombre` | `#B07A4F` / `#5E4A5C` | Benches, tables, floors (shadow goes plum, never grey) |
+| `tissu-1/2/3` | `#D8644E` / `#E3B95F` / `#6E8FB0` | Cushions, laundry, curtains, bunting |
+| `toile-carte` | `#EFE3C4` | The chart paper on the table |
+| `interieur-ombre` | `#3E3A5A` | Interior cel shadow band |
 
 ### 5.2 Lighting and shading
 
@@ -672,6 +847,12 @@ export interface QualitySettings {
 - **Sun cycle**: azimuth east→west across the day, elevation peak 70°, **clamped to ≥ 25°** for
   underwater light (refraction). Dawn 05-07, jour 07-17, crépuscule 17-19:30, nuit 19:30-05.
   Night: sun replaced by a cool moon `#9FB8E8` at 25 %, bioluminescence on.
+- **Indoors**: lamps dominate (warm pools, `lampe`, soft falloff, cel-stepped like the sun), cool sea
+  light enters only through portholes and the big window (blue-green cones, sun shafts when the sun is
+  high), so every room reads warm-inside / cool-outside. Haze still applies (it is what makes the sea seen
+  through glass look deep), but at room distances it is invisible on interior surfaces. Dust motes in
+  lamp light, steam in the kitchen, a slight bloom on lamps. Clutter everywhere: nets, jars, laundry,
+  drawings, patched cushions, cups. Nothing new, everything repaired.
 
 ### 5.3 Haze (atmospheric perspective)
 
@@ -726,6 +907,12 @@ noon), `cheminee` (at the vent base looking up the plume), `blanc` (Le Blanc at 
   `idle` (breathing, scarf float), `walk`, `run`, `swim`, `swim-sprint`, `kick`, `sink`, `land`,
   `climb` (hand over hand), `climb-idle`, `climb-jump`, `glide` (arms up holding the voile),
   `scrub` (circular arm), `ride`, `exhausted` (slumped, slow), `talk`, `hand-on-ceiling` (ending).
+  Indoors: `walk-dry`, `run-dry` (heavier gait, gravity), `stairs-up`/`stairs-down` (foot IK on steps),
+  `ladder` / `ladder-top`, `fall`, `land-dry`, `shake-off` (after the sas), `sit-down` / `sit` / `eat` /
+  `stand-up`, `lean` (chart table, sill), `open-hatch` (spin the wheel), `lie-down` / `sleep` / `wake`.
+- Scarf in air: same verlet chain with gravity and no buoyancy, so it hangs and swings; heavy and dark
+  while `wetness > 0.5`, lifts back to its water behaviour through the sas. Drips: small particles from
+  scarf and hair, rate ∝ wetness. Footprints: decals at each `hero:step` while wetness > 0.1.
 
 ### 5.6 Other models
 
@@ -775,7 +962,27 @@ Movement and tuning (`src/core/tuning.ts`, owned by core, numbers from here):
 Auto-grab: moving into a climbable surface while not grounded grabs it; Espace also grabs.
 Espace while sinking with the voile owned opens it; Espace again or Ctrl closes it.
 
-Camera (BotW): orbit around a pivot 1.5 m above the hero; distance 6 m (4 when close to walls, 9 when
+Indoors (`medium === 'air'`, souffle wheel hidden and full; no kick, sink, swim or voile):
+
+| | Value |
+|---|---|
+| Walk / run | 1.6 / 3.8 m/s (Maj = run, no souffle cost) |
+| Gravity | −9.81 m/s², small hop on Espace (0.45 m) |
+| Step height (KCC autostep) | 0.35 m; max slope 40° |
+| Ladder | 1.2 m/s, Espace at top = climb over, Ctrl = let go |
+| Doors | E opens/closes a hatch (0.8 s wheel spin); plain passages are open |
+| Sit / lean / sleep | E on a seat, chart table or bunk; Ctrl or any move stands up |
+| Wetness dry-out | 1 → 0 in 120 real s |
+
+Camera indoors (the tight-space BotW camera): pivot 1.55 m, default distance **3.0 m** (min 0.6, when
+nearer than that switch to an over-the-shoulder offset 0.35 m right), FOV 60, pitch −50°…+60°.
+Collision by **sphere cast** (radius 0.25): pull-in instantly, ease back out at 1.5 m/s. Camera height
+clamped to `roomCeilingAt − 0.2`. Any mesh flagged `fadeable` (pillars, hanging laundry, NPCs, lamps)
+between camera and hero dithers to 25 % opacity (screen-door dither, no sorting). Passing through the sas
+lerps all camera parameters over 1 s. Seated/leaning/sleep use `setCameraPose` framings (chart table:
+over the shoulder, looking down at the paper). Recentre puts the camera behind the hero, clamped by walls.
+
+Camera (BotW, outside): orbit around a pivot 1.5 m above the hero; distance 6 m (4 when close to walls, 9 when
 gliding or riding); pitch −70°…+80°; FOV 55 (62 when sprinting/gliding); collision by raycast with
 1.5 m/s ease-out; no auto-recenter while the player moves the camera within 2 s; `recenter` puts it
 behind the hero. Free look when climbing.
@@ -791,6 +998,11 @@ BotW minimal: by default the screen shows **nothing** but the world.
 - **Bas droite** (toggle in settings, default on): small round mini-chart, time-of-day glyph,
   « Vis. 30 m », current arrow.
 - **Invite** bottom centre when something is interactable: « [E] Parler », « [F] Frotter », « [E] Activer la sonde ».
+  Indoors: « [E] Entrer dans le sas », « [E] Sortir », « [E] Ouvrir », « [E] Fermer », « [E] S'asseoir »,
+  « [E] Monter », « [E] Se pencher sur la carte », « [E] Dormir », « [E] Regarder l'étal ».
+- **Nom du lieu** on entering a room for the first time each day, BotW-style, centred, fades after 2 s:
+  « Le Réfectoire », « La Cuisine », « Le Rebord », « La Salle des Cartes », « Ta cabine », « Le Marché ».
+- **Dormir** menu: « Dormir jusqu'à l'aube », « Dormir jusqu'à midi », « Dormir jusqu'au soir », « Annuler ».
 - **Toast** top-left on quest step, fades after 4 s: « Nouvelle tâche : Frotter la grande vitre ».
 - **Carte (M)**: grandfather's chart on paper, hand-drawn contour lines, the worn groove of the route,
   white where unmeasured; sondes animate line drawing; the Drift icon moves; « Revenir à l'écluse ».
@@ -807,7 +1019,7 @@ No English in the UI.
 
 ## 8. Day, weather, wonders
 
-- Time: 1 game hour = 60 real seconds (day = 24 min). Start: day 1, 06:00.
+- Time: 1 game hour = 60 real seconds (day = 24 min). Start: day 1, 06:00, in the bunk in `cabine` (medium air, dry).
 - **La Chose** dives at **07:00 and 17:30** each day (act 1: day 1 07:00 is scripted near the Drift).
   Rings on the ceiling (`ceiling:ripple`), a fish taken, music cue `wonder`.
 - Forecast changes every morning at 06:00 (gameplay): visibility by act (act 1: 30; act 2: 60 → 90 →
@@ -836,6 +1048,9 @@ gesture: unlock on the first click/key.
 
 SFX: bubbles, kick, scrub (squeak on glass), lock, rope creak, hull groan, fish flutter, vent rumble,
 ceiling rings (soft drip), rain on the surface heard from below, footsteps on sand.
+Indoors: the sea becomes a low-passed rumble through the hull, creaks every 8-20 s and a groan on turns,
+pumps and hatch clang in the sas, drips, wet then dry footsteps on wood/metal (`hero:step`), crockery and
+murmur in the refectory, the clapping game on the sill heard clearly (the `drift` cue, unmuffled).
 
 ## 10. Debug hooks (core, `window.__game`)
 
@@ -854,6 +1069,7 @@ interface DebugApi {
   screenshotPose(name: string): Promise<string>   // PNG data URL
   poses(): string[]
   stats(): { fps: number; drawCalls: number; triangles: number }
+  enterRoom(room: RoomId): void             // dry, in air, at roomSpawn(room)
 }
 ```
 
@@ -861,8 +1077,9 @@ interface DebugApi {
 hero's camera must respect it), waits 2 frames for streaming/shaders, renders and reads the canvas in the
 same tick as the render (the default drawing buffer is cleared after compositing). Poses predefined in
 core: `vista`, `drift-vitre`, `laminaires`, `cheminee`, `blanc`, `plafond`, `heros`; other folders may
-`registerPose` more. URL params: `?debug` (overlay), `?pose=vista`, `?act=2`, `?t=17.5`, `?q=low`,
-`?nosave`.
+`registerPose` more (drift registers `sas`, `refectoire`, `rebord`, `salle-des-cartes`, `cabine`,
+`marche`, and `refectoire-vitre`: from a bench toward the big window, sea and fish visible). URL params:
+`?debug` (overlay), `?pose=vista`, `?act=2`, `?t=17.5`, `?q=low`, `?nosave`, `?room=refectoire`.
 
 ## 11. Working rules for builders
 
