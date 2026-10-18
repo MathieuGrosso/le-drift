@@ -800,8 +800,8 @@ BotW minimal: by default the screen shows **nothing** but the world.
 - Pause: « Reprendre », « Revenir à l'écluse », « Réglages », « Commandes ».
 - Font: system stack `ui-rounded, "SF Pro Rounded", system-ui, sans-serif` (no web font download).
 
-All strings live in `src/gameplay/text/fr.ts` (except audio-free, scene-specific lines owned by drift
-for ambient NPC chatter in `src/drift/text.ts`). No English in the UI.
+All UI and quest strings live in `src/gameplay/text/fr.ts`; ambient NPC chatter lives in `src/drift/text.ts`.
+No English in the UI.
 
 ---
 
