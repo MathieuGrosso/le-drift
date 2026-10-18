@@ -280,3 +280,110 @@ export function cord(g: PlantGeo, a: THREE.Vector3, b: THREE.Vector3, r: number,
   const q = new THREE.Quaternion().setFromUnitVectors(UP, b.clone().sub(a).normalize())
   g.add(cyl, new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(0.5), q, new THREE.Vector3(1, 1, 1)), col(color), s)
 }
+
+export function floatingAlgae(g: PlantGeo, rng: Rng, c: THREE.Vector3, r: number, tints: readonly number[], grow = -1): void {
+  const n = 5 + Math.floor(rng() * 4)
+  const s = sway(c, SWAY.ribbon, 0.35, rng() * 6.28, grow)
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + rng() * 0.7
+    const L = r * (0.6 + rng() * 0.6)
+    const dx = Math.cos(a)
+    const dz = Math.sin(a)
+    const base = col(pick(rng, tints), 0.12, rng)
+    const pts: THREE.Vector3[] = []
+    const w: number[] = []
+    const sd: THREE.Vector3[] = []
+    const cs: THREE.Color[] = []
+    const ruffle = rng() * 6.28
+    for (let k = 0; k <= 6; k++) {
+      const t = k / 6
+      pts.push(new THREE.Vector3(c.x + dx * L * t, c.y + 0.02 + Math.sin(t * 9 + ruffle) * 0.025 + t * 0.04, c.z + dz * L * t))
+      w.push(L * 0.42 * Math.sin(Math.min(1, t * 1.25) * Math.PI) + 0.01)
+      const tilt = Math.sin(t * 11 + ruffle) * 0.45
+      sd.push(new THREE.Vector3(-dz, tilt, dx).normalize())
+      cs.push(base.clone().multiplyScalar(0.75 + 0.4 * t))
+    }
+    g.ribbon(pts, w, sd, cs, s)
+  }
+}
+
+export function uprightFrond(g: PlantGeo, rng: Rng, base: THREE.Vector3, height: number, tint: number, grow = -1): void {
+  const s = sway(base, SWAY.ribbon, 0.8, rng() * 6.28, grow)
+  const blades = 3 + Math.floor(rng() * 3)
+  for (let b = 0; b < blades; b++) {
+    const a = rng() * Math.PI * 2
+    const dx = Math.cos(a)
+    const dz = Math.sin(a)
+    const H = height * (0.6 + rng() * 0.5)
+    const pts: THREE.Vector3[] = []
+    const w: number[] = []
+    const sd: THREE.Vector3[] = []
+    const cs: THREE.Color[] = []
+    const c = col(tint, 0.14, rng)
+    const wav = rng() * 6.28
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8
+      pts.push(new THREE.Vector3(base.x + dx * t * H * 0.25 + Math.sin(t * 6 + wav) * 0.05, base.y + t * H, base.z + dz * t * H * 0.25))
+      w.push(0.16 * H * Math.sin(Math.min(1, 0.15 + t) * Math.PI * 0.95) + 0.01)
+      const tw = wav + t * 2.2
+      sd.push(new THREE.Vector3(Math.cos(tw), 0, Math.sin(tw)))
+      cs.push(c.clone().multiplyScalar(0.7 + 0.5 * t))
+    }
+    g.ribbon(pts, w, sd, cs, s)
+  }
+}
+
+export function dryingLine(g: PlantGeo, rng: Rng, a: THREE.Vector3, b: THREE.Vector3, sag: number, tints: readonly number[]): void {
+  const n = 14
+  const pts: THREE.Vector3[] = []
+  for (let i = 0; i <= n; i++) {
+    const t = i / n
+    pts.push(new THREE.Vector3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * sag, a.z + (b.z - a.z) * t))
+  }
+  for (let i = 0; i < n; i++) cord(g, pts[i]!, pts[i + 1]!, 0.012, P.corde)
+  const dir = b.clone().sub(a).setY(0).normalize()
+  const len = a.distanceTo(b)
+  for (let u = 0.35; u < len - 0.3; u += 0.22 + rng() * 0.25) {
+    const t = u / len
+    const i = Math.min(n - 1, Math.floor(t * n))
+    const f = t * n - i
+    const top = pts[i]!.clone().lerp(pts[i + 1]!, f)
+    const L = 0.35 + rng() * 0.55
+    const c = col(pick(rng, tints), 0.12, rng)
+    const s = sway(top, SWAY.hang, 0.5, rng() * 6.28)
+    const sp: THREE.Vector3[] = []
+    const w: number[] = []
+    const sd: THREE.Vector3[] = []
+    const cs: THREE.Color[] = []
+    const wav = rng() * 6.28
+    for (let k = 0; k <= 5; k++) {
+      const t2 = k / 5
+      sp.push(new THREE.Vector3(top.x + Math.sin(t2 * 5 + wav) * 0.03, top.y - t2 * L, top.z + Math.cos(t2 * 4 + wav) * 0.03))
+      w.push(0.09 + 0.05 * Math.sin(t2 * 7 + wav))
+      sd.push(dir)
+      cs.push(c.clone().multiplyScalar(0.8 + 0.3 * (1 - t2)))
+    }
+    g.ribbon(sp, w, sd, cs, s)
+    if (rng() < 0.35) {
+      const peg = new THREE.BoxGeometry(0.02, 0.07, 0.03)
+      g.add(peg, place(top.x, top.y + 0.01, top.z), col(P.boisPlancheClair), RIGID)
+    }
+  }
+}
+
+export function nurseryRack(g: PlantGeo, rng: Rng, x: number, z0: number, z1: number, out: number, shelves: readonly number[]): void {
+  const depth = 0.5
+  const cx = x + out * depth * 0.5
+  for (const y of shelves) {
+    const board = new THREE.BoxGeometry(depth, 0.05, z1 - z0)
+    g.add(board, place(cx, y, (z0 + z1) / 2), col(pick(rng, [P.boisPlanche, P.boisPlancheClair]), 0.05, rng), RIGID)
+    shelfSprouts(g, rng, cx, cx + (z1 - z0 - 0.4), y + 0.025, (z0 + z1) / 2, true)
+  }
+  const top = shelves[shelves.length - 1]! + 0.05
+  for (let z = z0; z <= z1 + 1e-3; z += Math.max(0.8, (z1 - z0) / Math.round((z1 - z0) / 1.6))) {
+    for (const dx of [0.04, depth - 0.04]) {
+      const post = new THREE.BoxGeometry(0.05, top, 0.05)
+      g.add(post, place(x + out * dx, top / 2, z), col(P.boisOmbre), RIGID)
+    }
+  }
+}

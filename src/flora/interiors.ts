@@ -1,5 +1,4 @@
 import * as THREE from 'three'
-import { NEF_VOID } from '../core/layout'
 import type { GameContext, QualityLevel } from '../core/types'
 import { PlantGeo } from './plantgeo'
 import { floorPlant, hangingBasket, railPlanter, shelfSprouts } from './plants'
@@ -41,6 +40,18 @@ const SHELVES: readonly Shelf[] = [
   { x0: 11.0, x1: 14.2, y: 2.22, z: 48.35, alongZ: false },
 ]
 
+// Mirrors drift's Nef hall (city/world.ts NEF): gallery edges, levels and rail gaps, Drift-local.
+const NEF = {
+  x0: -36, x1: 36, z0: -36, z1: 36, D: 6.75, floor: -6, levels: [0, 8, 16],
+  gaps: [
+    ...([['w', 0, -1.6, 1.6], ['e', 0, -1.6, 1.6], ['n', 8, -1.6, 1.6], ['s', 8, -1.6, 1.6], ['w', 16, -1.6, 1.6], ['e', 16, -1.6, 1.6],
+      ['s', 0, -15, -11], ['s', 0, 11, 15], ['w', 0, 8.4, 10.8], ['w', 8, -5.2, -2.8], ['e', 8, 5.6, 8], ['e', 16, 19.2, 21.6],
+      ['e', 8, -13.8, -10], ['n', 8, 8, 13], ['n', 16, 8, 13], ['s', 0, 16, 21], ['s', 8, 16, 21], ['w', 16, 22, 29.3],
+      ['s', 16, -29.3, -20], ['w', 8, 14, 17], ['w', 16, 14, 17], ['n', 0, -10.6, -9.4], ['n', 0, 21.4, 22.6], ['w', 0, 25.4, 26.6],
+      ['s', 16, -9, 9]] as const),
+  ].map(([side, y, u0, u1]) => ({ side, y, u0, u1 })),
+} as const
+
 export interface InteriorBuild {
   quarter: THREE.BufferGeometry
   nef: THREE.BufferGeometry
@@ -70,26 +81,25 @@ export function buildInteriors(ctx: GameContext, rng: () => number, level: Quali
   for (const s of SHELVES) shelfSprouts(q, rng, s.x0, s.x1, s.y, s.z, s.alongZ)
 
   const n = new PlantGeo()
-  const V = NEF_VOID
-  const step = level === 'high' ? 6.5 : level === 'medium' ? 8.5 : 12
-  const keep = level === 'low' ? 0.55 : 0.75
-  for (const y of [8, 16]) {
-    const vineMax = y === 16 ? 5.2 : 5.8
-    const top = y + 0.95
-    for (const side of [-1, 1]) {
-      const rx = side * (V.x1 - 4)
-      for (let z = V.z0 + 4 + 2.5; z <= V.z1 - 4 - 2.5; z += step) {
-        if (y === 16 && Math.abs(z) < 2.5) continue
+  const step = level === 'high' ? 6 : level === 'medium' ? 8 : 11
+  const keep = level === 'low' ? 0.6 : 0.8
+  for (const y of NEF.levels) {
+    const vineMax = Math.min(6.2, y - NEF.floor - 1.6)
+    const top = y + 1.0
+    for (const side of ['w', 'e', 'n', 's'] as const) {
+      const along = side === 'n' || side === 's'
+      const fixed = side === 'w' ? NEF.x0 + NEF.D : side === 'e' ? NEF.x1 - NEF.D : side === 'n' ? NEF.z0 + NEF.D : NEF.z1 - NEF.D
+      const inward = side === 'w' || side === 'n' ? 1 : -1
+      const u0 = (along ? NEF.x0 : NEF.z0) + NEF.D + 1.5
+      const u1 = (along ? NEF.x1 : NEF.z1) - NEF.D - 1.5
+      const gaps = NEF.gaps.filter((g) => g.side === side && g.y === y)
+      for (let u = u0 + rng() * 2; u < u1; u += step * (0.8 + rng() * 0.4)) {
         if (rng() > keep) continue
-        const zz = z + (rng() - 0.5) * 1.5
-        railPlanter(n, rng, rx - side * 0.25, top, zz, true, 1.5 + rng() * 1.2, -side, 0, vineMax)
-      }
-      const rz = side * (V.z1 - 4)
-      for (let x = V.x0 + 4 + 2.5; x <= V.x1 - 4 - 2.5; x += step) {
-        if (y === 8 && Math.abs(x) < 2.8) continue
-        if (rng() > keep) continue
-        const xx = x + (rng() - 0.5) * 1.5
-        railPlanter(n, rng, xx, top, rz - side * 0.25, false, 1.5 + rng() * 1.2, 0, -side, vineMax)
+        const len = 1.4 + rng() * 1.2
+        if (gaps.some((g) => u + len / 2 > g.u0 - 0.4 && u - len / 2 < g.u1 + 0.4)) continue
+        const off = fixed + inward * 0.22
+        if (along) railPlanter(n, rng, u, top, off, false, len, 0, inward, vineMax)
+        else railPlanter(n, rng, off, top, u, true, len, inward, 0, vineMax)
       }
     }
   }

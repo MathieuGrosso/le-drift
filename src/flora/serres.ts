@@ -2,141 +2,132 @@ import * as THREE from 'three'
 import type { ColliderTag, QualityLevel, Vec3 } from '../core/types'
 import { PLANT_COLORS as P } from './palette'
 import { PlantGeo, RIGID, SWAY } from './plantgeo'
-import { cord, floorPlant, hangingBasket, kelpStalk, leafyCrown, railPlanter, sway } from './plants'
+import { cord, dryingLine, floatingAlgae, hangingBasket, kelpStalk, leafyCrown, nurseryRack, railPlanter, sway, trailingVine, uprightFrond } from './plants'
 import type { ShapeSpec } from './ship'
 
-// Les Serres live in gameplay's chambers (sites.ts): the greenhouse quay and the dôme tower, Drift-local.
-export const SERRE_QUAI = { x0: 84, x1: 100, z0: 20, z1: 32, y0: 0, h: 5.5 } as const
-export const SERRE_DOME = { x0: 70, x1: 80, z0: 40, z1: 50, y0: 0, h: 18 } as const
+// Mirrors drift's `serre-cathedrale` hall (city/world.ts SERRES + serres()); Drift-local.
+export const SERRE_HALL = { x0: 72, x1: 108, z0: -6, z1: 72, gallery: 7, railW: 78.75, railE: 101.25 } as const
+const BED_X = [82, 90, 98] as const
+const BED_Z = [[1, 18], [22, 40], [48, 68]] as const
+const BED_HALF = 1.1
+const WATER_Y = 0.6
+const GROW_OF_COLUMN = [0, 2, 1] as const
+const CROPS: readonly (readonly number[])[] = [
+  [P.algueRouge, P.algueRougeClair, P.algueRouge],
+  [P.algueDoree, P.varechClair, P.laminaire],
+  [P.laitue, P.herbe, P.feuilleClaire],
+]
+const RAIL_GAPS: Record<'w' | 'e', readonly (readonly [number, number])[]> = {
+  w: [[42.5, 45.5], [17.8, 20.2], [8.5, 11.5]],
+  e: [[42.5, 45.5], [59.8, 62.2], [8.5, 11.5]],
+}
+const ARCH_X = [86, 94] as const
+const ARCH_Z = [4, 12, 20, 28, 36, 52, 60, 68] as const
+const ARCH = { y: 4.2, rx: 2.8, ry: 2.2 } as const
 
-const BEDS = [
-  { id: 'serre-bac-ouest', x0: 85, x1: 90.5, z0: 20.6, z1: 27.2, grow: 0 },
-  { id: 'serre-bac-est', x0: 93.5, x1: 99, z0: 20.6, z1: 27.2, grow: 1 },
+export const SERRE_COLUMNS = [
+  { id: 'serre-colonne-ouest', x: 82.2, z: 20, h: 11, r: 0.9 },
+  { id: 'serre-colonne-mere', x: 90, z: 20, h: 16, r: 1.05 },
+  { id: 'serre-colonne-est', x: 97.8, z: 20, h: 11, r: 0.9 },
+  { id: 'serre-cuve-ouest', x: 82, z: 44, h: 6.1, r: 0.8 },
+  { id: 'serre-cuve-est', x: 98, z: 44, h: 6.1, r: 0.8 },
 ] as const
-const SERRE_TINTS = [0x9fbf4a, 0xc9b85a, 0x7fa64a, 0xb5c86a] as const
-const BED_H = 0.75
-const BED_WATER = 0.62
-const CHANNEL = { x0: 88, x1: 96, z0: 31.1, z1: 31.75, h: 0.3 }
-const TANKS = [{ x: 86.1, z: 30.95 }, { x: 97.9, z: 30.95 }] as const
-const TANK_R = 0.8
-const TANK_H = 4.9
-const CEIL = SERRE_QUAI.y0 + SERRE_QUAI.h - 0.05
+
 export const SERRE_TRELLIS = [
-  { id: 'serre-treille-nord', x: 71.4, z: 41.4, top: 17.4 },
-  { id: 'serre-treille-sud', x: 78.6, z: 48.6, top: 17.4 },
+  { id: 'serre-treille-ouest', x: 79.7, z: 36, top: 8.3 },
+  { id: 'serre-treille-est', x: 100.3, z: 26, top: 8.3 },
 ] as const
-
-export const SERRE_LAMPS: readonly Vec3[] = BEDS.flatMap((b) => [
-  { x: (b.x0 + b.x1) / 2, y: 3.7, z: b.z0 + 1.8 },
-  { x: (b.x0 + b.x1) / 2, y: 3.7, z: b.z1 - 1.8 },
-])
 
 export interface SerreBuild {
   plants: THREE.BufferGeometry
   glow: THREE.BufferGeometry
-  lamps: THREE.BufferGeometry
-  water: THREE.BufferGeometry
   tanks: THREE.BufferGeometry
   bubbles: THREE.BufferGeometry
   colliders: { spec: ShapeSpec; tag: ColliderTag }[]
   stalks: { base: Vec3; height: number }[]
 }
 
-function box(g: PlantGeo, x0: number, x1: number, y0: number, y1: number, z0: number, z1: number, color: number): void {
-  const b = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0)
-  g.add(b, new THREE.Matrix4().makeTranslation((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), new THREE.Color(color), RIGID)
-}
-
-function waterQuad(pos: number[], uv: number[], idx: number[], x0: number, x1: number, y: number, z0: number, z1: number, kind: number): void {
-  const s = pos.length / 3
-  pos.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1)
-  uv.push(x0, z0, kind, x1, z0, kind, x1, z1, kind, x0, z1, kind)
-  idx.push(s, s + 2, s + 1, s, s + 3, s + 2)
-}
+const inGap = (z: number, gaps: readonly (readonly [number, number])[], pad: number) => gaps.some(([a, b]) => z > a - pad && z < b + pad)
 
 export function buildSerres(rng: () => number, level: QualityLevel): SerreBuild {
   const g = new PlantGeo()
   const glow = new PlantGeo()
-  const lamps = new PlantGeo()
   const colliders: SerreBuild['colliders'] = []
   const stalks: SerreBuild['stalks'] = []
-  const density = level === 'high' ? 1 : level === 'medium' ? 0.7 : 0.45
-  const prop = (spec: ShapeSpec, ownerId: string): void => {
-    colliders.push({ spec, tag: { kind: 'prop', climbable: false, ownerId } })
-  }
+  const density = level === 'high' ? 1 : level === 'medium' ? 0.65 : 0.4
+  const pickOf = <T>(l: readonly T[]): T => l[Math.floor(rng() * l.length)]!
 
-  for (const b of BEDS) {
-    const t = 0.12
-    box(g, b.x0, b.x1, 0, BED_H, b.z0, b.z0 + t, P.boisPlanche)
-    box(g, b.x0, b.x1, 0, BED_H, b.z1 - t, b.z1, P.boisPlanche)
-    box(g, b.x0, b.x0 + t, 0, BED_H, b.z0, b.z1, P.boisPlanche)
-    box(g, b.x1 - t, b.x1, 0, BED_H, b.z0, b.z1, P.boisPlanche)
-    box(g, b.x0 - 0.03, b.x1 + 0.03, BED_H - 0.08, BED_H, b.z0 - 0.03, b.z0 + 0.15, P.laiton)
-    box(g, b.x0 - 0.03, b.x1 + 0.03, BED_H - 0.08, BED_H, b.z1 - 0.15, b.z1 + 0.03, P.laiton)
-    box(g, b.x0 - 0.03, b.x0 + 0.15, BED_H - 0.08, BED_H, b.z0, b.z1, P.laiton)
-    box(g, b.x1 - 0.15, b.x1 + 0.03, BED_H - 0.08, BED_H, b.z0, b.z1, P.laiton)
-    for (let z = b.z0 + 3; z < b.z1 - 1; z += 6) {
-      box(g, b.x0 - 0.06, b.x0 + 0.06, 0, BED_H + 0.05, z - 0.06, z + 0.06, P.boisOmbre)
-      box(g, b.x1 - 0.06, b.x1 + 0.06, 0, BED_H + 0.05, z - 0.06, z + 0.06, P.boisOmbre)
-    }
-    prop({ shape: 'box', x: (b.x0 + b.x1) / 2, y: 0.275, z: (b.z0 + b.z1) / 2, hx: (b.x1 - b.x0) / 2, hy: 0.275, hz: (b.z1 - b.z0) / 2 }, b.id)
-    const sp = 0.85 / Math.sqrt(density)
-    for (let x = b.x0 + 0.5; x < b.x1 - 0.3; x += sp) {
-      for (let z = b.z0 + 0.5; z < b.z1 - 0.3; z += sp) {
-        const px = x + (rng() - 0.5) * sp * 0.8
-        const pz = z + (rng() - 0.5) * sp * 0.8
-        if (Math.abs(px - (b.x0 + b.x1) / 2) < 0.45 && rng() < 0.85) continue
-        const h = 1.7 + rng() * 1.5 + Math.sin(pz * 0.9) * 0.3
-        kelpStalk(g, rng, new THREE.Vector3(px, BED_WATER - 0.55, pz), h, { grow: b.grow, bladeLen: 0.95, tint: SERRE_TINTS[Math.floor(rng() * SERRE_TINTS.length)]! })
+  BED_X.forEach((cx, col) => {
+    const grow = GROW_OF_COLUMN[col]!
+    const crop = CROPS[col]!
+    for (const [z0, z1] of BED_Z) {
+      const step = 0.62 / Math.sqrt(density)
+      let side = 1
+      for (let z = z0 + 0.5; z < z1 - 0.4; z += step * (0.8 + rng() * 0.4)) {
+        side = -side
+        const h = (col === 1 ? 2.4 : 1.6) + rng() * 1.6 + Math.sin(z * 0.7) * 0.35
+        const tint = col === 0 ? pickOf([P.varech, P.algueRouge, P.laminaire]) : col === 1 ? pickOf([P.laminaire, P.varechClair, P.algueDoree]) : pickOf([P.varech, P.feuille, P.laitue])
+        kelpStalk(g, rng, new THREE.Vector3(cx + side * (0.15 + rng() * 0.45), WATER_Y - 0.45, z), h, { grow, bladeLen: 0.95, tint })
+      }
+      for (let z = z0 + 0.5; z < z1 - 0.4; z += (0.75 + rng() * 0.4) / Math.sqrt(density)) {
+        for (const sx of [-1, 1]) {
+          if (rng() < 0.2) continue
+          const x = cx + sx * (BED_HALF - 0.3 - rng() * 0.15)
+          floatingAlgae(g, rng, new THREE.Vector3(x, WATER_Y, z + (rng() - 0.5) * 0.3), 0.35 + rng() * 0.2, crop, grow)
+        }
+        if (rng() < 0.3 * density) uprightFrond(g, rng, new THREE.Vector3(cx + (rng() - 0.5) * 1.4, WATER_Y - 0.1, z), 0.5 + rng() * 0.5, pickOf(crop), grow)
       }
     }
-  }
-  box(g, CHANNEL.x0 - 0.15, CHANNEL.x0, 0, CHANNEL.h, CHANNEL.z0, CHANNEL.z1, P.pierre)
-  box(g, CHANNEL.x1, CHANNEL.x1 + 0.15, 0, CHANNEL.h, CHANNEL.z0, CHANNEL.z1, P.pierre)
-  box(g, CHANNEL.x0, CHANNEL.x1, 0, 0.04, CHANNEL.z0, CHANNEL.z1, P.teal)
-  box(g, CHANNEL.x0 - 0.15, CHANNEL.x1 + 0.15, 0, CHANNEL.h, CHANNEL.z0 - 0.15, CHANNEL.z0, P.pierre)
-  for (let x = CHANNEL.x0 + 0.4; x < CHANNEL.x1; x += 0.8) {
-    leafyCrown(g, rng, new THREE.Vector3(x + (rng() - 0.5) * 0.3, 0.05, (CHANNEL.z0 + CHANNEL.z1) / 2), 5, 0.4, { kind: SWAY.ribbon, spread: 0.3, droop: 0.1, greens: [P.herbe, P.feuilleClaire, P.fougere] })
-  }
+  })
 
-  for (const [i, t] of TANKS.entries()) {
+  for (const c of SERRE_COLUMNS) {
+    const brass = new THREE.Color(P.laiton)
     const ring = (y: number, r: number, h: number) => {
-      const c = new THREE.CylinderGeometry(r, r, h, 24, 1, true)
-      g.add(c, new THREE.Matrix4().makeTranslation(t.x, y, t.z), new THREE.Color(P.laiton), RIGID)
-      const top = new THREE.RingGeometry(TANK_R - 0.05, r, 24)
+      g.add(new THREE.CylinderGeometry(r, r, h, 28, 1, true), new THREE.Matrix4().makeTranslation(c.x, y, c.z), brass, RIGID)
+      const top = new THREE.RingGeometry(c.r - 0.05, r, 28)
       top.rotateX(-Math.PI / 2)
-      g.add(top, new THREE.Matrix4().makeTranslation(t.x, y + h / 2, t.z), new THREE.Color(P.laiton), RIGID)
+      g.add(top, new THREE.Matrix4().makeTranslation(c.x, y + h / 2, c.z), brass, RIGID)
     }
-    ring(0.3, TANK_R + 0.12, 0.6)
-    ring(TANK_H - 0.12, TANK_R + 0.1, 0.24)
-    ring(TANK_H * 0.5, TANK_R + 0.04, 0.1)
+    ring(0.35, c.r + 0.14, 0.7)
+    ring(c.h - 0.12, c.r + 0.1, 0.24)
+    for (let y = 3; y < c.h - 1; y += 3) ring(y, c.r + 0.04, 0.1)
     for (let k = 0; k < 6; k++) {
       const a = (k / 6) * Math.PI * 2
-      box(g, t.x + Math.cos(a) * (TANK_R + 0.03) - 0.04, t.x + Math.cos(a) * (TANK_R + 0.03) + 0.04, 0.6, TANK_H - 0.2, t.z + Math.sin(a) * (TANK_R + 0.03) - 0.04, t.z + Math.sin(a) * (TANK_R + 0.03) + 0.04, P.laiton)
+      const px = c.x + Math.cos(a) * (c.r + 0.03)
+      const pz = c.z + Math.sin(a) * (c.r + 0.03)
+      g.add(new THREE.BoxGeometry(0.07, c.h - 0.9, 0.07), new THREE.Matrix4().makeTranslation(px, 0.7 + (c.h - 0.9) / 2, pz), brass, RIGID)
     }
-    const sand = new THREE.CircleGeometry(TANK_R - 0.02, 20)
+    const cap = new THREE.SphereGeometry(c.r + 0.1, 20, 6, 0, Math.PI * 2, 0, Math.PI / 2)
+    g.add(cap, new THREE.Matrix4().makeTranslation(c.x, c.h, c.z), brass.clone().multiplyScalar(0.9), RIGID)
+    const sand = new THREE.CircleGeometry(c.r - 0.02, 20)
     sand.rotateX(-Math.PI / 2)
-    g.add(sand, new THREE.Matrix4().makeTranslation(t.x, 0.62, t.z), new THREE.Color(0xe8d6a8), RIGID)
-    const n = Math.round(7 * Math.max(0.6, density))
+    g.add(sand, new THREE.Matrix4().makeTranslation(c.x, 0.72, c.z), new THREE.Color(0xe8d6a8), RIGID)
+    for (let k = 0; k < 5; k++) {
+      const a = rng() * Math.PI * 2
+      const r = Math.sqrt(rng()) * (c.r - 0.25)
+      const rock = new THREE.IcosahedronGeometry(0.08 + rng() * 0.1, 0)
+      g.add(rock, new THREE.Matrix4().makeTranslation(c.x + Math.cos(a) * r, 0.74, c.z + Math.sin(a) * r), new THREE.Color(P.pierre), RIGID)
+    }
+    const n = Math.max(3, Math.round((c.h > 8 ? 7 : 5) * Math.max(0.6, density)))
     for (let k = 0; k < n; k++) {
-      const a = rng() * Math.PI * 2
-      const r = Math.sqrt(rng()) * (TANK_R - 0.45)
-      kelpStalk(g, rng, new THREE.Vector3(t.x + Math.cos(a) * r, 0.62, t.z + Math.sin(a) * r), 2.9 + rng() * 1.2, { grow: 2, bladeLen: 0.8, flex: 0.8, tint: SERRE_TINTS[Math.floor(rng() * SERRE_TINTS.length)]! })
+      const a = (k / n) * Math.PI * 2 + rng() * 0.5
+      const r = Math.sqrt(rng()) * (c.r - 0.35)
+      const top = c.h - 0.6
+      kelpStalk(g, rng, new THREE.Vector3(c.x + Math.cos(a) * r, 0.72, c.z + Math.sin(a) * r), top * (0.75 + rng() * 0.2), { grow: 2, bladeLen: c.h > 8 ? 1.1 : 0.8, flex: 0.7, tint: pickOf([P.laminaire, P.varechClair, P.varech, P.algueDoree]) })
     }
-    for (let k = 0; k < 9; k++) {
+    const critters = Math.round(c.h * 1.4)
+    for (let k = 0; k < critters; k++) {
       const a = rng() * Math.PI * 2
-      const r = rng() * (TANK_R - 0.3)
-      const base = new THREE.Vector3(t.x + Math.cos(a) * r, 0.62, t.z + Math.sin(a) * r)
-      const y = 1.0 + rng() * 3.4
-      const sph = new THREE.IcosahedronGeometry(0.03 + rng() * 0.03, 1)
-      glow.add(sph, new THREE.Matrix4().makeTranslation(base.x, y, base.z), new THREE.Color(P.bio1), sway(base, SWAY.ribbon, 0.7, rng() * 6.28, 2))
+      const r = rng() * (c.r - 0.25)
+      const base = new THREE.Vector3(c.x + Math.cos(a) * r, 0.72, c.z + Math.sin(a) * r)
+      const y = 1.0 + rng() * (c.h - 1.8)
+      glow.add(new THREE.IcosahedronGeometry(0.03 + rng() * 0.035, 1), new THREE.Matrix4().makeTranslation(base.x, y, base.z), new THREE.Color(rng() < 0.7 ? P.bio1 : 0xb6a8ff), sway(base, SWAY.ribbon, 0.7, rng() * 6.28, 2))
     }
-    prop({ shape: 'cyl', x: t.x, y: TANK_H / 2, z: t.z, r: TANK_R + 0.1, hh: TANK_H / 2 }, `serre-cuve-${i}`)
+    colliders.push({ spec: { shape: 'cyl', x: c.x, y: c.h / 2, z: c.z, r: c.r + 0.14, hh: c.h / 2 }, tag: { kind: 'glass', climbable: false, ownerId: c.id } })
   }
 
   for (const tr of SERRE_TRELLIS) {
     const R = 0.55
-    const steps = 18
     for (let k = 0; k < 6; k++) {
       const a = (k / 6) * Math.PI * 2
       cord(g, new THREE.Vector3(tr.x + Math.cos(a) * R, 0, tr.z + Math.sin(a) * R), new THREE.Vector3(tr.x + Math.cos(a) * R * 0.8, tr.top, tr.z + Math.sin(a) * R * 0.8), 0.025, P.corde)
@@ -146,21 +137,20 @@ export function buildSerres(rng: () => number, level: QualityLevel): SerreBuild 
       ringG.rotateX(Math.PI / 2)
       g.add(ringG, new THREE.Matrix4().makeTranslation(tr.x, y, tr.z), new THREE.Color(P.corde), RIGID)
     }
+    const steps = 18
     for (let k = 0; k < 4; k++) {
       const a0 = (k / 4) * Math.PI * 2
       const pts: THREE.Vector3[] = []
       for (let i = 0; i <= steps * 4; i++) {
         const u = i / (steps * 4)
-        const a = a0 + u * Math.PI * 6
+        const a = a0 + u * Math.PI * 5
         pts.push(new THREE.Vector3(tr.x + Math.cos(a) * (R + 0.04), u * tr.top, tr.z + Math.sin(a) * (R + 0.04)))
       }
-      const sides = pts.map(() => new THREE.Vector3(0, 1, 0))
       const c = new THREE.Color(P.stipe)
-      g.ribbon(pts, pts.map(() => 0.09), sides, pts.map((_, i) => c.clone().multiplyScalar(0.8 + 0.4 * (i / pts.length))), RIGID)
+      g.ribbon(pts, pts.map(() => 0.09), pts.map(() => new THREE.Vector3(0, 1, 0)), pts.map((_, i) => c.clone().multiplyScalar(0.8 + 0.4 * (i / pts.length))), RIGID)
       for (let i = 4; i < pts.length; i += 3) {
         const p = pts[i]!
-        const out = new THREE.Vector3(p.x - tr.x, 0, p.z - tr.z).normalize()
-        kelpBlade(g, rng, p, out, 0.6 + rng() * 0.5)
+        kelpBlade(g, rng, p, new THREE.Vector3(p.x - tr.x, 0, p.z - tr.z).normalize(), 0.6 + rng() * 0.5)
       }
     }
     leafyCrown(g, rng, new THREE.Vector3(tr.x, tr.top, tr.z), 9, 1.6, { kind: SWAY.hang, spread: 0.9, droop: 1.3, greens: [P.varechClair, P.laminaire, P.varech], width: 0.14 })
@@ -168,77 +158,75 @@ export function buildSerres(rng: () => number, level: QualityLevel): SerreBuild 
     stalks.push({ base: { x: tr.x, y: 0, z: tr.z }, height: tr.top })
   }
 
-  for (const l of SERRE_LAMPS) {
-    const top = new THREE.Vector3(l.x, CEIL, l.z)
-    const at = new THREE.Vector3(l.x, l.y + 0.35, l.z)
-    cord(lamps, top, at, 0.012, P.boisOmbre, sway(top, SWAY.hang, 0.25, l.z))
-    const shade = new THREE.ConeGeometry(0.42, 0.32, 12, 1, true)
-    g.add(shade, new THREE.Matrix4().makeTranslation(l.x, l.y + 0.2, l.z), new THREE.Color(P.laiton), sway(top, SWAY.hang, 0.25, l.z))
-    const bulb = new THREE.SphereGeometry(0.16, 10, 6)
-    lamps.add(bulb, new THREE.Matrix4().makeTranslation(l.x, l.y, l.z), new THREE.Color(0xf4ffd8), sway(top, SWAY.hang, 0.25, l.z))
+  const railTop = SERRE_HALL.gallery + 1.0
+  for (const [side, x, out] of [['w', SERRE_HALL.railW + 0.2, 1], ['e', SERRE_HALL.railE - 0.2, -1]] as const) {
+    const gaps = RAIL_GAPS[side]
+    for (let z = SERRE_HALL.z0 + 3; z < SERRE_HALL.z1 - 2; z += 4.2 / Math.sqrt(density)) {
+      const zz = z + (rng() - 0.5) * 1.2
+      if (inGap(zz, gaps, 1.6)) continue
+      if (SERRE_TRELLIS.some((t) => Math.abs(t.z - zz) < 2 && Math.abs(t.x - x) < 3)) continue
+      railPlanter(g, rng, x, railTop, zz, true, 1.6 + rng() * 1.2, out, 0, 4.4)
+    }
   }
 
-  for (const x of [88.2, 95.8]) hangingBasket(g, rng, new THREE.Vector3(x, CEIL, 29), 1.0, 0.22, 6, 1.1)
-  for (const [x, z, sc] of [[90.95, 20.75, 0.95], [93.05, 20.75, 0.95], [84.5, 27.75, 0.9], [99.5, 27.75, 0.9], [92, 31.4, 0.7]] as const) {
-    floorPlant(g, rng, x, 0, z, sc)
-    prop({ shape: 'cyl', x, y: 0.2 * sc, z, r: 0.24 * sc, hh: 0.2 * sc }, 'serre-pot')
+  for (const ax of ARCH_X) {
+    for (const [i, az] of ARCH_Z.entries()) {
+      const pivot = new THREE.Vector3(ax, ARCH.y + ARCH.ry, az)
+      const n = Math.round(5 * Math.max(0.6, density))
+      for (let k = 0; k < n; k++) {
+        const t = 0.12 + rng() * 0.76
+        const p = new THREE.Vector3(ax + Math.cos(t * Math.PI) * ARCH.rx, ARCH.y + Math.sin(t * Math.PI) * ARCH.ry - 0.06, az + (rng() - 0.5) * 0.15)
+        const len = Math.min(0.5 + rng() * 1.8, p.y - 3.1)
+        if (len > 0.25) trailingVine(g, rng, p, len, pivot, { flower: 0.12 })
+      }
+      if ((i + (ax === 86 ? 0 : 1)) % 2 === 0) hangingBasket(g, rng, new THREE.Vector3(ax, ARCH.y + ARCH.ry - 0.08, az), 0.55, 0.18, 5, 0.95)
+    }
   }
 
-  const D = SERRE_DOME
-  const dTop = D.y0 + D.h - 0.6
-  for (const [x, z, alongZ, ox, oz] of [
-    [D.x0 + 0.25, 45.5, true, 1, 0], [D.x1 - 0.25, 43.5, true, -1, 0],
-    [74.5, D.z0 + 0.25, false, 0, 1], [76, D.z1 - 0.25, false, 0, -1],
-  ] as const) {
-    railPlanterTall(g, rng, x, dTop, z, alongZ, ox, oz, density)
-  }
-  for (const [x, z] of [[D.x1 - 0.7, D.z0 + 0.7], [D.x0 + 0.7, D.z1 - 0.7]] as const) {
-    floorPlant(g, rng, x, D.y0, z, 1.4)
-    prop({ shape: 'cyl', x, y: D.y0 + 0.28, z, r: 0.34, hh: 0.28 }, 'serre-pot')
+  const tints = [P.algueRouge, P.algueDoree, P.algueRougeClair, P.laitue]
+  for (const [x, a, b] of [[73.6, 23, 29.5], [74.7, 23.5, 29], [73.6, 40.5, 48.5], [74.7, 41, 48]] as const) {
+    dryingLine(g, rng, new THREE.Vector3(x, 2.75, a), new THREE.Vector3(x, 2.75, b), 0.18, tints)
   }
 
-  const wp: number[] = []
-  const wu: number[] = []
-  const wi: number[] = []
-  for (const b of BEDS) waterQuad(wp, wu, wi, b.x0 + 0.12, b.x1 - 0.12, BED_WATER, b.z0 + 0.12, b.z1 - 0.12, 0)
-  waterQuad(wp, wu, wi, CHANNEL.x0, CHANNEL.x1, CHANNEL.h - 0.06, CHANNEL.z0, CHANNEL.z1, 1)
-  const water = new THREE.BufferGeometry()
-  water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3))
-  water.setAttribute('aW', new THREE.Float32BufferAttribute(wu, 3))
-  water.setIndex(wi)
-  water.computeBoundingSphere()
+  for (const [x, z0, z1, out] of [[72.3, 1, 14, 1], [72.3, 50, 58, 1], [107.7, 24, 38, -1]] as const) {
+    nurseryRack(g, rng, x, z0, z1, out, [0.55, 1.15, 1.75])
+    colliders.push({ spec: { shape: 'box', x: x + out * 0.25, y: 0.9, z: (z0 + z1) / 2, hx: 0.25, hy: 0.9, hz: (z1 - z0) / 2 }, tag: { kind: 'shelf', climbable: true, ownerId: 'serre-pepiniere' } })
+  }
 
   const tankParts: THREE.BufferGeometry[] = []
-  for (const t of TANKS) {
-    const c = new THREE.CylinderGeometry(TANK_R, TANK_R, TANK_H - 0.6, 32, 1, true)
-    c.translate(t.x, 0.6 + (TANK_H - 0.6) / 2, t.z)
-    tankParts.push(c)
+  for (const c of SERRE_COLUMNS) {
+    const t = new THREE.CylinderGeometry(c.r, c.r, c.h - 0.7, 32, 1, true)
+    t.translate(c.x, 0.7 + (c.h - 0.7) / 2, c.z)
+    tankParts.push(t)
   }
   const tanks = mergeSimple(tankParts)
 
   const bp: number[] = []
   const bs: number[] = []
-  const nb = Math.round(60 * density)
-  for (const t of TANKS) {
+  for (const c of SERRE_COLUMNS) {
+    const nb = Math.round(c.h * 7 * density)
     for (let k = 0; k < nb; k++) {
       const a = rng() * Math.PI * 2
-      const r = Math.sqrt(rng()) * (TANK_R - 0.25)
-      bp.push(t.x + Math.cos(a) * r, 0.7, t.z + Math.sin(a) * r)
-      bs.push(rng(), 0.5 + rng() * 0.9, TANK_H - 1.0, 0.6 + rng() * 0.8)
+      const r = Math.sqrt(rng()) * (c.r - 0.25)
+      bp.push(c.x + Math.cos(a) * r, 0.8, c.z + Math.sin(a) * r)
+      bs.push(rng(), 0.5 + rng() * 0.9, c.h - 1.3, 0.6 + rng() * 0.8)
     }
   }
-  for (const b of BEDS) {
-    for (let k = 0; k < nb * 2; k++) {
-      bp.push(b.x0 + 0.3 + rng() * (b.x1 - b.x0 - 0.6), 0.1, b.z0 + 0.3 + rng() * (b.z1 - b.z0 - 0.6))
-      bs.push(rng(), 0.3 + rng() * 0.4, BED_WATER - 0.12, 0.4 + rng() * 0.5)
+  for (const cx of BED_X) {
+    for (const [z0, z1] of BED_Z) {
+      const nb = Math.round((z1 - z0) * 2.2 * density)
+      for (let k = 0; k < nb; k++) {
+        bp.push(cx + (rng() - 0.5) * BED_HALF * 1.6, WATER_Y - 0.45, z0 + 0.3 + rng() * (z1 - z0 - 0.6))
+        bs.push(rng(), 0.25 + rng() * 0.35, 0.42, 0.35 + rng() * 0.45)
+      }
     }
   }
   const bubbles = new THREE.BufferGeometry()
   bubbles.setAttribute('position', new THREE.Float32BufferAttribute(bp, 3))
   bubbles.setAttribute('aB', new THREE.Float32BufferAttribute(bs, 4))
-  bubbles.boundingSphere = new THREE.Sphere(new THREE.Vector3(82, 5, 29), 40)
+  bubbles.boundingSphere = new THREE.Sphere(new THREE.Vector3(90, 6, 33), 48)
 
-  return { plants: g.build(), glow: glow.build(), lamps: lamps.build(), water, tanks, bubbles, colliders, stalks }
+  return { plants: g.build(), glow: glow.build(), tanks, bubbles, colliders, stalks }
 }
 
 function kelpBlade(g: PlantGeo, rng: () => number, p: THREE.Vector3, out: THREE.Vector3, L: number): void {
@@ -281,9 +269,4 @@ function mergeSimple(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   g.setIndex(idx)
   g.computeBoundingSphere()
   return g
-}
-
-function railPlanterTall(g: PlantGeo, rng: () => number, x: number, y: number, z: number, alongZ: boolean, ox: number, oz: number, density: number): void {
-  railPlanter(g, rng, x, y, z, alongZ, 2.6, ox, oz, 7.5 * Math.max(0.6, density))
-  railPlanter(g, rng, x, y - 6.5, z + (alongZ ? 1.2 : 0), alongZ, 1.8, ox, oz, 4.5)
 }

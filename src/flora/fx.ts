@@ -10,44 +10,6 @@ export function createFxUniforms(): FxUniforms {
   return { uTime: { value: 0 }, uGlow: { value: 0 } }
 }
 
-export function waterMaterial(u: FxUniforms): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: { ...u, uDeep: { value: new THREE.Color(P.eau) }, uLight: { value: new THREE.Color(P.vitreMer) }, uLamp: { value: new THREE.Color(P.serre) } },
-    transparent: true,
-    depthWrite: false,
-    vertexShader: /* glsl */ `
-      attribute vec3 aW;
-      varying vec3 vW;
-      varying vec3 vWorld;
-      void main() {
-        vW = aW;
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vWorld = wp.xyz;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }`,
-    fragmentShader: /* glsl */ `
-      uniform float uTime;
-      uniform vec3 uDeep;
-      uniform vec3 uLight;
-      uniform vec3 uLamp;
-      varying vec3 vW;
-      varying vec3 vWorld;
-      void main() {
-        vec2 p = vW.xy;
-        float flow = vW.z > 0.5 ? uTime * 0.9 : 0.0;
-        float r = sin(p.x * 3.1 + uTime * 0.7) * sin(p.y * 2.3 - uTime * 0.5 - flow * 2.0)
-          + 0.6 * sin((p.x + p.y) * 4.7 - uTime * 1.3 - flow * 3.0);
-        float hi = smoothstep(0.95, 1.35, r);
-        vec3 c = mix(uDeep, uLight, 0.25 + 0.2 * r * 0.5);
-        c += uLamp * hi * 0.45;
-        vec3 v = normalize(cameraPosition - vWorld);
-        float fres = pow(1.0 - clamp(v.y, 0.0, 1.0), 3.0);
-        c = mix(c, uLight, fres * 0.5);
-        gl_FragColor = vec4(c, 0.72 + 0.2 * fres + hi * 0.1);
-      }`,
-  })
-}
-
 export function tankMaterial(u: FxUniforms): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: { ...u, uWater: { value: new THREE.Color(P.eau) }, uGlass: { value: new THREE.Color(0xdff4ec) }, uBio: { value: new THREE.Color(P.bio1) } },

@@ -61,4 +61,9 @@ export const PLANT_COLORS = {
   barbe: 0x5f7a3a,
   barbeClaire: 0x8fa04a,
   sargasse: 0xc9a043,
+  algueRouge: 0xb94a4c,
+  algueRougeClair: 0xe07f6c,
+  algueDoree: 0xe3b95f,
+  laitue: 0x9fcf6a,
+  verre: 0xdff4ec,
 } as const

@@ -4,7 +4,7 @@ import type { CellId, DistrictId, FloraService, GameContext, QualityLevel, Quali
 import { HullCoat } from './coat'
 import { CoralField } from './coral'
 import { Drifters } from './drifters'
-import { bubbleMaterial, createFxUniforms, tankMaterial, waterMaterial, type FxUniforms } from './fx'
+import { bubbleMaterial, createFxUniforms, tankMaterial, type FxUniforms } from './fx'
 import { CORAL_TYPES, grassBladeGeometry, grassTuftGeometry, type CoralType } from './geometry'
 import { createGround, type Ground } from './ground'
 import { GrassLayer, grassSlotsFor, radiusForSlots } from './grass'
@@ -17,7 +17,7 @@ import { createPlantMaterial, createPlantUniforms, setPlantEmissive, type PlantU
 import { buildSerres } from './serres'
 import { ShipFrame } from './ship'
 
-export { SERRE_DOME, SERRE_LAMPS, SERRE_QUAI, SERRE_TRELLIS } from './serres'
+export { SERRE_COLUMNS, SERRE_HALL, SERRE_TRELLIS } from './serres'
 
 export const FLORA_FLAGS = { lumiere: 'serres-lumiere', eau: 'serres-eau' } as const
 
@@ -132,8 +132,8 @@ export function createFloraSystem(): System {
   }
 
   const greenhouseGrowth = (cell: CellId): number => {
-    if (cell === 'quai-serres') return (growth[0]! + growth[1]!) / 2
-    if (cell === 'dome-serres') return growth[2]!
+    if (cell === 'serre-cathedrale' || cell === 'serres' || cell === 'quai-serres') return (growth[0]! + growth[1]! + growth[2]!) / 3
+    if (cell === 'dome-serres' || cell === 'serre-tour') return growth[2]!
     return 0
   }
 
@@ -159,14 +159,12 @@ export function createFloraSystem(): System {
     const rng = ctx.rng('flora:bord')
     const inMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x5e4a5c })
     glowMat = createPlantMaterial(ctx, uIn, { indoor: true, emissive: PLANT_COLORS.bio1 })
-    const lampMat = createPlantMaterial(ctx, uIn, { indoor: true, emissive: PLANT_COLORS.serre })
     const hullMat = createPlantMaterial(ctx, uHull, { indoor: false, rim: 0.7 })
-    materials.push(inMat, glowMat, lampMat, hullMat)
+    materials.push(inMat, glowMat, hullMat)
     fx = createFxUniforms()
-    const water = waterMaterial(fx)
     const tank = tankMaterial(fx)
     bubbleMat = bubbleMaterial(fx)
-    materials.push(water, tank, bubbleMat)
+    materials.push(tank, bubbleMat)
 
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, name: string, order = 0): THREE.Mesh => {
       const m = new THREE.Mesh(geo, mat)
@@ -188,8 +186,6 @@ export function createFloraSystem(): System {
     serreMeshes.push(
       add(serre.plants, inMat, 'flora-serres'),
       add(serre.glow, glowMat, 'flora-serres-lueurs'),
-      add(serre.lamps, lampMat, 'flora-serres-lampes'),
-      add(serre.water, water, 'flora-serres-eau', 2),
       add(serre.tanks, tank, 'flora-serres-cuves', 3),
     )
     const pts = new THREE.Points(serre.bubbles, bubbleMat)
@@ -414,9 +410,10 @@ export function createFloraSystem(): System {
 interface LocalPose { from: Vec3; to: Vec3; hour: number; fov?: number }
 
 const LOCAL_POSES: Record<string, LocalPose> = {
-  'serre-quai': { from: { x: 92, y: 1.6, z: 29.6 }, to: { x: 86.5, y: 1.3, z: 22.5 }, hour: 10, fov: 64 },
-  'serre-dome': { from: { x: 75, y: 1.5, z: 41.2 }, to: { x: 75.5, y: 15, z: 47 }, hour: 11, fov: 70 },
-  'nef-jardins': { from: { x: -20, y: 17.6, z: 24 }, to: { x: 22, y: 9, z: -6 }, hour: 12, fov: 64 },
+  'serre-colonnes': { from: { x: 86, y: 1.7, z: 9 }, to: { x: 90, y: 7, z: 22 }, hour: 10, fov: 66 },
+  'serre-galerie': { from: { x: 77.5, y: 8.7, z: 2 }, to: { x: 92, y: 2.5, z: 34 }, hour: 11, fov: 64 },
+  'serre-bacs': { from: { x: 94, y: 2.2, z: 50 }, to: { x: 90, y: 1.2, z: 62 }, hour: 9, fov: 62 },
+  'nef-jardins': { from: { x: -31, y: 17.7, z: 22 }, to: { x: 20, y: 6, z: -10 }, hour: 12, fov: 64 },
   'refectoire-plantes': { from: { x: 24.8, y: 2.0, z: 57.0 }, to: { x: 17, y: 4.2, z: 66 }, hour: 7.8, fov: 64 },
   'barbe-coque': { from: { x: 12, y: -38, z: 78 }, to: { x: 4, y: -26, z: 50 }, hour: 12, fov: 60 },
 }
