@@ -1,6 +1,7 @@
 import type { MusicCue } from '../core/types'
+import type { Flavor } from './places'
 import { filter, type Rig } from './rig'
-import { bass, bell, choir, clap, pad, piano, pluck, tick } from './voices'
+import { bass, bell, choir, clap, flute, marimba, pad, piano, pluck, tick } from './voices'
 
 const D_PENT = [62, 64, 66, 69, 71, 74, 76, 78, 81, 83, 86] as const
 const B_MIN_PENT = [59, 62, 64, 66, 69, 71, 74, 76, 78, 81] as const
@@ -12,8 +13,18 @@ export const PLUIE: readonly (readonly [number, number])[] = [
   [69, 0.5], [69, 0.5], [66, 0.5], [66, 0.5], [71, 0.5], [69, 0.5], [66, 1],
 ]
 
+export type Cue = Exclude<MusicCue, 'sonde' | 'shallow' | 'drift'> | 'home' | 'dome' | 'scellee' | 'sortie' | 'vista'
+
+export function normalizeCue(c: string): Cue {
+  if (c === 'sonde') return 'dome'
+  if (c === 'shallow') return 'scellee'
+  if (c === 'drift') return 'home'
+  const known: readonly string[] = ['explore', 'danger', 'night', 'wonder', 'rain', 'silence', 'home', 'dome', 'scellee', 'sortie', 'vista']
+  return (known.includes(c) ? c : 'explore') as Cue
+}
+
 interface Lane {
-  cue: MusicCue
+  cue: Cue
   gain: GainNode
   tone: BiquadFilterNode
   nextAt: number
@@ -23,10 +34,13 @@ interface Lane {
 type Rand = () => number
 
 export interface MusicDirector {
-  readonly cue: MusicCue
-  setCue(c: MusicCue): void
+  readonly cue: Cue
+  setCue(c: Cue): void
   setMuffled(m: boolean): void
-  stinger(kind: 'sonde' | 'trouvaille' | 'decouverte' | 'reveil'): void
+  setFlavor(f: Flavor): void
+  /** 0 = standing still, 1 = running, climbing, sliding. */
+  setEnergy(e: number): void
+  stinger(kind: 'dome' | 'trouvaille' | 'decouverte' | 'reveil' | 'scellee'): void
   update(): void
 }
 
@@ -35,19 +49,21 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
   let lane: Lane | null = null
   let muffled = false
   let lastExplore: number[] = []
-  let cue: MusicCue = 'silence'
+  let cue: Cue = 'silence'
+  let flavor: Flavor = 'home'
+  let energy = 0
 
   const pick = <T>(a: readonly T[]): T => a[Math.floor(rnd() * a.length)]!
   const range = (a: number, b: number) => a + rnd() * (b - a)
 
-  function openLane(next: MusicCue): Lane {
+  function openLane(next: Cue): Lane {
     const gain = c.createGain()
     gain.gain.setValueAtTime(0, c.currentTime)
-    gain.gain.linearRampToValueAtTime(1, c.currentTime + (next === 'sonde' ? 0.05 : 1.5))
+    gain.gain.linearRampToValueAtTime(1, c.currentTime + (next === 'vista' ? 3 : 1.5))
     const tone = filter(rig, 'lowpass', 16000, 0.5)
     gain.connect(tone)
     tone.connect(rig.music)
-    const firstDelay = next === 'explore' ? range(3, 8) : next === 'night' ? range(2, 5) : 0.3
+    const firstDelay = next === 'explore' || next === 'sortie' ? range(3, 8) : next === 'night' ? range(2, 5) : next === 'vista' ? 7 : 0.3
     return { cue: next, gain, tone, nextAt: c.currentTime + firstDelay, phrase: 0 }
   }
 
@@ -63,7 +79,7 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
   }
 
   function applyMuffle(l: Lane): void {
-    const target = l.cue === 'drift' && muffled ? 650 : 16000
+    const target = muffled ? (l.cue === 'sortie' ? 5000 : 650) : 16000
     l.tone.frequency.setTargetAtTime(target, c.currentTime, 0.6)
   }
 
@@ -78,26 +94,80 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     return out
   }
 
+  function voice(dest: AudioNode, t: number, m: number, vel: number, last: boolean): void {
+    switch (flavor) {
+      case 'market':
+        marimba(rig, dest, t, m, vel)
+        if (rnd() < 0.3) pluck(rig, dest, t, m + 12, vel * 0.4)
+        break
+      case 'garden':
+        marimba(rig, dest, t, m, vel * 0.8, 0.6)
+        if (last) bell(rig, dest, t, m + 12, 0.2, 3)
+        break
+      case 'nave':
+      case 'heights':
+        if (last || rnd() < 0.3) flute(rig, dest, t, m, vel * 0.9, last ? 2.5 : 1)
+        else piano(rig, dest, t, m, vel, 4, 0.7)
+        break
+      case 'engine':
+        piano(rig, dest, t, m - 12, vel, 3, 0.5)
+        break
+      case 'workshop':
+        pluck(rig, dest, t, m, vel, 1.2)
+        break
+      default:
+        piano(rig, dest, t, m, vel, last ? 5 : 3)
+    }
+  }
+
   function explore(l: Lane, t: number): number {
-    const beat = 60 / 66
+    const beat = 60 / (flavor === 'market' || flavor === 'workshop' ? 80 : 66)
     let notes: number[]
+    const minorish = flavor === 'engine' || flavor === 'prow' || flavor === 'sealed'
     if (lastExplore.length > 0 && rnd() < 0.25) {
       notes = lastExplore.map((m) => m + pick([0, 0, 5, -5, 7]))
     } else {
-      const minor = rnd() < 0.35
+      const minor = minorish ? rnd() < 0.8 : rnd() < 0.3
       notes = walk(minor ? B_MIN_PENT : D_PENT, Math.floor(range(3, 8)), Math.floor(range(2, 6)))
       if (rnd() < 0.4) lastExplore = notes
     }
-    if (rnd() < 0.45) bass(rig, l.gain, t, pick([38, 43, 45, 47]), 0.5, 6)
+    if (flavor === 'engine') {
+      for (let i = 0; i < 8; i++) bass(rig, l.gain, t + i * beat * 0.5, i % 4 === 3 ? 42 : 35, 0.4, 0.6)
+    } else if (rnd() < 0.45) bass(rig, l.gain, t, pick([38, 43, 45, 47]), 0.5, 6)
+    if (flavor === 'nave' && rnd() < 0.5) pad(rig, l.gain, t, [50, 57, 64, 69], 0.4, 3, 4, 5, 900, 0.8)
+    if (flavor === 'heights') pad(rig, l.gain, t, [62, 69, 76], 0.25, 4, 3, 5, 1400, 0.9)
     let at = t
     notes.forEach((m, i) => {
       const last = i === notes.length - 1
       const d = last ? 2 : pick([0.5, 0.75, 1, 1, 1.5])
-      piano(rig, l.gain, at + range(-0.02, 0.03), m, range(0.3, 0.6), last ? 5 : 3)
+      voice(l.gain, at + range(-0.02, 0.03), m, range(0.3, 0.6), last)
+      if (flavor === 'market' && i % 2 === 0) tick(rig, l.gain, at, 0.35)
       if (rnd() < 0.15) piano(rig, l.gain, at + 0.01, m - 12, 0.25, 3)
       at += d * beat
     })
-    return at - t + range(20, 60)
+    const gap = range(18, 55) * (1.3 - 0.6 * energy)
+    return at - t + gap
+  }
+
+  function sortie(l: Lane, t: number): number {
+    const chords = [[50, 57, 64], [47, 54, 62], [43, 50, 59, 66], [45, 52, 61]] as const
+    const ch = chords[l.phrase % chords.length]!
+    pad(rig, l.gain, t, ch, 0.45, 4, 4, 6, 700, 0.8)
+    const top = walk(NIGHT, Math.floor(range(3, 6)), Math.floor(range(0, 4)))
+    top.forEach((m, i) => bell(rig, l.gain, t + 2 + i * range(1.2, 2.2), m - 12, range(0.2, 0.35), 4, 2, 0.9))
+    if (rnd() < 0.5) flute(rig, l.gain, t + 6, pick([69, 71, 74]), 0.5, 3.5)
+    l.phrase++
+    return 14 + range(4, 16)
+  }
+
+  function vista(l: Lane, t: number): number {
+    pad(rig, l.gain, t, [50, 57, 62, 66, 69], 0.7, 4, 8, 8, 1300, 0.9)
+    choir(rig, l.gain, t + 3, [62, 69, 74], 0.35, 4, 5, 6)
+    const mel = [74, 76, 78, 81, 78, 76, 74, 69]
+    mel.forEach((m, i) => flute(rig, l.gain, t + 2 + i * 1.5, m, 0.6, i === mel.length - 1 ? 4 : 1.3))
+    bass(rig, l.gain, t, 38, 0.5, 10)
+    l.phrase++
+    return l.phrase > 1 ? 1e6 : 22
   }
 
   function drift(l: Lane, t: number): number {
@@ -181,8 +251,8 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     return Math.max(at - t, 12 * beat) + 4
   }
 
-  const composers: Record<MusicCue, ((l: Lane, t: number) => number) | null> = {
-    explore, drift, shallow, danger, night, wonder, rain, sonde: null, silence: null,
+  const composers: Record<Cue, ((l: Lane, t: number) => number) | null> = {
+    explore, home: drift, scellee: shallow, danger, night, wonder, rain, sortie, vista, dome: null, silence: null,
   }
 
   function sondeStinger(dest: AudioNode, t: number): void {
@@ -226,9 +296,9 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     setCue(next) {
       if (next === cue) return
       cue = next
-      if (lane) closeLane(lane, next === 'sonde' || next === 'wonder' ? 1 : 3)
+      if (lane) closeLane(lane, next === 'dome' || next === 'wonder' ? 1 : 3)
       lane = null
-      if (next === 'sonde') {
+      if (next === 'dome') {
         sondeStinger(stingerBus(), c.currentTime + 0.05)
         return
       }
@@ -241,9 +311,16 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
       muffled = m
       if (lane) applyMuffle(lane)
     },
+    setFlavor(f) {
+      flavor = f
+    },
+    setEnergy(e) {
+      energy = Math.max(0, Math.min(1, e))
+    },
     stinger(kind) {
       const t = c.currentTime + 0.03
-      if (kind === 'sonde') sondeStinger(stingerBus(), t)
+      if (kind === 'dome') sondeStinger(stingerBus(), t)
+      else if (kind === 'scellee') jingle(stingerBus(), t, 'decouverte')
       else jingle(stingerBus(), t, kind)
       if (lane) {
         lane.gain.gain.setTargetAtTime(0.25, t, 0.1)

@@ -158,3 +158,108 @@ export function tick(rig: Rig, dest: AudioNode, t: number, vel: number): void {
   hp.connect(amp)
   out(rig, amp, dest, 0.1)
 }
+
+const VOWELS = {
+  a: [800, 1150, 2900],
+  e: [400, 1700, 2600],
+  i: [300, 2200, 3000],
+  o: [450, 800, 2830],
+  u: [325, 700, 2530],
+  an: [600, 1000, 2500],
+} as const
+export type Vowel = keyof typeof VOWELS
+
+/** A sung syllable through three formants. `child` raises the formants like a small vocal tract. */
+export function sing(
+  rig: Rig, dest: AudioNode, t: number, midi: number, vowel: Vowel, vel: number, dur: number,
+  child = false, send = 0.4,
+): void {
+  const c = rig.ctx
+  const f0 = mtof(midi)
+  const scale = child ? 1.18 : 1
+  const amp = c.createGain()
+  amp.gain.setValueAtTime(SILENT, t)
+  const peak = Math.max(SILENT * 2, 0.5 * vel)
+  amp.gain.exponentialRampToValueAtTime(peak, t + 0.03)
+  amp.gain.setValueAtTime(peak, t + Math.max(0.04, dur - 0.08))
+  amp.gain.exponentialRampToValueAtTime(SILENT, t + dur + 0.06)
+  const src = osc(rig, 'sawtooth', f0 * 0.985, t, dur + 0.1)
+  src.frequency.linearRampToValueAtTime(f0, t + 0.06)
+  const vib = osc(rig, 'sine', 5.2 + Math.random(), t, dur + 0.1)
+  const vg = c.createGain()
+  vg.gain.setValueAtTime(0, t)
+  vg.gain.linearRampToValueAtTime(child ? 10 : 14, t + dur * 0.6 + 0.05)
+  vib.connect(vg)
+  vg.connect(src.detune)
+  const breath = noise(rig, 'white', t, dur + 0.1)
+  const bg = c.createGain()
+  bg.gain.value = 0.04
+  breath.connect(bg)
+  const mix = c.createGain()
+  mix.gain.value = 1
+  src.connect(mix)
+  bg.connect(mix)
+  VOWELS[vowel].forEach((fr, i) => {
+    const bp = filter(rig, 'bandpass', fr * scale, 6 + i * 3)
+    const g = c.createGain()
+    g.gain.value = [1, 0.5, 0.18][i]!
+    mix.connect(bp)
+    bp.connect(g)
+    g.connect(amp)
+  })
+  out(rig, amp, dest, send)
+}
+
+/** A short unintelligible spoken phrase: syllables with a falling contour. */
+export function murmurPhrase(rig: Rig, dest: AudioNode, t: number, vel: number, pitch: number, child = false): number {
+  const n = 2 + Math.floor(Math.random() * 5)
+  const vowels: Vowel[] = ['a', 'e', 'o', 'i', 'u', 'an']
+  let at = t
+  for (let i = 0; i < n; i++) {
+    const d = 0.08 + Math.random() * 0.12
+    const m = pitch + (Math.random() * 3 - 1) - (i / n) * 3
+    sing(rig, dest, at, m, vowels[Math.floor(Math.random() * vowels.length)]!, vel * (0.6 + Math.random() * 0.4), d, child, 0.3)
+    at += d + 0.02 + Math.random() * 0.05
+  }
+  return at - t
+}
+
+export function marimba(rig: Rig, dest: AudioNode, t: number, midi: number, vel: number, send = 0.35): void {
+  const f = mtof(midi)
+  const amp = perc(rig, t, 0.2 * vel, 1.1, 0.002)
+  osc(rig, 'sine', f, t, 1.1).connect(amp)
+  const o4 = osc(rig, 'sine', f * 3.98, t, 0.25)
+  const g4 = perc(rig, t, 0.07 * vel, 0.25, 0.001)
+  o4.connect(g4)
+  g4.connect(amp)
+  out(rig, amp, dest, send)
+}
+
+export function flute(rig: Rig, dest: AudioNode, t: number, midi: number, vel: number, dur: number, send = 0.55): void {
+  const c = rig.ctx
+  const f = mtof(midi)
+  const amp = c.createGain()
+  amp.gain.setValueAtTime(SILENT, t)
+  const peak = Math.max(SILENT * 2, 0.1 * vel)
+  amp.gain.exponentialRampToValueAtTime(peak, t + 0.12)
+  amp.gain.setValueAtTime(peak, t + Math.max(0.13, dur - 0.2))
+  amp.gain.exponentialRampToValueAtTime(SILENT, t + dur + 0.3)
+  const o = osc(rig, 'triangle', f, t, dur + 0.35)
+  const vib = osc(rig, 'sine', 4.6, t, dur + 0.35)
+  const vg = c.createGain()
+  vg.gain.setValueAtTime(0, t)
+  vg.gain.linearRampToValueAtTime(9, t + 0.6)
+  vib.connect(vg)
+  vg.connect(o.detune)
+  const lp = filter(rig, 'lowpass', f * 3, 0.5)
+  o.connect(lp)
+  lp.connect(amp)
+  const air = noise(rig, 'white', t, dur + 0.3)
+  const ab = filter(rig, 'bandpass', f * 2, 4)
+  const ag = c.createGain()
+  ag.gain.value = 0.25
+  air.connect(ab)
+  ab.connect(ag)
+  ag.connect(amp)
+  out(rig, amp, dest, send)
+}
