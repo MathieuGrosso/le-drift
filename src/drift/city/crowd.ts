@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { softColor } from '../figure'
 import type { DistrictId, QualityLevel } from '../../core/types'
 import type { Mats } from '../materials'
 import { PAL } from '../palette'
@@ -108,7 +109,7 @@ export class Crowd {
     const hair = new THREE.InstancedMesh(hairGeo(), mat, Math.max(1, n))
     const c = new THREE.Color()
     for (let i = 0; i < n; i++) {
-      body.setColorAt(i, c.set(CLOTHES[Math.floor(rand() * CLOTHES.length)]!).multiplyScalar(0.92 + rand() * 0.16))
+      body.setColorAt(i, softColor(c.set(CLOTHES[Math.floor(rand() * CLOTHES.length)]!).multiplyScalar(0.92 + rand() * 0.16)))
       head.setColorAt(i, c.set(SKINS[Math.floor(rand() * SKINS.length)]!))
       hair.setColorAt(i, c.set(HAIRS[Math.floor(rand() * HAIRS.length)]!))
     }

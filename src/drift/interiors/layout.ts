@@ -2,7 +2,7 @@ import type { RoomId } from '../../core/types'
 import { PAL } from '../palette'
 
 export type Side = 'n' | 's' | 'w' | 'e'
-export type FloorKind = 'bois' | 'metal' | 'tapis' | 'none'
+export type FloorKind = 'bois' | 'metal' | 'tapis' | 'carrelage' | 'none'
 
 export interface PartDef {
   id: string
@@ -39,7 +39,7 @@ export const WALL_T = 0.2
 const W = (p: Omit<PartDef, 'swayMul' | 'hull' | 'wainscot'> & Partial<Pick<PartDef, 'swayMul' | 'hull' | 'wainscot'>>): PartDef => ({
   swayMul: 1,
   hull: PAL.rouille,
-  wainscot: PAL.bois,
+  wainscot: 0x9a6b4d,
   ...p,
 })
 
@@ -55,13 +55,13 @@ export const PARTS: readonly PartDef[] = [
   W({ id: 'coursive-sud', room: 'coursive-sud', x0: -14, x1: 10, z0: 60.8, z1: 63.2, floorY: 0, wallH: 2.3, roof: 'arch', archH: 1.1, axis: 'x',
     floor: 'bois', wall: PAL.creme, hull: PAL.teal }),
   W({ id: 'cabine', room: 'cabine', x0: -9, x1: -5, z0: 63.2, z1: 67.2, floorY: 0, wallH: 2.2, roof: 'arch', archH: 1.0, axis: 'z',
-    floor: 'tapis', wall: PAL.vertDoux, hull: PAL.laiton }),
+    floor: 'tapis', wall: 0xe2cdaa, hull: PAL.laiton }),
   W({ id: 'cabines-voisins', room: 'cabines-voisins', x0: -9, x1: -3, z0: 55, z1: 60.8, floorY: 0, wallH: 2.2, roof: 'arch', archH: 1.1, axis: 'x',
     floor: 'tapis', wall: PAL.platre, hull: PAL.teal }),
   W({ id: 'refectoire', room: 'refectoire', x0: 10, x1: 26, z0: 56, z1: 72, floorY: 0, wallH: 4.6, roof: 'arch', archH: 3.2, axis: 'x',
     floor: 'bois', wall: PAL.creme, hull: PAL.rouille }),
   W({ id: 'cuisine', room: 'cuisine', x0: 10, x1: 18, z0: 48, z1: 56, floorY: 0, wallH: 2.6, roof: 'arch', archH: 1.6, axis: 'x',
-    floor: 'metal', wall: PAL.platre, hull: PAL.laiton }),
+    floor: 'carrelage', wall: PAL.platre, hull: PAL.laiton }),
   W({ id: 'passerelle-1', room: 'passerelle-1', x0: -26, x1: -14, z0: 61, z1: 63, floorY: 0, wallH: 1.9, roof: 'arch', archH: 1.0, axis: 'x',
     floor: 'metal', wall: PAL.bleuDoux, wainscot: PAL.metal, hull: PAL.teal, swayMul: 1.8 }),
   W({ id: 'marche', room: 'marche', x0: -40, x1: -26, z0: 54, z1: 70, floorY: 0, wallH: 3.4, roof: 'arch', archH: 3.0, axis: 'z',
@@ -73,7 +73,7 @@ export const PARTS: readonly PartDef[] = [
   W({ id: 'passerelle-nef', room: 'passerelle-nef' as RoomId, x0: -7, x1: -5, z0: 36, z1: 55, floorY: 0, wallH: 1.9, roof: 'arch', archH: 1.0, axis: 'z',
     floor: 'metal', wall: PAL.bleuDoux, wainscot: PAL.metal, hull: PAL.teal, swayMul: 0 }),
   W({ id: 'salle-des-cartes', room: 'salle-des-cartes', x0: 36, x1: 44, z0: 57, z1: 67, floorY: 0, wallH: 2.8, roof: 'arch', archH: 2.0, axis: 'z',
-    floor: 'tapis', wall: PAL.vertDoux, hull: PAL.rouille }),
+    floor: 'tapis', wall: PAL.platre, hull: PAL.rouille }),
 ]
 
 export const LINKS: readonly LinkDef[] = [

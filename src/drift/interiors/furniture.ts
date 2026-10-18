@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { ColliderKind } from '../../core/types'
 import { GeoBuilder } from '../builder'
 import { PAL } from '../palette'
+import { patForColor } from '../surface'
 import { REBORD } from './layout'
 import type { ColliderSpec, LadderDef, LampDef, PendulumDef, SeatDef, Spot } from './types'
 
@@ -296,7 +297,24 @@ function cabine(c: Ctx): void {
   c.b.sphere(-8.5, 0.82, 64.7, 0.07, 0.05, 0.07, PAL.laiton)
   rug(c, -7.2, 65.4, 1.6, 2.2, PAL.tissu3, PAL.tissu2)
   c.fade.box(-5.24, 1.4, 67.0, 0.04, 0.7, 0.18, PAL.echarpe)
-  lamp(c, -7, 2.55, 65.4, 0.3)
+  for (const dx of [-0.13, 0.13]) {
+    c.b.box(-7.95 + dx, 0.14, 63.65, 0.11, 0.28, 0.16, 0x4a3a40)
+    c.b.box(-7.95 + dx, 0.04, 63.58, 0.11, 0.08, 0.3, 0x4a3a40)
+  }
+  c.b.add(torusGeo, new THREE.Matrix4().compose(new THREE.Vector3(-8.4, 0.06, 66.7), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(0.16, 0.16, 0.2)), PAL.corde)
+  c.b.add(torusGeo, new THREE.Matrix4().compose(new THREE.Vector3(-8.4, 0.13, 66.7), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(0.12, 0.12, 0.2)), PAL.corde)
+  c.b.box(-8.79, 1.45, 64.15, 0.02, 0.4, 0.3, PAL.creme)
+  for (let i = 0; i < 9; i++) c.b.box(-8.775, 1.52 - Math.floor(i / 3) * 0.08, 64.07 + (i % 3) * 0.08, 0.01, 0.012, 0.05, PAL.tissu1)
+  c.fade.cyl(-7.4, 2.75, 66.0, 0.005, 0.7, PAL.corde)
+  c.fade.cyl(-7.4, 2.4, 66.0, 0.006, 0.5, PAL.boisOmbre, 'x')
+  for (let i = 0; i < 3; i++) {
+    const fx = -7.6 + i * 0.2
+    c.fade.cyl(fx, 2.3, 66.0, 0.004, 0.18, PAL.corde)
+    c.fade.sphere(fx, 2.17, 66.0, 0.07, 0.04, 0.025, [PAL.tissu1, PAL.clair, PAL.tissu2][i]!)
+  }
+  c.b.cyl(-8.7, 1.71, 65.1, 0.05, 0.14, PAL.clair)
+  for (let i = 0; i < 5; i++) c.b.sphere(-8.7 + (i % 2) * 0.02, 1.66 + i * 0.02, 65.1, 0.02, 0.015, 0.02, [PAL.clair, PAL.vertDoux, PAL.blanc][i % 3]!)
+  lamp(c, -7, 2.55, 65.4, 0.3, PAL.lampe, 4.5)
   lamp(c, -5.5, 1.95, 66.9, 0.0, PAL.lampeChaude, 3)
   spot(c, 'cabine-centre', -7, 0, 65.4, YAW_S)
 }
@@ -407,8 +425,14 @@ function cuisine(c: Ctx): void {
   shelf(c, 10.35, 53.5, 3.0, [1.3, 1.8], true)
   c.fade.cyl(13.5, 2.45, 52.0, 0.03, 3.4, PAL.metal, 'x')
   for (let i = 0; i < 5; i++) c.out.pendulums.push({ part: c.part, x: 12.1 + i * 0.7, y: 2.45, z: 52.0, cord: 0.35 + (i % 2) * 0.12, scale: 0.8 + (i % 3) * 0.2 })
-  laundry(c, 10.5, 12.5, 2.35, 55.3)
-  for (let i = 0; i < 4; i++) c.fade.sphere(10.8 + i * 0.5, 2.05, 55.3, 0.06, 0.2, 0.04, PAL.poisson)
+  laundry(c, 50.2, 52.8, 2.4, 10.8, true)
+  for (let i = 0; i < 6; i++) {
+    c.fade.cyl(10.8, 2.3, 50.4 + i * 0.4, 0.006, 0.2, PAL.corde)
+    c.fade.sphere(10.8, 2.1, 50.4 + i * 0.4, 0.03, 0.11, 0.025, 0x8fa4ae)
+  }
+  for (let i = 0; i < 3; i++) c.fade.cyl(17.6, 2.05, 51.2 + i * 0.35, 0.05, 0.4, i === 1 ? PAL.revetement : PAL.laminaire)
+  c.b.sphere(17.5, 0.12, 53.2, 0.2, 0.12, 0.14, 0x4e4458)
+  c.b.sphere(17.37, 0.24, 53.2, 0.08, 0.08, 0.08, 0x4e4458)
   barrel(c, 17.4, 55.3, 0.3, 0.8)
   crate(c, 17.4, 54.4, 0.45, 2)
   c.b.box(11.2, 0.2, 55.4, 0.6, 0.4, 0.4, PAL.toile)
@@ -523,6 +547,8 @@ function salleDesCartes(c: Ctx): void {
 
 export function buildFurniture(part: string, b: GeoBuilder, fade: GeoBuilder, out: FurnitureOut, rand: () => number): void {
   const c: Ctx = { part, b, fade, out, rand }
+  b.colorPat = patForColor
+  fade.colorPat = patForColor
   switch (part) {
     case 'sas': sas(c); break
     case 'sas-chambre': sasChambre(c); break
@@ -538,4 +564,6 @@ export function buildFurniture(part: string, b: GeoBuilder, fade: GeoBuilder, ou
     case 'marche': marche(c); break
     case 'salle-des-cartes': salleDesCartes(c); break
   }
+  b.colorPat = null
+  fade.colorPat = null
 }

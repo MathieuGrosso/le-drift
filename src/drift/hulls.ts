@@ -6,6 +6,7 @@ import { GeoBuilder } from './builder'
 import type { Mats } from './materials'
 import { NOISE_GLSL } from './materials'
 import { PAL } from './palette'
+import { surfacePatch, SURF } from './surface'
 
 export interface HullDef {
   kind: 'keel' | 'barrel'
@@ -115,6 +116,7 @@ export function generateHulls(rng: () => number, reserved: Partial<Record<Distri
 function keelGeometry(): THREE.BufferGeometry {
   const b = new GeoBuilder()
   b.jitter = 0
+  b.pat = SURF.hull
   const cap = new THREE.CapsuleGeometry(0.5, 1, 3, 10)
   cap.rotateX(Math.PI / 2)
   const paint = (p: THREE.Vector3) => {
@@ -134,6 +136,7 @@ function keelGeometry(): THREE.BufferGeometry {
 function barrelGeometry(): THREE.BufferGeometry {
   const b = new GeoBuilder()
   b.jitter = 0
+  b.pat = SURF.hull
   const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1.3, 12, 1, true)
   cyl.rotateX(Math.PI / 2)
   b.add(cyl, new THREE.Matrix4(), (p) => new THREE.Color().setScalar(p.y < -0.25 ? 0.7 : 1))
@@ -215,7 +218,7 @@ export class Hulls {
     this.gangways = gen.gangways
     this.group.name = 'drift-coques'
     parent.add(this.group)
-    const hullMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9 })
+    const hullMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: surfacePatch })
     this.cardMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },

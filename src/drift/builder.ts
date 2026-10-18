@@ -14,6 +14,10 @@ export class GeoBuilder {
   private col: number[] = []
   private uv: number[] = []
   private idx: number[] = []
+  private pt: number[] = []
+  pat = 0
+  patFn: ((p: THREE.Vector3, n: THREE.Vector3) => number) | null = null
+  colorPat: ((hex: number) => number) | null = null
   shade: ((p: THREE.Vector3, n: THREE.Vector3) => number) | null = null
   jitter = 0.05
   private seed = 1
@@ -36,6 +40,7 @@ export class GeoBuilder {
     const base = this.pos.length / 3
     const fixed = typeof color === 'function' ? null : _c.set(color).clone()
     const tint = 1 + (this.rand() - 0.5) * this.jitter * 2
+    const pat = this.pat !== 0 || !this.colorPat || typeof color !== 'number' ? this.pat : this.colorPat(color)
     for (let i = 0; i < pa.count; i++) {
       _p.fromBufferAttribute(pa, i).applyMatrix4(matrix)
       if (na) _n.fromBufferAttribute(na, i).applyMatrix3(_nm).normalize()
@@ -46,6 +51,7 @@ export class GeoBuilder {
       const c = fixed ?? (color as ColorFn)(_p, _n)
       const s = (this.shade ? this.shade(_p, _n) : 1) * tint
       this.col.push(c.r * s, c.g * s, c.b * s)
+      this.pt.push(this.patFn ? this.patFn(_p, _n) : pat)
       if (ua) this.uv.push(ua.getX(i), ua.getY(i))
       else this.uv.push(0, 0)
     }
@@ -64,6 +70,14 @@ export class GeoBuilder {
         else this.idx.push(base + i, base + i + 1, base + i + 2)
       }
     }
+    return this
+  }
+
+  with(pat: number, fn: () => void): this {
+    const prev = this.pat
+    this.pat = pat
+    fn()
+    this.pat = prev
     return this
   }
 
@@ -95,6 +109,7 @@ export class GeoBuilder {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3))
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3))
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2))
+    g.setAttribute('aPat', new THREE.Float32BufferAttribute(this.pt, 1))
     g.setIndex(this.idx)
     g.computeBoundingSphere()
     g.computeBoundingBox()

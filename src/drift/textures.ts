@@ -17,54 +17,6 @@ function tex(c: HTMLCanvasElement, repeat = true): THREE.CanvasTexture {
   return t
 }
 
-function rnd(seed: number): () => number {
-  let s = seed
-  return () => {
-    s = (s * 16807) % 2147483647
-    return s / 2147483647
-  }
-}
-
-export function planksTexture(): THREE.CanvasTexture {
-  const [c, g] = canvas(256, 256)
-  const r = rnd(7)
-  const rows = 8
-  for (let i = 0; i < rows; i++) {
-    const y = (i * 256) / rows
-    const base = 150 + r() * 40
-    g.fillStyle = `rgb(${base + 26},${base - 22},${base - 70})`
-    g.fillRect(0, y, 256, 256 / rows)
-    for (let k = 0; k < 14; k++) {
-      g.fillStyle = `rgba(90,60,70,${0.06 + r() * 0.08})`
-      g.fillRect(r() * 256, y + r() * 28, 30 + r() * 80, 1 + r() * 2)
-    }
-    g.fillStyle = 'rgba(70,50,70,0.55)'
-    g.fillRect(0, y, 256, 2)
-    const cut = r() * 256
-    g.fillRect(cut, y, 2, 256 / rows)
-    g.fillStyle = 'rgba(60,40,40,0.5)'
-    g.beginPath()
-    g.arc(cut + 8, y + 16, 1.6, 0, Math.PI * 2)
-    g.fill()
-  }
-  return tex(c)
-}
-
-export function gratingTexture(): THREE.CanvasTexture {
-  const [c, g] = canvas(128, 128)
-  g.fillStyle = '#7c8190'
-  g.fillRect(0, 0, 128, 128)
-  g.fillStyle = '#5a5f72'
-  for (let i = 0; i < 8; i++) {
-    g.fillRect(0, i * 16 + 6, 128, 4)
-    g.fillRect(i * 16 + 6, 0, 4, 128)
-  }
-  g.fillStyle = 'rgba(196,106,74,0.25)'
-  g.fillRect(10, 70, 40, 30)
-  g.fillRect(80, 12, 30, 22)
-  return tex(c)
-}
-
 export function drawingsTexture(): THREE.CanvasTexture {
   const [c, g] = canvas(512, 256)
   const papers = ['#f3ecd6', '#e8f0e6', '#f6e4d8']

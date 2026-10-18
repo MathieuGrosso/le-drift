@@ -5,6 +5,7 @@ import { GeoBuilder } from '../builder'
 import type { Mats } from '../materials'
 import { NOISE_GLSL } from '../materials'
 import { PAL } from '../palette'
+import { surfacePatch } from '../surface'
 import { Crowd } from './crowd'
 import { Folk } from './folk'
 import { bakeGlow, CITY_UNIFORMS, glowMaterial, LampGrid, lightAt, skyAt, type BakeLamp, type SkyBake } from './glow'
@@ -409,7 +410,7 @@ export class City {
   private doorMat: THREE.Material | null = null
   private insideHullMatForDoors(): THREE.Material {
     if (!this.doorMat) {
-      const m = this.ctx.services.render?.cel({ color: 0xffffff, vertexColors: true, indoor: true, rim: 0.5, emissive: 0x1a1410 })
+      const m = this.ctx.services.render?.cel({ color: 0xffffff, vertexColors: true, indoor: true, rim: 0.5, emissive: 0x1a1410, onShader: surfacePatch })
       this.doorMat = m ?? new THREE.MeshLambertMaterial({ vertexColors: true })
     }
     return this.doorMat
@@ -759,9 +760,10 @@ export class City {
     this.folk.setActive(loaded)
   }
 
-  setVisible(v: ReadonlySet<DistrictId> | null): void {
+  setVisible(v: ReadonlySet<DistrictId> | null, sealed = false): void {
     this.visible = v
-    for (const d of this.districts.values()) d.group.visible = v === null || d.id === 'liens' || v.has(d.id)
+    for (const d of this.districts.values()) d.group.visible = v === null || (d.id === 'liens' ? !sealed : v.has(d.id))
+    this.crowd.group.visible = !sealed
   }
 
   update(dt: number, pose: { position: Vec3; heading: number }, jumped: boolean): void {

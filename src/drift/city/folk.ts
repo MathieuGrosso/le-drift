@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { DistrictId, Vec3 } from '../../core/types'
 import type { Mats } from '../materials'
 import { PAL } from '../palette'
+import { armGeo, hairGeo, headGeo, legGeo, softColor, torsoGeo, whiten } from '../figure'
 
 type Pose = 'stand' | 'walk' | 'work' | 'sit' | 'sleep' | 'look'
 interface Stop { from: number; to: number; pose: Pose; at?: Vec3 & { yaw: number }; path?: { pts: Vec3[]; loop: boolean; speed: number } }
@@ -83,21 +84,17 @@ const ROSTER: readonly FolkDef[] = [
 type PartKey = 'torso' | 'head' | 'hair' | 'hat' | 'armL' | 'armR' | 'legL' | 'legR' | 'apron'
 
 function geos(): Record<PartKey, THREE.BufferGeometry> {
-  const torso = new THREE.CapsuleGeometry(0.21, 0.42, 3, 10)
-  torso.scale(1, 1, 0.75)
-  const head = new THREE.SphereGeometry(0.145, 12, 9)
-  const hair = new THREE.SphereGeometry(0.158, 12, 5, 0, Math.PI * 2, 0, Math.PI * 0.55)
-  hair.translate(0, 0.01, 0.015)
   const brim = new THREE.CylinderGeometry(1, 1, 0.03, 16)
   const crown = new THREE.CylinderGeometry(0.62, 0.7, 1, 14)
   crown.translate(0, 0.5, 0)
-  const hat = mergeTwo(brim, crown)
-  const arm = new THREE.CapsuleGeometry(0.055, 0.46, 2, 6)
-  arm.translate(0, -0.27, 0)
-  const leg = new THREE.CapsuleGeometry(0.085, 0.66, 2, 6)
-  leg.translate(0, -0.41, 0)
-  const apron = new THREE.BoxGeometry(0.34, 0.5, 0.03)
-  return { torso, head, hair, hat, armL: arm, armR: arm.clone(), legL: leg, legR: leg.clone(), apron }
+  const hat = whiten(mergeTwo(brim, crown))
+  const arm = armGeo(0.055, 0.46, -0.27)
+  const leg = legGeo(0.085, 0.66, -0.41, 0.2)
+  const apron = whiten(new THREE.BoxGeometry(0.34, 0.5, 0.03))
+  return {
+    torso: torsoGeo(0.21, 0.84, -0.42, 0.75), head: headGeo(0.145), hair: hairGeo(0.145, 0.015), hat,
+    armL: arm, armR: arm.clone(), legL: leg, legR: leg.clone(), apron,
+  }
 }
 
 function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -142,7 +139,7 @@ export class Folk {
 
   constructor(mats: Mats) {
     this.group.name = 'drift-habitants'
-    const mat = mats.cel({ color: 0xffffff, indoor: true, rim: 0.7, shadowColor: 0x6a5a7a })
+    const mat = mats.cel({ color: 0xffffff, indoor: true, vertexColors: true, rim: 0.7, shadowColor: 0x6a5a7a })
     const g = geos()
     const n = ROSTER.length
     this.meshes = {} as Record<PartKey, THREE.InstancedMesh>
@@ -156,10 +153,10 @@ export class Folk {
     }
     const c = new THREE.Color()
     ROSTER.forEach((d, i) => {
-      this.meshes.torso.setColorAt(i, c.set(d.clothes))
+      this.meshes.torso.setColorAt(i, softColor(c.set(d.clothes)))
       this.meshes.apron.setColorAt(i, c.set(d.id === 'nour' || d.id === 'mme-cassis' ? PAL.toile : d.clothes).multiplyScalar(0.85))
-      this.meshes.armL.setColorAt(i, c.set(d.clothes).multiplyScalar(0.92))
-      this.meshes.armR.setColorAt(i, c.set(d.clothes).multiplyScalar(0.92))
+      this.meshes.armL.setColorAt(i, softColor(c.set(d.clothes).multiplyScalar(0.92)))
+      this.meshes.armR.setColorAt(i, softColor(c.set(d.clothes).multiplyScalar(0.92)))
       this.meshes.legL.setColorAt(i, c.set(d.trousers))
       this.meshes.legR.setColorAt(i, c.set(d.trousers))
       this.meshes.head.setColorAt(i, c.set(d.skin))

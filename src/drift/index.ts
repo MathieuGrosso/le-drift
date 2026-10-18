@@ -14,7 +14,7 @@ import { Npcs } from './npcs'
 import { PAL } from './palette'
 import { registerDriftPoses } from './poses'
 import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from './route'
-import { drawingsTexture, gratingTexture, planksTexture } from './textures'
+import { drawingsTexture } from './textures'
 import { Windows } from './windows'
 
 export type DriftAnchor = Anchor | { kind: 'ring'; id: string; at: Vec3 }
@@ -439,7 +439,9 @@ export function createDriftSystem(): System {
     visibleDistricts.clear()
     let showQuarter = true
     let outside = false
+    let sealed = false
     if (room) {
+      sealed = room !== ('passerelle-nef' as RoomId) && room !== 'cabines-voisins'
       visibleDistricts.add('ecluse')
       if (room === ('passerelle-nef' as RoomId) || room === 'cabines-voisins') visibleDistricts.add('nef')
       visible = [room]
@@ -454,10 +456,10 @@ export function createDriftSystem(): System {
       visible = []
       glassVisible = 1
     }
-    const k = outside ? '*' : [...visibleDistricts].sort().join(',')
+    const k = outside ? '*' : [...visibleDistricts].sort().join(',') + (sealed ? ':clos' : '')
     if (k !== visibleKey) {
       visibleKey = k
-      city?.setVisible(outside ? null : visibleDistricts)
+      city?.setVisible(outside ? null : visibleDistricts, sealed)
       hulls?.setVisible(outside ? null : visibleDistricts)
     }
     if (quarter) quarter.root.visible = outside || showQuarter
@@ -513,7 +515,6 @@ export function createDriftSystem(): System {
       board.draw(ctx.state.env, ctx.state.time.day)
       chart = new ChartTable()
       const textures = {
-        floors: { bois: planksTexture(), tapis: planksTexture(), metal: gratingTexture() },
         board: board.texture,
         chart: chart.texture,
         drawings: drawingsTexture(),

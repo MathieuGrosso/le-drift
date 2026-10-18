@@ -2,6 +2,8 @@ import * as THREE from 'three'
 import type { DistrictId } from '../../core/types'
 import type { HullDef } from '../hulls'
 import { PAL } from '../palette'
+import { softColor } from '../figure'
+import { SURF } from '../surface'
 import { NOMS, PANNEAUX } from '../text'
 import { buildHall, GALLERY_D, type HallDef } from './hall'
 import { C, Kit } from './kit'
@@ -440,19 +442,36 @@ const STALL_GOODS = [0x9fb8c8, 0x7fa86a, 0xd8644e, 0xe3b95f, 0xf4f1e6, 0xc79a3b,
 
 function stall(k: Kit, id: string, x: number, z: number, face: 1 | -1, awning: number): void {
   const cx = x
-  k.solid(cx, 0.5, z, 1.0, 1.0, 2.6, C(PAL.bois, 1.05), 'prop', true, id)
+  const cloth = softColor(C(awning), 0.72)
+  k.b.with(SURF.planksX, () => k.solid(cx, 0.5, z, 1.0, 1.0, 2.6, C(0x8e6447), 'prop', true, id))
+  for (const dx of [-0.5, 0.5]) for (const dz of [-1.3, 1.3]) k.b.box(cx + dx, 0.53, z + dz, 0.1, 1.06, 0.1, C(PAL.boisOmbre, 1.15))
+  k.b.box(cx, 1.03, z, 1.1, 0.05, 2.7, C(0x6e4c3e))
   k.place(id, 'etal', { x: cx + face * 0.9, y: 0, z }, face > 0 ? -Math.PI / 2 : Math.PI / 2)
-  k.b.box(cx + face * 0.5, 0.55, z, 0.06, 0.9, 2.6, C(awning, 0.85))
-  for (let i = 0; i < 6; i++) {
-    const c = k.pick(STALL_GOODS)
-    k.b.sphere(cx + (k.rand() - 0.5) * 0.6, 1.08, z - 1.0 + i * 0.4, 0.16, 0.1, 0.22, C(c))
+  k.cloth.box(cx + face * 0.53, 0.66, z, 0.03, 0.62, 2.45, cloth)
+  k.b.box(cx + face * 0.55, 0.36, z, 0.03, 0.05, 2.45, C(PAL.boisOmbre, 1.2))
+  for (let bi = 0; bi < 3; bi++) {
+    const bz = z - 0.85 + bi * 0.85
+    k.b.with(SURF.fabric, () => k.b.cyl(cx + face * 0.1, 1.12, bz, 0.3, 0.14, C(0xb08a5a)))
+    k.b.cyl(cx + face * 0.1, 1.19, bz, 0.31, 0.03, C(0x8a6448))
+    const good = k.pick(STALL_GOODS)
+    for (let g = 0; g < 5; g++) {
+      const a = (g / 5) * Math.PI * 2 + k.rand()
+      const r = g === 4 ? 0 : 0.14
+      k.b.sphere(cx + face * 0.1 + Math.cos(a) * r, 1.22 + (g === 4 ? 0.06 : 0), bz + Math.sin(a) * r, 0.1, 0.07, 0.13, softColor(C(good), 0.8))
+    }
   }
   k.crate(cx - face * 1.3, 0, z + 0.7, 0.6)
   k.barrel(cx - face * 1.3, 0, z - 0.6, 0.3, 0.8)
   for (const dz of [-1.3, 1.3]) k.b.box(cx - face * 0.7, 1.55, z + dz, 0.08, 3.1, 0.08, C(PAL.boisOmbre))
+  k.b.box(cx - face * 0.64, 1.45, z + 1.3, 0.03, 0.34, 0.46, C(0x3e3a4a))
+  k.b.box(cx - face * 0.625, 1.45, z + 1.3, 0.01, 0.06, 0.3, C(0xe8dfcc))
   for (let i = 0; i < 6; i++) {
     const zz = z - 1.45 + i * 0.58
-    k.cloth.box(cx + face * 0.1, 3.0 - 0.1, zz, 1.9, 0.05, 0.58, C(i % 2 ? awning : PAL.creme), 0)
+    k.cloth.box(cx + face * 0.1, 3.0 - 0.1, zz, 1.9, 0.05, 0.58, i % 2 ? cloth : C(PAL.creme, 0.95), 0)
+  }
+  for (let i = 0; i < 12; i++) {
+    const zz = z - 1.45 + (i + 0.5) * (2.9 / 12)
+    k.cloth.box(cx + face * 1.05, 2.8, zz, 0.03, 0.18 + (i % 2) * 0.05, 2.9 / 12 - 0.02, i % 2 ? C(PAL.creme, 0.95) : cloth)
   }
   k.cols.push({ kind: 'prop', climbable: true, x: cx + face * 0.1, y: 2.95, z, hx: 0.95, hy: 0.05, hz: 1.45 })
   k.lamp(cx + face * 0.6, 2.6, z, { radius: 6, bake: 0.7, style: 'shade', hang: 0.25, color: k.rand() < 0.5 ? PAL.lampe : PAL.lampeChaude })

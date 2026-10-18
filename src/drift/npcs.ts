@@ -5,6 +5,7 @@ import type { Quarter } from './interiors/quarter'
 import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
+import { armGeo, hairGeo, headGeo, legGeo, softColor, torsoGeo, whiten } from './figure'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
 
@@ -66,7 +67,7 @@ const HAIRS = [PAL.cheveux1, PAL.cheveux2, PAL.cheveux3, PAL.cheveux4, PAL.cheve
 function roster(rand: () => number): NpcDef[] {
   const named: NpcDef[] = [
     { id: 'grand-pere', kind: 'elder', clothes: PAL.tissu3, skin: PAL.peau1, hair: PAL.blanc, trousers: PAL.boisOmbre, hat: null, index: 0 },
-    { id: 'cuistot', kind: 'adult', clothes: PAL.blanc, skin: PAL.peau2, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: 'toque', index: 1 },
+    { id: 'cuistot', kind: 'adult', clothes: 0xd9c9a6, skin: PAL.peau2, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: 'toque', index: 1 },
     { id: 'mme-rouille', kind: 'adult', clothes: PAL.rouille, skin: PAL.peau3, hair: PAL.cheveux4, trousers: PAL.boisOmbre, hat: 'bonnet', index: 2 },
     { id: 'mila', kind: 'kid', clothes: PAL.tissu2, skin: PAL.peau1, hair: PAL.cheveux2, trousers: PAL.tissu3, hat: null, index: 3 },
     { id: 'tao', kind: 'kid', clothes: PAL.teal, skin: PAL.peau4, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: null, index: 4 },
@@ -94,21 +95,17 @@ const PARTS_PER_NPC = { torso: 1, head: 1, hair: 1, hat: 1, arm: 2, thigh: 2, sh
 type PartKey = keyof typeof PARTS_PER_NPC
 
 function geometries(): Record<PartKey, THREE.BufferGeometry> {
-  const torso = new THREE.CapsuleGeometry(0.19, 0.4, 3, 8)
-  torso.scale(1, 1, 0.72)
-  torso.translate(0, 0.4, 0)
-  const head = new THREE.SphereGeometry(0.135, 10, 7)
-  const hair = new THREE.SphereGeometry(0.148, 10, 4, 0, Math.PI * 2, 0, Math.PI * 0.56)
-  hair.translate(0, 0.012, 0.012)
   const hat = new THREE.CylinderGeometry(0.12, 0.1, 0.2, 12)
   hat.translate(0, 0.17, 0)
-  const arm = new THREE.CapsuleGeometry(0.05, 0.46, 2, 5)
-  arm.translate(0, -0.26, 0)
-  const thigh = new THREE.CapsuleGeometry(0.075, 0.36, 2, 6)
-  thigh.translate(0, -0.24, 0)
-  const shin = new THREE.CapsuleGeometry(0.062, 0.38, 2, 5)
-  shin.translate(0, -0.235, 0)
-  return { torso, head, hair, hat, arm, thigh, shin }
+  return {
+    torso: torsoGeo(0.19, 0.8, 0.0, 0.72),
+    head: headGeo(0.135),
+    hair: hairGeo(0.135, 0.012),
+    hat: whiten(hat),
+    arm: armGeo(0.05, 0.46, -0.26),
+    thigh: whiten(new THREE.CapsuleGeometry(0.075, 0.36, 2, 6).translate(0, -0.24, 0)),
+    shin: legGeo(0.062, 0.38, -0.235, 0.16),
+  }
 }
 
 interface PoseParams {
@@ -145,7 +142,7 @@ export class Npcs {
   constructor(private readonly ctx: GameContext, mats: Mats, private readonly quarter: Quarter) {
     this.group.name = 'drift-habitants'
     const geo = geometries()
-    const mat = mats.cel({ color: 0xffffff, indoor: true })
+    const mat = mats.cel({ color: 0xffffff, indoor: true, vertexColors: true, rim: 0.7, shadowColor: 0x6a5a7a })
     const defs = roster(ctx.rng('drift-habitants'))
     const n = defs.length
     for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
@@ -159,14 +156,14 @@ export class Npcs {
     const c = new THREE.Color()
     defs.forEach((d, i) => {
       const skin = c.set(d.skin).clone()
-      this.meshes.torso.setColorAt(i, c.set(d.clothes))
+      this.meshes.torso.setColorAt(i, softColor(c.set(d.clothes)))
       this.meshes.head.setColorAt(i, skin)
       this.meshes.hair.setColorAt(i, c.set(d.hair))
       this.meshes.hat.setColorAt(i, c.set(d.hat === 'bonnet' ? PAL.tissu1 : PAL.blanc))
       for (let k = 0; k < 2; k++) {
-        this.meshes.arm.setColorAt(i * 2 + k, c.set(d.kind === 'kid' ? d.skin : d.clothes).multiplyScalar(0.92))
-        this.meshes.thigh.setColorAt(i * 2 + k, c.set(d.trousers))
-        this.meshes.shin.setColorAt(i * 2 + k, c.set(d.trousers).multiplyScalar(0.85))
+        this.meshes.arm.setColorAt(i * 2 + k, softColor(c.set(d.kind === 'kid' ? d.skin : d.clothes).multiplyScalar(0.92)))
+        this.meshes.thigh.setColorAt(i * 2 + k, softColor(c.set(d.trousers)))
+        this.meshes.shin.setColorAt(i * 2 + k, softColor(c.set(d.trousers).multiplyScalar(0.85)))
       }
       this.list.push({
         def: d, scale: d.kind === 'kid' ? 0.62 : d.kind === 'elder' ? 0.95 : 0.98 + ((i * 7) % 5) * 0.02,

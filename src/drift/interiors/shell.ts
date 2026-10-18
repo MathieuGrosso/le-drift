@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GeoBuilder, UNIT } from '../builder'
 import { PAL } from '../palette'
+import { SURF } from '../surface'
 import {
   LINKS, PARTS, PORTHOLES, PORTHOLE_D, RECT_WINDOWS, WALL_T, partById,
   type PartDef, type Side,
@@ -121,8 +122,10 @@ const porthPlate = (() => {
   return g
 })()
 const ringGeo = new THREE.TorusGeometry(PORTHOLE_D * 0.43, 0.035, 6, 20)
+const boltGeo = new THREE.SphereGeometry(0.022, 6, 4)
 const archGeo = new THREE.CylinderGeometry(1, 1, 1, 22, 1, true, -Math.PI / 2, Math.PI)
-const ribGeo = new THREE.TorusGeometry(1, 0.05, 5, 18, Math.PI)
+const ribGeo = new THREE.TorusGeometry(1, 0.06, 5, 22, Math.PI)
+const RIB = 0x7e5a4a
 const gableGeo = (() => {
   const s = new THREE.Shape()
   s.moveTo(-1, 0)
@@ -148,6 +151,13 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     return new THREE.Color(p.hull)
   }
 
+  const metal = p.wall === PAL.bleuDoux || p.wall === PAL.metal
+  b.patFn = (pp, n) => {
+    if (Math.abs(n.y) > 0.5) return SURF.paint
+    if (inner(n, pp) <= 0.05) return SURF.hull
+    if (metal) return SURF.steel
+    return pp.y < fy + 1.0 + 1e-3 ? SURF.boards : SURF.plaster
+  }
   if (p.floor !== 'none') {
     b.box(cx, fy - 0.15, cz, p.x1 - p.x0, 0.3, p.z1 - p.z0, (_pp, n) => new THREE.Color(n.y > 0.5 ? PAL.boisOmbre : p.hull))
     out.colliders.push({ part: p.id, kind: 'interior', climbable: false, hx: (p.x1 - p.x0) / 2, hy: 0.15, hz: (p.z1 - p.z0) / 2, x: cx, y: fy - 0.15, z: cz })
@@ -177,11 +187,16 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     for (const ph of portholes) {
       const c = wallPoint(f, ph.u, ph.y)
       const q = quatFromBasis(new THREE.Vector3().crossVectors(up, outward), up, outward)
-      b.add(porthPlate, _m.compose(c, q, _s.set(1, 1, 1)), PAL.laiton)
+      b.add(porthPlate, _m.compose(c, q, _s.set(1, 1, 1)), wallColor)
       const ci = wallPoint(f, ph.u, ph.y, T / 2 + 0.01)
       b.add(ringGeo, _m.compose(ci, q, _s.set(1, 1, 1)), PAL.laiton)
       const co = wallPoint(f, ph.u, ph.y, -T / 2 - 0.01)
       b.add(ringGeo, _m.compose(co, q, _s.set(1, 1, 1)), PAL.laiton)
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2 + Math.PI / 8
+        const bp = wallPoint(f, ph.u + Math.cos(a) * PORTHOLE_D * 0.47, ph.y + Math.sin(a) * PORTHOLE_D * 0.47, T / 2 + 0.008)
+        b.add(boltGeo, _m.compose(bp, q, _s.set(1, 1, 1)), 0xb08a62)
+      }
       const def = PORTHOLES[ph.idx]!
       const id = `hublot-${def.part}-${PORTHOLES.filter((q2, j) => q2.part === def.part && j < ph.idx).length + 1}`
       out.panes.push({ id, part: p.id, shape: 'round', x: c.x, y: c.y, z: c.z, nx: outward.x, nz: outward.z, w: PORTHOLE_D * 0.88, h: PORTHOLE_D * 0.88 })
@@ -229,8 +244,17 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
       bar(l.at + l.width / 2 + fr / 2, fy + l.height / 2, fr, l.height)
       bar(l.at, fy + l.height + fr / 2, l.width + fr * 2, fr)
     }
+    b.patFn = null
+    buildTrims(p, f, holes, b, metal)
     if (isGable(p, side)) buildGable(p, side, b, out)
+    b.patFn = (pp, n) => {
+      if (Math.abs(n.y) > 0.5) return SURF.paint
+      if (inner(n, pp) <= 0.05) return SURF.hull
+      if (metal) return SURF.steel
+      return pp.y < fy + 1.0 + 1e-3 ? SURF.boards : SURF.plaster
+    }
   }
+  b.patFn = null
 
   if (p.roof === 'flat') {
     const holes = p.roofHole ? [{ u0: p.roofHole.x0, u1: p.roofHole.x1, v0: p.roofHole.z0, v1: p.roofHole.z1 }] : []
@@ -272,7 +296,9 @@ function buildArch(p: PartDef, b: GeoBuilder, out: ShellOut): void {
   const B = new THREE.Matrix4().makeBasis(across, axisDir, up)
   const outer = new THREE.Matrix4().copy(B).multiply(new THREE.Matrix4().makeScale(W / 2, L, p.archH + T))
   outer.setPosition(center)
+  b.pat = SURF.hull
   b.add(archGeo, outer, p.hull)
+  b.pat = p.wall === PAL.bleuDoux || p.wall === PAL.metal ? SURF.steel : SURF.plaster
   const innerM = new THREE.Matrix4().copy(B).multiply(new THREE.Matrix4().makeScale(W / 2 - T, L - 2 * T, p.archH))
   innerM.setPosition(center)
   b.add(archGeo, innerM, p.wall, true)
@@ -282,8 +308,9 @@ function buildArch(p: PartDef, b: GeoBuilder, out: ShellOut): void {
     const pos = center.clone().addScaledVector(axisDir, -L / 2 + (i * L) / ribs)
     const m = rb.clone().multiply(new THREE.Matrix4().makeScale(W / 2 - T - 0.03, p.archH - 0.03, 1))
     m.setPosition(pos)
-    b.add(ribGeo, m, PAL.bois)
+    b.with(SURF.paint, () => b.add(ribGeo, m, RIB))
   }
+  b.pat = SURF.paint
   const segs = 6
   for (let i = 0; i < segs; i++) {
     const t0 = (i / segs) * Math.PI
@@ -316,12 +343,15 @@ function buildGable(p: PartDef, side: Side, b: GeoBuilder, out: ShellOut): void 
   const uOut = new THREE.Vector3().crossVectors(up, outward)
   const mo = new THREE.Matrix4().makeBasis(uOut, up, outward).multiply(new THREE.Matrix4().makeScale(W / 2, p.archH + T, 1))
   mo.setPosition(outerPos)
+  b.pat = SURF.hull
   b.add(gableGeo, mo, p.hull)
+  b.pat = p.wall === PAL.bleuDoux || p.wall === PAL.metal ? SURF.steel : SURF.plaster
   const innerPos = wallPoint(f, cU, top, T / 2)
   const uIn = new THREE.Vector3().crossVectors(up, f.inward)
   const mi = new THREE.Matrix4().makeBasis(uIn, up, f.inward).multiply(new THREE.Matrix4().makeScale(W / 2 - T, p.archH, 1))
   mi.setPosition(innerPos)
   b.add(gableGeo, mi, p.wall)
+  b.pat = SURF.paint
   const c = wallPoint(f, cU, 0)
   const lowH = p.archH * 0.6
   const hiH = p.archH * 0.45
@@ -345,3 +375,44 @@ export function allParts(): readonly PartDef[] {
 }
 
 export { partById, UNIT }
+
+function freeSpans(u0: number, u1: number, holes: readonly Hole[], y0: number, y1: number): [number, number][] {
+  const spans: [number, number][] = [[u0, u1]]
+  for (const h of holes) {
+    if (h.v1 <= y0 || h.v0 >= y1) continue
+    for (let i = spans.length - 1; i >= 0; i--) {
+      const [a, c] = spans[i]!
+      if (h.u1 <= a || h.u0 >= c) continue
+      spans.splice(i, 1)
+      if (h.u0 > a) spans.push([a, h.u0])
+      if (h.u1 < c) spans.push([h.u1, c])
+    }
+  }
+  return spans.filter(([a, c]) => c - a > 0.08)
+}
+
+function buildTrims(p: PartDef, f: WallFrame, holes: readonly Hole[], b: GeoBuilder, metal: boolean): void {
+  const T = WALL_T
+  const fy = p.floorY
+  const top = fy + p.wallH
+  const run = (y: number, h: number, d: number, color: number, pat: number) => {
+    b.pat = pat
+    for (const [a, c] of freeSpans(f.u0, f.u1, holes, y - h / 2, y + h / 2)) {
+      const pc = wallPoint(f, (a + c) / 2, y, T / 2 + d / 2)
+      if (f.axisU === 'x') b.box(pc.x, pc.y, pc.z, c - a, h, d, color)
+      else b.box(pc.x, pc.y, pc.z, d, h, c - a, color)
+    }
+    b.pat = SURF.paint
+  }
+  if (metal) {
+    run(fy + 0.06, 0.12, 0.03, PAL.metalSombre, SURF.paint)
+    run(fy + 1.0, 0.06, 0.04, 0xa8875f, SURF.brass)
+    run(top - 0.05, 0.1, 0.05, PAL.metalSombre, SURF.paint)
+    return
+  }
+  run(fy + 0.07, 0.14, 0.035, 0x5a4250, SURF.paint)
+  run(fy + 1.0, 0.07, 0.05, 0x7a5444, SURF.paint)
+  run(fy + 0.955, 0.025, 0.07, 0x8e6650, SURF.paint)
+  run(top - 0.06, 0.12, 0.07, 0x7a5444, SURF.paint)
+  run(top - 0.15, 0.04, 0.04, 0x8e6650, SURF.paint)
+}

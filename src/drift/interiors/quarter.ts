@@ -6,6 +6,7 @@ import { GeoBuilder } from '../builder'
 import type { Mats } from '../materials'
 import { NOISE_GLSL } from '../materials'
 import { PAL } from '../palette'
+import { SURF, surfacePatch } from '../surface'
 import { blockerShape, createDoor, doorwayContains, openLeafShape, poseLeaf, type DoorRuntime } from './doors'
 import { buildFurniture, emptyFurniture } from './furniture'
 import { PARTS, REBORD, ROOM_NEIGHBOURS, partTop, type PartDef } from './layout'
@@ -121,6 +122,13 @@ void main() {
   gl_FragColor = vec4(vec3(1.0, 0.97, 0.92), a);
 }`
 
+const FLOOR_LOOK: Record<Exclude<PartDef['floor'], 'none'>, { pat: number; color: number }> = {
+  bois: { pat: SURF.planksX, color: 0xa47650 },
+  tapis: { pat: SURF.planksZ, color: 0x8c6249 },
+  carrelage: { pat: SURF.tiles, color: 0xa9a094 },
+  metal: { pat: SURF.steel, color: 0x7f8494 },
+}
+
 const _v = new THREE.Vector3()
 const _v2 = new THREE.Vector3()
 const _m = new THREE.Matrix4()
@@ -131,7 +139,6 @@ const _s = new THREE.Vector3(1, 1, 1)
 const _c = new THREE.Color()
 
 export interface QuarterTextures {
-  floors: Record<'bois' | 'metal' | 'tapis', THREE.Texture>
   board: THREE.Texture
   chart: THREE.Texture
   drawings: THREE.Texture
@@ -166,12 +173,7 @@ export class Quarter {
 
   constructor(private readonly ctx: GameContext, private readonly mats: Mats, tex: QuarterTextures, pose: { position: Vec3; heading: number }) {
     this.root.name = 'drift-quarter'
-    this.mat = mats.cel({ color: 0xffffff, vertexColors: true, indoor: true })
-    const floorMats = {
-      bois: mats.cel({ color: 0xffffff, map: tex.floors.bois, indoor: true }),
-      tapis: mats.cel({ color: 0xffffff, map: tex.floors.tapis, indoor: true }),
-      metal: mats.cel({ color: 0xffffff, map: tex.floors.metal, indoor: true }),
-    }
+    this.mat = mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, onShader: surfacePatch })
     const R = ctx.physics.rapier
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -pose.heading)
     let seed = 11
@@ -206,15 +208,23 @@ export class Quarter {
         detail.push(fm)
       }
       if (def.floor !== 'none') {
-        const g = new THREE.PlaneGeometry(def.x1 - def.x0 - 0.4, def.z1 - def.z0 - 0.4)
+        const fb = new GeoBuilder()
+        fb.jitter = 0
+        const w = def.x1 - def.x0 - 0.4
+        const d = def.z1 - def.z0 - 0.4
+        const g = new THREE.PlaneGeometry(w, d, Math.max(2, Math.ceil(w / 0.5)), Math.max(2, Math.ceil(d / 0.5)))
         g.rotateX(-Math.PI / 2)
-        const uv = g.getAttribute('uv') as THREE.BufferAttribute
-        const pos = g.getAttribute('position') as THREE.BufferAttribute
-        const sc = def.floor === 'metal' ? 0.9 : 0.45
-        for (let k = 0; k < uv.count; k++) uv.setXY(k, pos.getX(k) * sc, pos.getZ(k) * sc)
-        const fl = new THREE.Mesh(g, floorMats[def.floor])
-        fl.position.set((def.x0 + def.x1) / 2, fy + 0.012, (def.z0 + def.z1) / 2)
-        fl.updateMatrix()
+        const fx = (def.x0 + def.x1) / 2
+        const fz = (def.z0 + def.z1) / 2
+        fb.shade = (p) => {
+          const e = Math.min(p.x - def.x0, def.x1 - p.x, p.z - def.z0, def.z1 - p.z)
+          return 0.62 + 0.38 * THREE.MathUtils.smoothstep(e, 0.15, 1.3)
+        }
+        const look = FLOOR_LOOK[def.floor]
+        fb.pat = look.pat
+        fb.add(g, new THREE.Matrix4().makeTranslation(fx, fy + 0.012, fz), look.color)
+        const fl = new THREE.Mesh(fb.build(), this.mat)
+        fl.name = `piece:${def.id}:sol`
         fl.matrixAutoUpdate = false
         group.add(fl)
       }

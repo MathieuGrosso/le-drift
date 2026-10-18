@@ -3,6 +3,7 @@ import type { DeckId, DistrictId } from '../../core/types'
 import type { HullDef } from '../hulls'
 import { DISTRICT_BY_ID } from '../../core/layout'
 import { PAL } from '../palette'
+import { SURF } from '../surface'
 import { C, type Kit } from './kit'
 
 export type Side = 'n' | 's' | 'w' | 'e'
@@ -214,14 +215,18 @@ function buildWall(k: Kit, h: HallDef, s: Side): void {
       const shade = 0.9 + k.rand() * 0.14 - (cy < h.floorY + 1 ? 0.12 : 0)
       const c = wallPoint(h, s, cu, cy, -0.2)
       const col = wallC.clone().multiplyScalar(shade)
-      if (along) k.b.box(c.x, c.y, c.z, eu - 0.05, T - 0.05, 0.4, col)
-      else k.b.box(c.x, c.y, c.z, 0.4, T - 0.05, eu - 0.05, col)
+      k.b.with(SURF.plaster, () => {
+        if (along) k.b.box(c.x, c.y, c.z, eu - 0.05, T - 0.05, 0.4, col)
+        else k.b.box(c.x, c.y, c.z, 0.4, T - 0.05, eu - 0.05, col)
+      })
       const o = wallPoint(h, s, cu, cy, -0.45)
       const low = cy < h.floorY + 2
       const band = Math.round((cy - h.floorY - 1) / T) % 3 === 2
       const sk = (low ? keel : skin).clone().multiplyScalar(0.92 + k.rand() * 0.1)
-      if (along) k.b.box(o.x, o.y, o.z, eu + 0.02, T + 0.02, 0.1, band ? C(PAL.laiton, 0.85) : sk)
-      else k.b.box(o.x, o.y, o.z, 0.1, T + 0.02, eu + 0.02, band ? C(PAL.laiton, 0.85) : sk)
+      k.b.with(band ? SURF.brass : SURF.hull, () => {
+        if (along) k.b.box(o.x, o.y, o.z, eu + 0.02, T + 0.02, 0.1, band ? C(PAL.laiton, 0.85) : sk)
+        else k.b.box(o.x, o.y, o.z, 0.1, T + 0.02, eu + 0.02, band ? C(PAL.laiton, 0.85) : sk)
+      })
       if (!band && !low && tiers.some((ty) => Math.abs(cy - (ty + 2.6)) < 1.01) && Math.round(u / T) % 2 === 0) {
         const wpt = wallPoint(h, s, cu, cy, -0.52)
         const on = k.rand() < 0.7
@@ -418,13 +423,13 @@ function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number,
   const rows = hh > 5 ? [ty + 2.7, ty + 4.0] : [ty + 2.4]
   rows.forEach((wy, ri) => {
     const off = face(wy) + 0.02
-    for (let wu = u + 1.4; wu < u + len - 1.2; wu += 2.1 + ri * 0.3) {
+    for (let wu = u + 1.4; wu < u + len - 1.2; wu += 2.6 + ri * 0.4) {
       const p = wallPoint(h, s, wu, wy, off)
       const on = k.rand() < 0.62
       const rr = keel ? 0.3 : 0.26
       const m = new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(along ? 0 : INWARD[s].x, 0, along ? INWARD[s].z : 0)), new THREE.Vector3(rr, rr, 1))
       if (on) k.e.add(DISC_SMALL, m, C(k.pick(lit), 0.95 + k.rand() * 0.2))
-      else k.b.add(DISC_SMALL, m, C(PAL.interieurOmbre, 0.9))
+      else k.b.add(DISC_SMALL, m, C(0xc9b48e, 0.72))
       k.b.add(RING_SMALL, m, C(PAL.laiton, 1.0))
       if (ri === 0 && k.rand() < 0.18) {
         const bp = wallPoint(h, s, wu, wy - 0.42, off + 0.15)

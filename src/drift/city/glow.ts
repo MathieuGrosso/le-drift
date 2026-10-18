@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { Mats } from '../materials'
+import { surfacePatch } from '../surface'
 
 export interface BakeLamp { x: number; y: number; z: number; color: THREE.Color; radius: number; power: number }
 export interface SkyBake { y0: number; y1: number; color: THREE.Color; power: number }
@@ -22,6 +23,7 @@ vec3 rdGlow = rd_applyIndoorHaze(rdBaked, vRdW, rdGh);
 outgoingLight = max(rdLit, rdGlow);`
 
 function onShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  surfacePatch(shader)
   shader.uniforms.uCitySky = CITY_UNIFORMS.uCitySky
   shader.uniforms.uCityLamp = CITY_UNIFORMS.uCityLamp
   shader.vertexShader = VERT_DECL + shader.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\nvGlow = aGlow;\nvSky = aSky;')

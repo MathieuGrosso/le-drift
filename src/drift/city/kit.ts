@@ -3,6 +3,7 @@ import type { ColliderKind, DeckId, DistrictId, DomeId, Vec3 } from '../../core/
 import { GeoBuilder, UNIT } from '../builder'
 import { PAL } from '../palette'
 import { PANNEAUX } from '../text'
+import { SURF } from '../surface'
 
 const TOBOGGAN = PANNEAUX.toboggan
 
@@ -124,6 +125,7 @@ export class Kit {
     this.seed = seed
     this.b.jitter = 0.035
     this.cloth.jitter = 0.05
+    this.cloth.pat = SURF.fabric
     this.e.jitter = 0
     this.glass.jitter = 0
   }
@@ -192,15 +194,17 @@ export class Kit {
     const cz = (z0 + z1) / 2
     const sx = x1 - x0
     const sz = z1 - z0
-    this.b.box(cx, y - t / 2 - 0.02, cz, sx, t, sz, C(PAL.boisOmbre, 1.1))
+    this.b.box(cx, y - t / 2 - 0.02, cz, sx, t, sz, style === 'pierre' ? C(0x8e7f72) : C(PAL.boisOmbre, 1.1))
     const alongX = sx >= sz
+    const prevPat = this.b.pat
+    this.b.pat = style === 'bois' ? (alongX ? SURF.planksX : SURF.planksZ) : style === 'pierre' ? SURF.stone : style === 'tapis' ? SURF.fabric : SURF.steel
     if (style === 'bois') {
       const w = 0.42
       const n = Math.max(1, Math.round((alongX ? sz : sx) / w))
       const ww = (alongX ? sz : sx) / n
       for (let i = 0; i < n; i++) {
         const k = 0.88 + this.rand() * 0.22
-        const c = (i % 3 === 0 ? C(PAL.boisClair, k) : C(PAL.bois, k * 1.08))
+        const c = i % 3 === 0 ? C(0xa98262, k) : C(0x986a4b, k * 1.05)
         if (alongX) this.b.box(cx, y - 0.02, z0 + ww * (i + 0.5), sx, 0.04, ww * 0.94, c)
         else this.b.box(x0 + ww * (i + 0.5), y - 0.02, cz, ww * 0.94, 0.04, sz, c)
       }
@@ -211,7 +215,7 @@ export class Kit {
           const odd = (Math.round((x - x0) / s) + Math.round((z - z0) / s)) % 2
           const ex = Math.min(s, x1 - x)
           const ez = Math.min(s, z1 - z)
-          this.b.box(x + ex / 2, y - 0.02, z + ez / 2, ex * 0.97, 0.04, ez * 0.97, odd ? C(PAL.platre, 0.95) : C(PAL.creme, 1.0))
+          this.b.box(x + ex / 2, y - 0.02, z + ez / 2, ex * 0.97, 0.04, ez * 0.97, odd ? C(0xb7a184, 1.0) : C(0xc4b090, 1.0))
         }
       }
     } else if (style === 'tapis') {
@@ -227,12 +231,15 @@ export class Kit {
         for (let x = x0 + step; x < x1 - 0.05; x += step) this.b.box(x, y - 0.005, cz, grid ? 0.06 : 0.03, 0.03, sz, C(PAL.metal, 1.15))
       }
     }
+    this.b.pat = prevPat
     this.cols.push({ kind: 'floor', climbable: false, x: cx, y: y - t / 2, z: cz, hx: sx / 2, hy: t / 2, hz: sz / 2 })
   }
 
   rail(x0: number, z0: number, x1: number, z1: number, y: number, color: number = PAL.laiton): void {
     const len = Math.hypot(x1 - x0, z1 - z0)
     if (len < 0.2) return
+    const prev = this.b.pat
+    if (color === PAL.laiton) this.b.pat = SURF.brass
     this.beam(x0, y + 1.0, z0, x1, y + 1.0, z1, 0.07, C(color, 1.05))
     this.beam(x0, y + 0.52, z0, x1, y + 0.52, z1, 0.035, C(color, 0.9))
     const posts = Math.max(1, Math.round(len / 1.6))
@@ -240,6 +247,7 @@ export class Kit {
       const t = i / posts
       this.b.box(x0 + (x1 - x0) * t, y + 0.5, z0 + (z1 - z0) * t, 0.06, 1.0, 0.06, C(color, 0.85))
     }
+    this.b.pat = prev
     const rot = Math.atan2(x1 - x0, z1 - z0)
     const q = new THREE.Quaternion().setFromAxisAngle(UP, rot)
     this.cols.push({ kind: 'wall', climbable: false, x: (x0 + x1) / 2, y: y + 0.6, z: (z0 + z1) / 2, hx: 0.06, hy: 0.6, hz: len / 2, q })
@@ -450,6 +458,10 @@ export class Kit {
   }
 
   crate(x: number, y: number, z: number, s: number, rot = 0, solid = true): void {
+    this.b.with(SURF.planksX, () => this.crateRaw(x, y, z, s, rot, solid))
+  }
+
+  private crateRaw(x: number, y: number, z: number, s: number, rot = 0, solid = true): void {
     const k = 0.85 + this.rand() * 0.25
     this.b.box(x, y + s / 2, z, s, s, s, C(this.rand() > 0.5 ? PAL.bois : PAL.boisClair, k), rot)
     this.b.box(x, y + s / 2, z, s * 1.02, s * 0.14, s * 1.02, C(PAL.boisOmbre), rot)
@@ -467,6 +479,10 @@ export class Kit {
   }
 
   barrel(x: number, y: number, z: number, r = 0.34, h = 0.9, color: number = PAL.bois): void {
+    this.b.with(SURF.planksX, () => this.barrelRaw(x, y, z, r, h, color))
+  }
+
+  private barrelRaw(x: number, y: number, z: number, r = 0.34, h = 0.9, color: number = PAL.bois): void {
     this.b.cyl(x, y + h / 2, z, r, h, C(color, 0.95 + this.rand() * 0.15))
     for (const yy of [0.15, 0.5, 0.85]) this.b.cyl(x, y + h * yy, z, r * 1.03, 0.05, C(PAL.metalSombre))
     this.cols.push({ kind: 'prop', climbable: true, x, y: y + h / 2, z, hx: r * 0.9, hy: h / 2, hz: r * 0.9 })
@@ -488,12 +504,20 @@ export class Kit {
   }
 
   table(x: number, y: number, z: number, sx: number, sz: number, h = 0.78, color: number = PAL.bois): void {
+    this.b.with(SURF.planksX, () => this.tableRaw(x, y, z, sx, sz, h, color))
+  }
+
+  private tableRaw(x: number, y: number, z: number, sx: number, sz: number, h = 0.78, color: number = PAL.bois): void {
     this.b.box(x, y + h - 0.03, z, sx, 0.06, sz, C(color, 1.05))
     for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) this.b.box(x + dx * (sx / 2 - 0.06), y + (h - 0.06) / 2, z + dz * (sz / 2 - 0.06), 0.06, h - 0.06, 0.06, C(PAL.boisOmbre))
     this.cols.push({ kind: 'prop', climbable: true, x, y: y + h / 2, z, hx: sx / 2, hy: h / 2, hz: sz / 2 })
   }
 
   bench(id: string | null, x: number, y: number, z: number, len: number, alongX: boolean, yaw: number): void {
+    this.b.with(SURF.planksX, () => this.benchRaw(id, x, y, z, len, alongX, yaw))
+  }
+
+  private benchRaw(id: string | null, x: number, y: number, z: number, len: number, alongX: boolean, yaw: number): void {
     const sx = alongX ? len : 0.42
     const sz = alongX ? 0.42 : len
     this.b.box(x, y + 0.44, z, sx, 0.07, sz, C(PAL.bois, 1.05))
@@ -528,6 +552,10 @@ export class Kit {
   }
 
   cot(id: string, x: number, y: number, z: number, alongX: boolean, blanket: number): void {
+    this.b.with(SURF.planksX, () => this.cotRaw(id, x, y, z, alongX, blanket))
+  }
+
+  private cotRaw(id: string, x: number, y: number, z: number, alongX: boolean, blanket: number): void {
     const sx = alongX ? 2.0 : 0.85
     const sz = alongX ? 0.85 : 2.0
     this.b.box(x, y + 0.32, z, sx, 0.12, sz, C(PAL.bois, 1.05))
@@ -580,6 +608,10 @@ export class Kit {
   }
 
   shelf(x: number, y: number, z: number, len: number, h: number, alongX: boolean, depth = 0.4, fill: readonly number[] = [PAL.toile, PAL.tissu3, PAL.rouille, PAL.tissu2]): void {
+    this.b.with(SURF.planksX, () => this.shelfRaw(x, y, z, len, h, alongX, depth, fill))
+  }
+
+  private shelfRaw(x: number, y: number, z: number, len: number, h: number, alongX: boolean, depth = 0.4, fill: readonly number[] = [PAL.toile, PAL.tissu3, PAL.rouille, PAL.tissu2]): void {
     const sx = alongX ? len : depth
     const sz = alongX ? depth : len
     for (const s of [-1, 1]) this.b.box(x + (alongX ? (s * len) / 2 : 0), y + h / 2, z + (alongX ? 0 : (s * len) / 2), alongX ? 0.06 : depth, h, alongX ? depth : 0.06, C(PAL.boisOmbre, 1.1))
