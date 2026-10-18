@@ -1,0 +1,297 @@
+import type * as THREE from 'three'
+import type RAPIER from '@dimforge/rapier3d-compat'
+
+export type Vec3 = { x: number; y: number; z: number }
+export type Act = 1 | 2 | 3
+export type SystemId = 'render' | 'world' | 'flora' | 'drift' | 'fauna' | 'hero' | 'gameplay' | 'audio'
+export type RegionId = 'prairie' | 'laminaires' | 'pilier' | 'cheminee' | 'coques' | 'blanc' | 'bleu'
+export type DayPhase = 'aube' | 'jour' | 'crepuscule' | 'nuit'
+export type QualityLevel = 'low' | 'medium' | 'high'
+export type HeroMode =
+  | 'idle' | 'walk' | 'swim' | 'sink' | 'climb' | 'glide' | 'scrub' | 'ride' | 'exhausted' | 'cutscene'
+  | 'fall' | 'ladder' | 'sit' | 'lean' | 'sleep' | 'airlock'
+export type Medium = 'water' | 'air'
+export type RoomId =
+  | 'sas' | 'coursive-sud' | 'refectoire' | 'rebord' | 'cuisine' | 'marche'
+  | 'passerelle-1' | 'passerelle-2' | 'passerelle-3' | 'salle-des-cartes' | 'cabine'
+  | 'cabines-voisins' | 'echelle-toit'
+
+export interface System {
+  readonly id: SystemId
+  init(ctx: GameContext): void | Promise<void>
+  update(dt: number, ctx: GameContext): void
+  lateUpdate?(dt: number, ctx: GameContext): void
+  dispose(): void
+}
+
+export interface GameContext {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: THREE.WebGLRenderer
+  canvas: HTMLCanvasElement
+  uiRoot: HTMLElement
+  physics: PhysicsWorld
+  input: Input
+  bus: EventBus
+  state: GameState
+  save: SaveStore
+  quality: QualitySettings
+  services: Services
+  clock: { elapsed: number; frame: number; paused: boolean }
+  rng(key: string): () => number
+}
+
+export interface Services {
+  render?: RenderService
+  world?: WorldService
+  flora?: FloraService
+  drift?: DriftService
+  fauna?: FaunaService
+  hero?: HeroService
+  gameplay?: GameplayService
+  audio?: AudioService
+  debug: DebugRegistry
+}
+
+export type ColliderKind =
+  | 'terrain' | 'rock' | 'hull' | 'window' | 'kelp' | 'coral' | 'sonde' | 'shrine' | 'prop' | 'trigger' | 'fauna'
+  | 'interior' | 'stair' | 'ladder' | 'door' | 'seat'
+export interface ColliderTag { kind: ColliderKind; climbable: boolean; ownerId?: string }
+export interface RayHit { point: Vec3; normal: Vec3; distance: number; tag?: ColliderTag; handle: number }
+
+export interface PhysicsWorld {
+  rapier: typeof RAPIER
+  world: RAPIER.World
+  tag(collider: RAPIER.Collider, tag: ColliderTag): void
+  untag(collider: RAPIER.Collider): void
+  tagOf(handle: number): ColliderTag | undefined
+  raycast(origin: Vec3, dir: Vec3, maxDist: number, opts?: { excludeKinds?: ColliderKind[] }): RayHit | null
+  // Membership bits; Rapier collision groups are (membership << 16) | filter, see interactionGroups().
+  groups: { TERRAIN: number; HERO: number; FAUNA: number; TRIGGER: number }
+}
+
+export type ButtonAction =
+  | 'up' | 'down' | 'sprint' | 'interact' | 'scrub' | 'map' | 'inventory' | 'pause' | 'whistle' | 'recenter'
+export interface Input {
+  move: { x: number; y: number }
+  look: { x: number; y: number }
+  down(a: ButtonAction): boolean
+  pressed(a: ButtonAction): boolean
+  released(a: ButtonAction): boolean
+  device: 'kbm' | 'gamepad'
+  pointerLocked: boolean
+  keyLabel(a: ButtonAction): string
+}
+
+export interface EnvState {
+  current: Vec3
+  visibility: number
+  bloom: number
+  jellyfish: number
+  rain: number
+}
+
+export interface GameEvents {
+  'game:ready': {}
+  'game:paused': { paused: boolean }
+  'time:hour': { hour: number; day: number }
+  'time:phase': { phase: DayPhase }
+  'act:changed': { act: Act }
+  'quest:step': { questId: string; step: string }
+  'quest:completed': { questId: string }
+  'hero:mode': { from: HeroMode; to: HeroMode }
+  'hero:landed': { speed: number; kind: ColliderKind }
+  'hero:kick': {}
+  'hero:breathEmpty': {}
+  'hero:breathFull': {}
+  'hero:stung': { by: 'meduse' }
+  'interact:hint': { id: string; label: string } | null
+  'interact': {
+    targetId: string
+    kind: 'npc' | 'sonde' | 'window' | 'item' | 'marmite' | 'shrine' | 'manta'
+      | 'door' | 'seat' | 'bed' | 'chart-table' | 'ladder' | 'stall' | 'airlock'
+  }
+  'hero:medium': { medium: Medium }
+  'hero:step': { surface: 'sable' | 'bois' | 'metal' | 'tapis'; wet: boolean }
+  'room:entered': { roomId: RoomId }
+  'room:left': { roomId: RoomId }
+  'airlock:cycle': { lockId: 'sas' | 'echelle-toit'; dir: 'in' | 'out'; phase: 'close' | 'pump' | 'open' | 'done' }
+  'door:changed': { doorId: string; open: boolean }
+  'sleep:done': { fromHour: number; toHour: number; day: number }
+  'scrub:progress': { windowId: string; coat: number }
+  'scrub:done': { windowId: string }
+  'sonde:activated': { sondeId: string; region: RegionId }
+  'shallow:entered': { id: string }
+  'shallow:completed': { id: string }
+  'collectible:found': { id: string }
+  'item:gained': { itemId: string; count: number }
+  'cook:done': { dishId: string }
+  'dialogue:start': { npcId: string; nodeId: string }
+  'dialogue:end': { npcId: string }
+  'weather:changed': { env: EnvState }
+  'chose:dive': { position: Vec3; phase: 'descend' | 'grab' | 'ascend' }
+  'whale:pass': { position: Vec3 }
+  'ceiling:ripple': { x: number; z: number; strength: number }
+  'world:chunkLoaded': { cx: number; cz: number; lod: 0 | 1 | 2 }
+  'world:chunkUnloaded': { cx: number; cz: number }
+  'ui:menu': { open: 'carte' | 'inventaire' | 'pause' | null }
+  'audio:cue': { cue: MusicCue }
+  'save:written': {}
+  'debug:pose': { name: string }
+}
+export interface EventBus {
+  on<K extends keyof GameEvents>(k: K, fn: (p: GameEvents[K]) => void): () => void
+  emit<K extends keyof GameEvents>(k: K, p: GameEvents[K]): void
+}
+
+export interface GameState {
+  version: 1
+  act: Act
+  quests: Record<string, string>
+  flags: Record<string, boolean>
+  time: { hours: number; day: number; scale: number }
+  env: EnvState
+  hero: {
+    position: Vec3; velocity: Vec3
+    // Compass bearing in radians: 0 = north (-z), PI/2 = east (+x). Forward = (sin yaw, 0, -cos yaw).
+    yaw: number
+    mode: HeroMode
+    breath: number; breathMax: number; exhausted: boolean
+    lestOn: boolean; lastSafe: Vec3
+    medium: Medium; room: RoomId | null; wetness: number
+    localPosition: Vec3 | null
+  }
+  drift: {
+    progress: number; position: Vec3; heading: number; velocity: Vec3; gate: string
+    doors: Record<string, boolean>
+  }
+  chart: { sondes: string[]; reperes: string[]; pins: { x: number; z: number; icon: string }[] }
+  inventory: { items: Record<string, number>; slots: number }
+  shallows: string[]
+  trouvailles: string[]
+  windows: Record<string, number>
+  settings: { quality: QualityLevel; invertY: boolean; sensitivity: number; volume: number; minimap: boolean }
+  debug: { cameraLocked: boolean }
+}
+
+export interface SaveStore {
+  readonly enabled: boolean
+  write(): boolean
+  load(): GameState | null
+  clear(): void
+}
+
+export interface CelMaterialParams {
+  color: number; shadowColor?: number; rim?: number; emissive?: number
+  map?: THREE.Texture; vertexColors?: boolean; caustics?: boolean; transparent?: boolean
+  side?: THREE.Side; onShader?: (shader: THREE.WebGLProgramParametersWithUniforms) => void
+  indoor?: boolean
+}
+export interface RenderService {
+  cel(params: CelMaterialParams): THREE.Material
+  patchWater(material: THREE.Material): void
+  readonly uniforms: {
+    uTime: { value: number }; uSunDir: { value: THREE.Vector3 }; uSunColor: { value: THREE.Color }
+    uCurrent: { value: THREE.Vector3 }; uHeroPos: { value: THREE.Vector3 }
+    uHazeDist: { value: number }; uHazeMax: { value: number }
+    uIndoor: { value: number }
+    uLamps: { value: THREE.Vector4[] }
+    uLampColors: { value: THREE.Color[] }
+  }
+  addRipple(x: number, z: number, strength: number): void
+  draw(ctx: GameContext): void
+  sunPhase(): DayPhase
+  stats(): { drawCalls: number; triangles: number; ms: number }
+}
+export interface WorldService {
+  heightAt(x: number, z: number): number
+  normalAt(x: number, z: number): Vec3
+  regionAt(x: number, z: number): RegionId
+  currentAt(p: Vec3): Vec3
+  isLoaded(cx: number, cz: number): boolean
+  safeSpawnNear(p: Vec3): Vec3
+}
+export interface FloraService {
+  climbableKelpNear(p: Vec3, r: number): { base: Vec3; height: number }[]
+  flatten(p: Vec3, r: number): void
+}
+export interface DriftService {
+  pose(): { position: Vec3; heading: number; velocity: Vec3 }
+  lockPosition(): Vec3
+  nearestWindow(p: Vec3, maxDist: number): { id: string; coat: number; position: Vec3; normal: Vec3 } | null
+  scrub(windowId: string, amount: number): number
+  npcPosition(npcId: string): Vec3 | null
+  playScene(id: 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie' | 'chose-vitre'): Promise<void>
+  mediumAt(p: Vec3): Medium
+  roomAt(p: Vec3): RoomId | null
+  toLocal(p: Vec3): Vec3
+  toWorld(p: Vec3): Vec3
+  roomSpawn(room: RoomId): { position: Vec3; yaw: number }
+  ladders(room: RoomId): { id: string; bottom: Vec3; top: Vec3; normal: Vec3 }[]
+  seat(id: string): { position: Vec3; yaw: number } | null
+  openDoor(doorId: string, open: boolean): void
+  cycleAirlock(lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void>
+  roomCeilingAt(p: Vec3): number | null
+}
+export interface FaunaService {
+  choseDive(target: Vec3, close: boolean): Promise<void>
+  spawnScripted(id: 'tortue-premiere' | 'raie-coincee' | 'baleine'): void
+  manta(): { position: Vec3; mount(): void; dismount(): void } | null
+  jellyfishNear(p: Vec3, r: number): number
+  attractSchool(p: Vec3): void
+}
+export interface HeroService {
+  teleport(p: Vec3, yaw?: number): void
+  setMode(m: HeroMode): void
+  setCameraPose(pose: CameraPose | null): void
+  headPosition(): Vec3
+  sit(seatId: string): void
+  lean(target: Vec3): void
+  stand(): void
+}
+export interface GameplayService {
+  breath: {
+    spend(cost: number): boolean
+    drain(ratePerSec: number, dt: number): boolean
+    canAct(): boolean
+  }
+  setAct(act: Act): void
+  giveItem(id: string, n?: number): void
+  hasItem(id: string): boolean
+  setWeather(env: Partial<EnvState>): void
+  sleepUntil(hour: number): Promise<void>
+  chartCanvas(): HTMLCanvasElement | null
+}
+export interface AudioService { cue(c: MusicCue): void; sfx(id: string, at?: Vec3): void; unlock(): Promise<void> }
+export type MusicCue = 'explore' | 'drift' | 'sonde' | 'shallow' | 'danger' | 'night' | 'wonder' | 'rain' | 'silence'
+
+export interface CameraPose { position: Vec3; target: Vec3; fov?: number }
+export interface DebugPose { camera: CameraPose; hero?: { position: Vec3; yaw: number }; hour?: number }
+export interface DebugRegistry {
+  registerPose(name: string, pose: DebugPose): void
+}
+
+export interface QualitySettings {
+  level: QualityLevel
+  pixelRatio: number; chunkRadius: number; lodRadius: number; grassDensity: number; fishCount: number
+  shadows: boolean; shadowMapSize: number; godRayPass: boolean; outline: boolean; painterly: boolean
+  onChange(fn: (q: QualitySettings) => void): () => void
+}
+
+export interface DebugApi {
+  state: GameState
+  ready: Promise<void>
+  teleport(x: number, y: number, z: number): void
+  setAct(n: Act): void
+  setTime(h: number): void
+  giveItem(id: string, n?: number): void
+  setWeather(env: Partial<EnvState>): void
+  setQuality(q: QualityLevel): void
+  pause(p: boolean): void
+  step(frames: number): Promise<void>
+  screenshotPose(name: string): Promise<string>
+  poses(): string[]
+  stats(): { fps: number; drawCalls: number; triangles: number }
+  enterRoom(room: RoomId): void
+  ctx: GameContext
+}
