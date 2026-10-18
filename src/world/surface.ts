@@ -63,7 +63,10 @@ export function surfaceColor(x: number, z: number, h: number, ny: number, out: T
   return out
 }
 
-export function makeMaterial(ctx: GameContext, params: { color: number; vertexColors?: boolean; emissive?: number }): THREE.Material {
+export function makeMaterial(
+  ctx: GameContext,
+  params: { color: number; vertexColors?: boolean; emissive?: number; onShader?: (s: THREE.WebGLProgramParametersWithUniforms) => void },
+): THREE.Material {
   const render = ctx.services.render
   if (render) {
     return render.cel({
@@ -71,6 +74,7 @@ export function makeMaterial(ctx: GameContext, params: { color: number; vertexCo
       vertexColors: params.vertexColors ?? false,
       caustics: true,
       ...(params.emissive !== undefined ? { emissive: params.emissive } : {}),
+      ...(params.onShader ? { onShader: params.onShader } : {}),
     })
   }
   return new THREE.MeshLambertMaterial({

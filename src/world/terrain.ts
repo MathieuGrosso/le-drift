@@ -204,6 +204,15 @@ function edges(x: number, z: number, h: number): number {
   return h
 }
 
+// The Drift's yearly groove: its keel sits 45-55 m above this floor, out of reach of the longe.
+export const TRENCH = { floorY: -22, blancY: 4, flat: 125, reach: 260 } as const
+
+function trenchFloor(x: number, z: number, dr: number): number {
+  const base = mix(TRENCH.floorY, TRENCH.blancY, blancWeight(z))
+  const waves = 1.6 * Math.sin(x * 0.11 + z * 0.07 + 2 * fbm(x / 60, z / 60, 2, 131)) + 1.2 * fbm(x / 35, z / 35, 2, 133)
+  return base + waves + smoothstep(TRENCH.flat, TRENCH.reach - 20, dr) * 150
+}
+
 export function heightAt(x: number, z: number): number {
   let h = heightNoCamps(x, z)
   for (const c of CAMPS) {
@@ -211,7 +220,7 @@ export function heightAt(x: number, z: number): number {
     if (r < 30) h = mix(heightNoCamps(c.x, c.z), h, smoothstep(9, 30, r))
   }
   const dr = routeDistance(x, z)
-  if (dr < 190) h = smin(h, 30 + smoothstep(135, 180, dr) * 120, 6)
+  if (dr < TRENCH.reach) h = smin(h, trenchFloor(x, z, dr), 8)
   h = edges(x, z, h)
   return h > FLOOR_MAX_Y ? FLOOR_MAX_Y : h
 }
