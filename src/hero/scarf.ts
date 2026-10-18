@@ -22,14 +22,18 @@ interface TailDef {
   fwd: number
   drop: number
   phase: number
+  twist: number
 }
 
-const RING = 14
-const THICK = 0.017
+const RING = 20
+const STRIDE = RING + 1
+const THICK = 0.016
+const RIBS = 9
+const ROW = 0.012
 
 const TAILS: readonly TailDef[] = [
-  { n: 20, length: 0.98, width0: 0.07, width1: 0.078, side: 0.04, fwd: 0, drop: 0.0, phase: 0 },
-  { n: 9, length: 0.36, width0: 0.05, width1: 0.064, side: -0.06, fwd: 0.18, drop: 0.045, phase: 1.7 },
+  { n: 20, length: 0.92, width0: 0.062, width1: 0.076, side: -0.07, fwd: -0.01, drop: 0.05, phase: 0, twist: Math.PI },
+  { n: 8, length: 0.24, width0: 0.042, width1: 0.056, side: -0.075, fwd: 0.17, drop: 0.08, phase: 1.7, twist: -Math.PI * 0.45 },
 ]
 
 class Tail {
@@ -66,11 +70,12 @@ export class Scarf {
     let verts = 0
     for (const d of TAILS) {
       this.tails.push(new Tail(d, verts))
-      verts += d.n * RING
+      verts += d.n * STRIDE
     }
     this.geo = new THREE.BufferGeometry()
     this.pos = new Float32Array(verts * 3)
     const col = new Float32Array(verts * 3)
+    const mat = new Float32Array(verts * 4)
     const base = new THREE.Color(PALETTE.echarpe)
     const band = new THREE.Color(0xc9a54b)
     const tip = new THREE.Color(0xf2b27a)
@@ -81,21 +86,22 @@ export class Scarf {
       const long = n > 10
       for (let i = 0; i < n; i++) {
         const k = i / (n - 1)
-        for (let j = 0; j < RING; j++) {
+        for (let j = 0; j <= RING; j++) {
           c.copy(base)
           if (long && (Math.abs(k - 0.8) < 0.025 || Math.abs(k - 0.87) < 0.025)) c.copy(band)
           if (k > 0.94) c.lerp(tip, 0.55)
           const face = Math.abs(Math.cos((j / RING) * Math.PI * 2))
-          const rib = j % 2 === 0 ? 1.0 : 0.82
-          c.multiplyScalar(face > 0.92 ? 0.8 : rib * (i % 2 === 0 ? 1 : 0.95))
-          col.set([c.r, c.g, c.b], (tail.vertexOffset + i * RING + j) * 3)
+          c.multiplyScalar(face > 0.94 ? 0.82 : 1)
+          const vi = tail.vertexOffset + i * STRIDE + j
+          col.set([c.r, c.g, c.b], vi * 3)
+          mat.set([0, 1, (j / RING) * RIBS * 2, (i * tail.seg) / ROW], vi * 4)
         }
       }
       for (let i = 0; i < n - 1; i++) {
         for (let j = 0; j < RING; j++) {
-          const a = tail.vertexOffset + i * RING + j
-          const b = tail.vertexOffset + i * RING + ((j + 1) % RING)
-          idx.push(a, a + RING, b, b, a + RING, b + RING)
+          const a = tail.vertexOffset + i * STRIDE + j
+          const b = a + 1
+          idx.push(a, a + STRIDE, b, b, a + STRIDE, b + STRIDE)
         }
       }
     }
@@ -103,6 +109,7 @@ export class Scarf {
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage))
     this.geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(verts * 3), 3).setUsage(THREE.DynamicDrawUsage))
     this.geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    this.geo.setAttribute('aMat', new THREE.BufferAttribute(mat, 4))
     this.mesh = new THREE.Mesh(this.geo, material)
     this.mesh.name = 'hero-scarf'
     this.mesh.frustumCulled = false
@@ -181,12 +188,13 @@ export class Scarf {
       const along = i / (n - 1)
       if (s.inWater) {
         const drag = 2.4
-        const wave = Math.sin(s.t * 3.1 - i * 0.55 + phase)
-        const flutter = wave * (0.5 + i * 0.12)
+        const wave = Math.sin(s.t * 2.6 - i * 0.42 + phase)
+        const flutter = wave * (0.15 + along * 0.55)
+        const trail = 0.9 * along
         this.acc.set(
-          (s.flow.x - vx) * drag + s.right.x * flutter,
-          (s.flow.y - vy) * drag + 0.7 + Math.cos(s.t * 2.3 - i * 0.6 + phase) * 0.4,
-          (s.flow.z - vz) * drag + s.right.z * flutter,
+          (s.flow.x - vx) * drag + s.right.x * flutter + this.back.x * trail,
+          (s.flow.y - vy) * drag + 0.35 + Math.cos(s.t * 2.1 - i * 0.5 + phase) * (0.3 + along * 0.9),
+          (s.flow.z - vz) * drag + s.right.z * flutter + this.back.z * trail,
         )
       } else {
         const drag = 0.55 + heavy * 0.9
@@ -210,7 +218,7 @@ export class Scarf {
         p.z + vz * h * damp + this.acc.z * h * h,
       )
     }
-    const settle = this.tmp.copy(this.root).addScaledVector(this.back, seg * (tail.def.fwd > 0 ? -0.6 : 0.55))
+    const settle = this.tmp.copy(this.root).addScaledVector(this.back, seg * (tail.def.fwd > 0 ? -0.6 : 0.55)).addScaledVector(s.right, tail.def.fwd > 0 ? -seg * 0.35 : 0)
     settle.y -= seg * 0.8
     tail.p[1]!.lerp(settle, 0.18)
     for (let it = 0; it < 5; it++) {
@@ -269,29 +277,33 @@ export class Scarf {
         if (this.side.lengthSq() < 1e-6) this.side.set(1, 0, 0)
         this.side.normalize()
         const k = i / (n - 1)
-        const twist = Math.sin(s.t * 1.7 + i * 0.45 + phase) * 0.4 * k + Math.sin(i * 0.7 + phase) * 0.25 * k
+        const twist = Math.sin(s.t * 1.7 + i * 0.45 + phase) * 0.3 * k + tail.def.twist * THREE.MathUtils.smoothstep(k, 0.15, 0.6)
         this.side.applyAxisAngle(this.dir, twist)
         flat.crossVectors(this.side, this.dir).normalize()
         const w = (width0 + (width1 - width0) * k) * (i === 0 ? 0.6 : 1) * (1 + Math.sin(i * 1.3 + phase) * 0.1)
         const cup = Math.sin(i * 0.9 + phase * 2) * w * 0.35
-        const th = (i === n - 1 ? 0.25 : 1) * THICK * (i % 2 === 0 ? 1.12 : 0.9)
+        const th = (i === n - 1 ? 0.35 : i === 0 ? 1.3 : 1) * THICK * (1 + Math.sin(i * 2.1 + phase) * 0.08)
         const fringe = i === n - 1 ? 0.035 : 0
         const p = tail.p[i]!
-        for (let j = 0; j < RING; j++) {
+        for (let j = 0; j <= RING; j++) {
           const ang = (j / RING) * Math.PI * 2
-          const u = Math.cos(ang)
-          const v = Math.sin(ang)
+          const ca = Math.cos(ang)
+          const sa = Math.sin(ang)
+          const u = Math.sign(ca) * Math.abs(ca) ** 0.55
+          const v = Math.sign(sa) * Math.abs(sa) ** 0.55
           const along = fringe * (j % 2)
           const off = cup * (1 - u * u)
-          const o = (tail.vertexOffset + i * RING + j) * 3
+          const o = (tail.vertexOffset + i * STRIDE + j) * 3
           pos[o] = p.x + this.side.x * u * w + flat.x * (v * th + off) + this.dir.x * along
           pos[o + 1] = p.y + this.side.y * u * w + flat.y * (v * th + off) + this.dir.y * along
           pos[o + 2] = p.z + this.side.z * u * w + flat.z * (v * th + off) + this.dir.z * along
-          const nx = this.side.x * u * th + flat.x * v * w - this.side.x * u * cup * 0.6
-          const ny = this.side.y * u * th + flat.y * v * w - this.side.y * u * cup * 0.6
-          const nz = this.side.z * u * th + flat.z * v * w - this.side.z * u * cup * 0.6
+          const nu = Math.sign(ca) * Math.abs(ca) ** 1.45
+          const nv = Math.sign(sa) * Math.abs(sa) ** 1.45
+          const nx = this.side.x * nu * th + flat.x * nv * w - this.side.x * nu * cup * 0.6
+          const ny = this.side.y * nu * th + flat.y * nv * w - this.side.y * nu * cup * 0.6
+          const nz = this.side.z * nu * th + flat.z * nv * w - this.side.z * nu * cup * 0.6
           const l = Math.hypot(nx, ny, nz) || 1
-          nrm.setXYZ(tail.vertexOffset + i * RING + j, nx / l, ny / l, nz / l)
+          nrm.setXYZ(tail.vertexOffset + i * STRIDE + j, nx / l, ny / l, nz / l)
         }
       }
     }

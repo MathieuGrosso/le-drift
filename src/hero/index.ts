@@ -161,9 +161,14 @@ export function createHeroSystem(): System {
     const k = portrait ? 1 : 1 - Math.exp(-dt * 2)
     mats.key.value.lerp(keyWant, k)
     if (keyWant.w > 0) mats.key.value.set(keyWant.x, keyWant.y, keyWant.z, mats.key.value.w)
+    if (ctrl?.medium === 'air') fill = Math.max(fill, 0.07)
     const fv = mats.fill.value
-    const tmpF = v2.set(-0.9, 0.3, -0.6).normalize()
-    if (drift) tmpF.applyAxisAngle(THREE.Object3D.DEFAULT_UP, -drift.pose().heading)
+    const camObj = ctx.camera
+    const tmpF = v2.setFromMatrixColumn(camObj.matrixWorld, 0).multiplyScalar(0.6)
+    camObj.getWorldDirection(v).multiplyScalar(-0.75)
+    tmpF.add(v)
+    tmpF.y += 0.35
+    tmpF.normalize()
     fv.set(tmpF.x, tmpF.y, tmpF.z, fv.w + (fill - fv.w) * k)
     focusVeil(ctx)
   }

@@ -8,7 +8,9 @@ const VERT = /* glsl */ `
 varying vec3 vNormalW;
 varying vec3 vWorldPos;
 varying vec3 vColor;
+varying vec4 vMat;
 attribute vec3 color;
+attribute vec4 aMat;
 void main() {
   #include <skinbase_vertex>
   #include <begin_vertex>
@@ -16,6 +18,7 @@ void main() {
   #include <skinnormal_vertex>
   #include <skinning_vertex>
   vColor = color;
+  vMat = aMat;
   vec4 wp = modelMatrix * vec4(transformed, 1.0);
   vWorldPos = wp.xyz;
   vNormalW = normalize(mat3(modelMatrix) * objectNormal);
@@ -47,8 +50,20 @@ uniform vec4 uFill;
 varying vec3 vNormalW;
 varying vec3 vWorldPos;
 varying vec3 vColor;
+varying vec4 vMat;
 
 float band(float x, float e) { return smoothstep(e - 0.04, e + 0.04, x); }
+float bandW(float x, float e, float w) { return smoothstep(e - w, e + w, x); }
+
+float knit(vec2 k) {
+  float fw = max(fwidth(k.x), fwidth(k.y));
+  float x = fract(k.x) * 2.0 - 1.0;
+  float vv = fract(k.y + abs(x) * 0.6);
+  float loop = smoothstep(0.0, 0.3, vv) * smoothstep(1.0, 0.62, vv);
+  float valley = smoothstep(1.0, 0.72, abs(x));
+  float s = mix(0.74, 1.08, loop * valley);
+  return mix(s, 0.93, smoothstep(0.3, 0.75, fw));
+}
 
 void main() {
   if (uFade < 0.999) {
@@ -59,17 +74,24 @@ void main() {
   if (!gl_FrontFacing) n = -n;
   vec3 v = normalize(cameraPosition - vWorldPos);
   vec3 albedo = vColor * mix(1.0, 0.72, uWet);
+  if (vMat.y > 0.5) albedo *= knit(vMat.zw);
+  float skin = vMat.x;
+  float sw = mix(0.04, 0.3, skin);
+  float se = -0.12 * skin;
+  vec3 albedoSh = mix(albedo, albedo * vec3(0.70, 0.60, 1.11), skin);
 
   float ndl = dot(n, normalize(uSunDir));
-  float lit = 0.55 * band(ndl, 0.0) + 0.45 * band(ndl, 0.45);
+  float lit = 0.55 * bandW(ndl, se, sw) + 0.45 * bandW(ndl, 0.45, sw);
   vec3 sun = mix(vec3(1.0), uSunColor, 0.6);
-  vec3 outside = mix(albedo * mix(vec3(1.0), uShadow, 0.55) * 0.78, albedo * sun * 1.08, lit);
+  vec3 outside = mix(albedoSh * mix(vec3(1.0), uShadow, 0.55 * (1.0 - skin)) * 0.78, albedo * sun * 1.08, lit);
+  outside += albedo * vec3(0.3, 0.05, 0.02) * exp(-ndl * ndl * 14.0) * skin;
   outside += albedo * mix(uGround, uSky, n.y * 0.5 + 0.5) * 0.28;
   float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * (0.45 + 0.55 * max(ndl + 0.3, 0.0));
   outside += uSunColor * rim * 0.6;
 
   vec3 lamp = vec3(0.0);
   vec3 lampDir = vec3(0.0);
+  float sss = 0.0;
   for (int i = 0; i < 8; i++) {
     vec4 l = uLamps[i];
     if (l.w <= 0.0) continue;
@@ -77,17 +99,21 @@ void main() {
     float dist = length(dl);
     float att = clamp(1.0 - dist / l.w, 0.0, 1.0);
     float nl = dot(n, dl / max(dist, 1e-3));
-    float step1 = 0.5 * band(nl, 0.0) + 0.5 * band(nl, 0.5);
-    lamp += mix(vec3(1.0), uLampColors[i], 0.4) * att * att * (0.35 + 0.65 * step1);
+    float step1 = 0.5 * bandW(nl, se, sw) + 0.5 * bandW(nl, 0.5, sw);
+    lamp += mix(vec3(1.0), uLampColors[i], 0.4) * att * att * (mix(0.35, 0.18, skin) + mix(0.65, 0.82, skin) * step1);
+    sss += att * att * exp(-nl * nl * 14.0);
     lampDir += dl / max(dist, 1e-3) * att * att;
   }
   vec3 amb = mix(vec3(0.24, 0.23, 0.35), vec3(0.95, 0.9, 0.8), 0.35);
   float warmth = vColor.r - vColor.b;
   amb = mix(amb, amb * vec3(1.12, 0.92, 0.9), clamp(warmth * 2.0, 0.0, 1.0));
-  vec3 inside = albedo * amb + albedo * lamp;
+  vec3 inside = mix(albedoSh, albedo, 0.25) * amb + albedo * lamp;
   float kl = dot(n, uKey.xyz);
-  inside += albedo * uKeyColor * uKey.w * (0.5 * band(kl, 0.0) + 0.5 * band(kl, 0.4));
-  inside += albedo * vec3(1.0, 0.78, 0.55) * uFill.w * clamp(dot(n, uFill.xyz) * 0.6 + 0.4, 0.0, 1.0);
+  inside += albedo * uKeyColor * uKey.w * (0.5 * bandW(kl, se, sw) + 0.5 * bandW(kl, 0.4, sw));
+  sss += uKey.w * exp(-kl * kl * 14.0);
+  float fw = clamp(dot(n, uFill.xyz) * 0.5 + 0.5, 0.0, 1.0);
+  inside += albedo * vec3(1.0, 0.74, 0.5) * uFill.w * mix(fw * 0.6 + 0.4, fw * fw * 1.4, skin);
+  inside += albedo * vec3(0.32, 0.06, 0.03) * min(sss, 1.5) * skin;
   float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
   float lampSide = length(lampDir) > 1e-3 ? dot(n, normalize(lampDir)) * 0.5 + 0.5 : 0.5;
   vec3 coolRim = mix(vec3(0.62, 0.86, 0.88), uKeyColor, step(0.001, uKey.w));

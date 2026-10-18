@@ -20,7 +20,7 @@ const PARENT: Record<BoneName, BoneName | null> = {
 
 // Bind pose, local offsets. The model faces -z; its right hand is on +x.
 const OFFSET: Record<BoneName, [number, number, number]> = {
-  root: [0, 0, 0], hips: [0, 0.92, 0], spine: [0, 0.11, 0], chest: [0, 0.17, 0], neck: [0, 0.2, 0], head: [0, 0.07, 0],
+  root: [0, 0, 0], hips: [0, 0.92, 0], spine: [0, 0.11, 0], chest: [0, 0.17, 0], neck: [0, 0.2, 0], head: [0, 0.098, 0],
   upperArmL: [-0.185, 0.15, 0], foreArmL: [0, -0.27, 0], handL: [0, -0.24, 0],
   upperArmR: [0.185, 0.15, 0], foreArmR: [0, -0.27, 0], handR: [0, -0.24, 0],
   thighL: [-0.095, -0.05, 0], shinL: [0, -0.42, 0], footL: [0, -0.39, 0],
@@ -53,26 +53,50 @@ export interface HeroModel {
 }
 
 const tmpColor = new THREE.Color()
+const trimColor = new THREE.Color(0xc9a54b)
 type Tint = number | ((x: number, y: number, z: number, c: THREE.Color) => void)
+const NOSE = 0xc8846a
+const SKIN = new Set<number>([PALETTE.peau, PALETTE.joues, NOSE])
 
-function paint(g: THREE.BufferGeometry, hex: Tint): THREE.BufferGeometry {
+// aMat = (skin wrap, knit flag, knit u across ribs, knit v along rows), read by shading.ts.
+function paint(g: THREE.BufferGeometry, hex: Tint, skinFlag = typeof hex === 'number' && SKIN.has(hex)): THREE.BufferGeometry {
   const ng = g.index ? g.toNonIndexed() : g
   ng.deleteAttribute('uv')
   const pos = ng.getAttribute('position')
   const shade = ng.getAttribute('aShade')
+  const trim = ng.getAttribute('aTrim')
   if (typeof hex === 'number') tmpColor.setHex(hex)
   const n = pos.count
   const c = new Float32Array(n * 3)
   for (let i = 0; i < n; i++) {
     if (typeof hex !== 'number') hex(pos.getX(i), pos.getY(i), pos.getZ(i), tmpColor)
     const k = shade ? shade.getX(i) : 1
-    c[i * 3] = tmpColor.r * k
-    c[i * 3 + 1] = tmpColor.g * k
-    c[i * 3 + 2] = tmpColor.b * k
+    const t = trim ? trim.getX(i) : 0
+    c[i * 3] = (tmpColor.r + (trimColor.r - tmpColor.r) * t) * k
+    c[i * 3 + 1] = (tmpColor.g + (trimColor.g - tmpColor.g) * t) * k
+    c[i * 3 + 2] = (tmpColor.b + (trimColor.b - tmpColor.b) * t) * k
   }
   if (shade) ng.deleteAttribute('aShade')
+  if (trim) ng.deleteAttribute('aTrim')
   ng.setAttribute('color', new THREE.BufferAttribute(c, 3))
+  if (!ng.getAttribute('aMat')) {
+    const m = new Float32Array(n * 4)
+    if (skinFlag) for (let i = 0; i < n; i++) m[i * 4] = 1
+    ng.setAttribute('aMat', new THREE.BufferAttribute(m, 4))
+  }
   return ng
+}
+
+function knitUV(g: THREE.BufferGeometry, ribs: number, rows: number, swap = false): THREE.BufferGeometry {
+  const uv = g.getAttribute('uv')
+  const m = new Float32Array(uv.count * 4)
+  for (let i = 0; i < uv.count; i++) {
+    m[i * 4 + 1] = 1
+    m[i * 4 + 2] = (swap ? uv.getX(i) : uv.getY(i)) * ribs
+    m[i * 4 + 3] = (swap ? uv.getY(i) : uv.getX(i)) * rows
+  }
+  g.setAttribute('aMat', new THREE.BufferAttribute(m, 4))
+  return g
 }
 
 function taper(g: THREE.BufferGeometry, top: number, bottom: number, bulge = 0): THREE.BufferGeometry {
@@ -123,22 +147,44 @@ function lathe(profile: [number, number][], seg = 16): THREE.BufferGeometry {
 }
 
 function skirt(rTop: number, rBot: number, h: number, start: number, len: number, count: number, amp: number, seed: number): THREE.BufferGeometry {
-  const g = new THREE.CylinderGeometry(rTop, rBot, h, 44, 7, true, start, len)
+  const g = new THREE.CylinderGeometry(rTop, rBot, h, 48, 12, true, start, len)
   const pos = g.getAttribute('position')
   for (let i = 0; i < pos.count; i++) {
     const t = (h / 2 - pos.getY(i)) / h
     const a = Math.atan2(pos.getX(i), pos.getZ(i))
-    const k = 1 + 0.1 * t * t * t
+    const k = 1 + 0.2 * t * t * t
     pos.setX(i, pos.getX(i) * k)
     pos.setZ(i, pos.getZ(i) * k)
-    pos.setY(i, pos.getY(i) + Math.sin(a * 3 + seed * 5) * 0.012 * t * t)
+    pos.setY(i, pos.getY(i) + Math.sin(a * 3 + seed * 5) * 0.016 * t * t + Math.sin(a * count + seed) * 0.008 * t * t * t)
   }
   folds(g, count, amp, seed)
   const shade = g.getAttribute('aShade')
+  const trim = new Float32Array(pos.count)
   for (let i = 0; i < pos.count; i++) {
     const t = (h / 2 - pos.getY(i)) / h
-    if (t > 0.9) shade.setX(i, shade.getX(i) * 0.74)
-    else if (t > 0.84) shade.setX(i, shade.getX(i) * 1.12)
+    if (t > 0.93) shade.setX(i, shade.getX(i) * 0.78)
+    else if (t > 0.8) trim[i] = 0.55
+  }
+  g.setAttribute('aTrim', new THREE.BufferAttribute(trim, 1))
+  return g
+}
+
+function wrapRing(R: number, r: number, thin: number, seg: number, tub: number, seed: number): THREE.BufferGeometry {
+  const g = new THREE.TorusGeometry(R, r, tub, seg)
+  const pos = g.getAttribute('position')
+  const nrm = g.getAttribute('normal')
+  const uv = g.getAttribute('uv')
+  for (let i = 0; i < pos.count; i++) {
+    const u = uv.getX(i) * Math.PI * 2
+    const v = uv.getY(i) * Math.PI * 2
+    const lump = 1 + 0.07 * Math.sin(u * 3 + seed) + 0.04 * Math.sin(u * 7 + seed * 2)
+    const rad = R + r * thin * Math.cos(v) * lump
+    const zz = r * Math.sin(v) * lump + Math.sin(u * 2 + seed) * r * 0.18
+    pos.setXYZ(i, rad * Math.cos(u), rad * Math.sin(u), zz)
+    const nr = Math.cos(v) / thin
+    const nz = Math.sin(v)
+    const l = Math.hypot(nr, nz) || 1
+    nrm.setXYZ(i, (nr / l) * Math.cos(u), (nr / l) * Math.sin(u), nz / l)
   }
   return g
 }
@@ -188,13 +234,13 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   const parts: THREE.BufferGeometry[] = []
   const add = (
     g: THREE.BufferGeometry, color: Tint, bone: BoneName, at: [number, number, number],
-    opts?: { rot?: [number, number, number]; scale?: [number, number, number]; to?: BoneName; split?: (y: number) => number },
+    opts?: { rot?: [number, number, number]; scale?: [number, number, number]; to?: BoneName; split?: (y: number) => number; skin?: boolean },
   ) => {
     if (opts?.scale) g.scale(...opts.scale)
     if (opts?.rot) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...opts.rot)))
     const w = world[bone]
     g.translate(w.x + at[0], w.y + at[1], w.z + at[2])
-    parts.push(skin(paint(g, color), bi(bone), opts?.to ? bi(opts.to) : bi(bone), opts?.split))
+    parts.push(skin(paint(g, color, opts?.skin ?? (typeof color === 'number' && SKIN.has(color))), bi(bone), opts?.to ? bi(opts.to) : bi(bone), opts?.split))
   }
   const cap = (r: number, len: number, seg = 8) => new THREE.CapsuleGeometry(r, len, 3, seg)
   const limbSplit = (bone: BoneName, len: number) => {
@@ -217,7 +263,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   for (const sx of [-1, 1]) {
     add(new THREE.SphereGeometry(1, 12, 8), PALETTE.tunique, 'chest', [sx * 0.118, 0.135, 0.004], { scale: [0.075, 0.05, 0.085], rot: [0, 0, sx * 0.35] })
   }
-  add(skirt(0.168, 0.262, 0.36, 0, Math.PI * 2, 9, 0.085, 0.3), PALETTE.tunique, 'spine', [0, -0.11, 0], { scale: [1, 1, 0.84], to: 'hips', split: (y) => THREE.MathUtils.clamp((world.spine.y - y) / 0.3, 0, 0.6) })
+  add(skirt(0.168, 0.272, 0.36, 0, Math.PI * 2, 9, 0.085, 0.3), PALETTE.tunique, 'spine', [0, -0.11, 0], { scale: [1, 1, 0.84], to: 'hips', split: (y) => THREE.MathUtils.clamp((world.spine.y - y) / 0.3, 0, 0.6) })
   add(new THREE.BoxGeometry(0.065, 0.06, 0.012), PALETTE.cuir, 'chest', [0.06, -0.06, -0.118], { rot: [0.05, -0.35, 0.08] })
   add(new THREE.SphereGeometry(0.006, 6, 4), PALETTE.laiton, 'chest', [0.06, -0.04, -0.126])
   add(lathe([[0.158, -0.022], [0.163, 0], [0.158, 0.022]], 24), PALETTE.lest, 'hips', [0, 0.07, 0], { scale: [1.12, 1, 0.9] })
@@ -226,28 +272,68 @@ export function buildHero(mats: HeroMaterials): HeroModel {
     const pouch = new RoundedBoxGeometry(0.05, 0.055, 0.03, 2, 0.01)
     add(pouch, i % 2 ? 0x9a7650 : 0xa8845a, 'hips', [Math.sin(a) * 0.175, 0.045, Math.cos(a) * 0.145], { rot: [0.08, a, 0] })
   }
-  add(lathe([[0.04, -0.06], [0.037, 0.0], [0.038, 0.05], [0.044, 0.085], [0.001, 0.1]], 12), PALETTE.peau, 'neck', [0, 0, 0], { to: 'head', split: (y) => THREE.MathUtils.clamp((y - world.neck.y - 0.03) / 0.05, 0, 1) })
+  const shadowSkin = new THREE.Color(0x8a5a5a)
+  const peau = new THREE.Color(PALETTE.peau)
+  const joues = new THREE.Color(PALETTE.joues)
+  const nY = world.neck.y
+  add(lathe([[0.044, -0.06], [0.04, 0.0], [0.037, 0.05], [0.038, 0.095], [0.046, 0.12], [0.001, 0.135]], 14), (_x, y, _z, c) => {
+    c.copy(peau).lerp(shadowSkin, THREE.MathUtils.smoothstep(y - nY, 0.03, 0.11) * 0.55)
+  }, 'neck', [0, 0, 0], { to: 'head', split: (y) => THREE.MathUtils.clamp((y - world.neck.y - 0.05) / 0.05, 0, 1), skin: true })
 
-  const skull = new THREE.SphereGeometry(1, 28, 20)
+  const skull = new THREE.SphereGeometry(1, 40, 28)
+  skull.deleteAttribute('uv')
+  skull.deleteAttribute('normal')
   const sp = skull.getAttribute('position')
   for (let i = 0; i < sp.count; i++) {
-    const y = sp.getY(i)
-    const z = sp.getZ(i)
+    let x = sp.getX(i)
+    let y = sp.getY(i)
+    let z = sp.getZ(i)
+    const front = THREE.MathUtils.clamp((0.25 - z) / 1.1, 0, 1)
     if (y < 0) {
-      const k = 1 - 0.16 * y * y * (z < 0 ? 1 : 0.6)
-      sp.setX(i, sp.getX(i) * k)
-      sp.setZ(i, z * (1 - 0.05 * y * y))
+      x *= 1 - (0.1 + 0.2 * front) * y * y
+      z *= 1 - 0.05 * y * y
+      const lo = THREE.MathUtils.smoothstep(-y, 0.2, 1)
+      y -= 0.15 * front * lo
+      z -= 0.06 * front * lo
+      if (y < -0.15) {
+        const lim = 0.97 + 0.62 * (y + 0.15)
+        const ax = Math.abs(x)
+        if (ax > lim) x = Math.sign(x) * (lim + (ax - lim) * 0.25)
+      }
     }
+    const cx = Math.abs(x) - 0.55
+    const cy = y + 0.26
+    const ch = 1 + 0.04 * Math.exp(-(cx * cx + cy * cy) / 0.05) * front
+    sp.setXYZ(i, x * ch, y, z * ch)
   }
-  skull.computeVertexNormals()
-  add(skull, PALETTE.peau, 'head', HEAD_C, { scale: HEAD_R })
+  const skullW = mergeVertices(skull, 1e-4)
+  skullW.computeVertexNormals()
+  const hcW = world.head.clone().add(new THREE.Vector3(...HEAD_C))
+  add(skullW, (x, y, z, c) => {
+    const nx = (x - hcW.x) / HEAD_R[0]
+    const ny = (y - hcW.y) / HEAD_R[1]
+    const nz = (z - hcW.z) / HEAD_R[2]
+    const front = THREE.MathUtils.clamp((0.25 - nz) / 1.1, 0, 1)
+    c.copy(peau)
+    const bx = Math.abs(nx) - 0.5
+    const by = ny + 0.27
+    c.lerp(joues, Math.exp(-(bx * bx) / 0.035 - (by * by) / 0.018) * front * 0.8)
+    const ao = THREE.MathUtils.smoothstep(-ny, 0.55, 1.05) * (1 - front * 0.7)
+    c.lerp(shadowSkin, ao * 0.55)
+  }, 'head', HEAD_C, { scale: HEAD_R, skin: true })
   for (const sx of [-1, 1]) {
-    add(new THREE.SphereGeometry(0.03, 8, 6), PALETTE.peau, 'head', [sx * 0.145, HEAD_C[1] - 0.01, 0.0], { scale: [0.5, 1, 0.8] })
-    add(new THREE.SphereGeometry(0.024, 10, 6), PALETTE.joues, 'head', onFace(sx * 0.082, -0.042, -0.0035), { scale: [1, 0.62, 0.3], rot: [0, faceYaw(sx * 0.082), 0] })
-    add(cap(0.0058, 0.026, 4), PALETTE.cheveux, 'head', onFace(sx * 0.054, 0.045, 0.002), { rot: [0, faceYaw(sx * 0.054), Math.PI / 2 + sx * 0.18] })
+    const ex = sx * 0.147
+    const ey = HEAD_C[1] - 0.006
+    add(new THREE.SphereGeometry(1, 12, 8), PALETTE.peau, 'head', [ex, ey, 0.012], { scale: [0.011, 0.034, 0.024], rot: [0.1, sx * 0.3, 0] })
+    const rim = new THREE.TorusGeometry(0.023, 0.0068, 6, 16, Math.PI * 1.5)
+    rim.rotateY(Math.PI / 2)
+    rim.scale(1, 1.25, 0.95)
+    add(rim, PALETTE.peau, 'head', [ex + sx * 0.007, ey + 0.002, 0.012], { rot: [0.1, sx * 0.3, 0] })
+    add(new THREE.SphereGeometry(1, 8, 6), 0xa86a5a, 'head', [ex + sx * 0.008, ey - 0.002, 0.01], { scale: [0.004, 0.017, 0.011], rot: [0.1, sx * 0.3, 0], skin: true })
+    add(cap(0.0062, 0.028, 4), PALETTE.cheveux, 'head', onFace(sx * 0.054, 0.06, 0.002), { rot: [0, faceYaw(sx * 0.054), Math.PI / 2 + sx * 0.2] })
   }
-  add(new THREE.SphereGeometry(0.012, 8, 6), 0xc8846a, 'head', onFace(0, -0.028, 0.003), { scale: [1.1, 0.75, 0.9] })
-  add(new THREE.TorusGeometry(0.016, 0.0035, 4, 10, Math.PI * 0.62), PALETTE.levres, 'head', [0, HEAD_C[1] - 0.058, faceZ(0, -0.072) - 0.0015], { rot: [0.2, 0, -Math.PI / 2 - Math.PI * 0.31] })
+  add(new THREE.SphereGeometry(0.012, 10, 8), NOSE, 'head', onFace(0, -0.016, 0.004), { scale: [1.1, 0.8, 0.95] })
+  add(new THREE.TorusGeometry(0.016, 0.0035, 4, 10, Math.PI * 0.62), PALETTE.levres, 'head', [0, HEAD_C[1] - 0.05, faceZ(0, -0.062) - 0.0025], { rot: [0.25, 0, -Math.PI / 2 - Math.PI * 0.31] })
 
   const hair = band(PALETTE.cheveux, PALETTE.cheveuxReflet, headY + 0.075, headY + 0.15)
   add(new THREE.SphereGeometry(0.162, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hair, 'head', [0, HEAD_C[1] + 0.012, 0.012], { rot: [0.55, 0, 0], scale: [0.99, 1.0, 1.04] })
@@ -285,9 +371,9 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   clump(-26, 14, 0.14, 0.075, -0.1)
   clump(100, 30, 0.15, 0.065, -0.2)
   clump(-100, 30, 0.15, 0.065, 0.2)
-  clump(150, 44, 0.1, 0.058, -0.35)
-  clump(182, 46, 0.095, 0.062, -0.25)
-  clump(212, 42, 0.09, 0.055, -0.15)
+  clump(150, 46, 0.082, 0.058, -0.35)
+  clump(182, 48, 0.078, 0.062, -0.25)
+  clump(212, 44, 0.074, 0.055, -0.15)
   clump(0, -2, 0.09, 0.06)
   clump(32, -4, 0.08, 0.052, 0.2)
   clump(-32, -4, 0.08, 0.052, -0.2)
@@ -317,21 +403,23 @@ export function buildHero(mats: HeroMaterials): HeroModel {
     const fa = `foreArm${s}` as BoneName
     const ha = `hand${s}` as BoneName
     add(folds(lathe([[0.072, -0.13], [0.045, -0.122], [0.066, -0.118], [0.061, -0.08], [0.066, -0.035], [0.068, 0.0], [0.058, 0.035], [0.035, 0.055], [0.001, 0.062]], 16), 6, 0.08, sx), PALETTE.tunique, ua, [sx * 0.004, 0, 0], { rot: [0, 0, sx * 0.08] })
-    add(lathe([[0.001, -0.3], [0.027, -0.296], [0.034, -0.27], [0.036, -0.21], [0.04, -0.14], [0.043, -0.08], [0.042, -0.02], [0.001, 0.0]], 12), PALETTE.peau, ua, [0, 0, 0], { to: fa, split: limbSplit(ua, 0.27) })
-    add(lathe([[0.001, -0.25], [0.026, -0.245], [0.029, -0.215], [0.036, -0.15], [0.04, -0.08], [0.037, -0.03], [0.031, 0.0], [0.001, 0.025]], 12), PALETTE.combi, fa, [0, 0, 0], { to: ha, split: limbSplit(fa, 0.24) })
-    add(lathe([[0.032, -0.232], [0.035, -0.222], [0.036, -0.2], [0.034, -0.19]], 12), PALETTE.cuir, fa, [0, 0, 0])
-    add(new THREE.SphereGeometry(1, 12, 9), PALETTE.peau, ha, [sx * 0.002, -0.048, 0], { scale: [0.022, 0.046, 0.04] })
-    const fingers: [number, number][] = [[-0.024, 0.031], [-0.008, 0.036], [0.008, 0.034], [0.023, 0.027]]
-    for (const [fz, fl] of fingers) {
-      const curl = -sx * 0.5
-      const dir = new THREE.Vector3(Math.sin(curl), -Math.cos(curl), 0)
-      add(cap(0.0105, fl - 0.021, 6), PALETTE.peau, ha, [sx * 0.003 + dir.x * fl * 0.5, -0.084 + dir.y * fl * 0.5, fz], { rot: [0, 0, curl] })
+    add(lathe([[0.001, -0.3], [0.027, -0.294], [0.03, -0.27], [0.032, -0.22], [0.035, -0.16], [0.038, -0.1], [0.038, -0.04], [0.001, 0.0]], 16), PALETTE.peau, ua, [0, 0, 0], { to: fa, split: limbSplit(ua, 0.27), rot: [0, 0, sx * 0.03] })
+    add(lathe([[0.001, -0.25], [0.021, -0.246], [0.023, -0.225], [0.028, -0.18], [0.036, -0.12], [0.042, -0.06], [0.04, -0.02], [0.033, 0.0], [0.001, 0.025]], 16), PALETTE.combi, fa, [0, 0, 0.002], { to: ha, split: limbSplit(fa, 0.24), scale: [0.92, 1, 1.05] })
+    add(folds(lathe([[0.027, -0.236], [0.031, -0.226], [0.032, -0.2], [0.029, -0.19]], 14), 4, 0.06, sx), PALETTE.cuir, fa, [0, 0, 0.002])
+    const mitten = lathe([[0.019, 0.004], [0.024, -0.012], [0.029, -0.034], [0.031, -0.056], [0.029, -0.072], [0.022, -0.086], [0.012, -0.095], [0.001, -0.098]], 14)
+    const mp = mitten.getAttribute('position')
+    for (let i = 0; i < mp.count; i++) {
+      const t = THREE.MathUtils.clamp(-mp.getY(i) / 0.098, 0, 1)
+      mp.setX(i, mp.getX(i) * (0.62 - 0.06 * t) - sx * t * t * 0.016)
+      mp.setZ(i, mp.getZ(i) * (0.95 + 0.12 * Math.sin(t * Math.PI)))
     }
-    const thumb = new THREE.Vector3(-sx * 0.45, -0.6, -0.65).normalize()
-    const tq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), thumb)
-    const tg = cap(0.012, 0.022, 6)
-    tg.applyQuaternion(tq)
-    add(tg, PALETTE.peau, ha, [-sx * 0.006 + thumb.x * 0.018, -0.03 + thumb.y * 0.018, -0.03 + thumb.z * 0.018])
+    mitten.computeVertexNormals()
+    add(mitten, PALETTE.peau, ha, [sx * 0.002, -0.004, 0], { rot: [0.06, 0, 0] })
+    const thumb = new THREE.Vector3(-sx * 0.3, -0.62, -0.72).normalize()
+    const tg = cap(0.0115, 0.026, 8)
+    tg.translate(0, 0.013, 0)
+    tg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), thumb))
+    add(tg, PALETTE.peau, ha, [-sx * 0.004, -0.024, -0.016])
     const th = `thigh${s}` as BoneName
     const sh = `shin${s}` as BoneName
     const ft = `foot${s}` as BoneName
@@ -347,22 +435,52 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   }
   for (const s of ['L', 'R'] as const) {
     const sx = s === 'L' ? -1 : 1
-    const panel = skirt(0.212, 0.262, 0.18, Math.PI - sx * 0.42 - 0.58, 1.16, 7, 0.06, sx)
+    const panel = skirt(0.214, 0.272, 0.18, Math.PI - sx * 0.42 - 0.58, 1.16, 7, 0.06, sx)
     add(panel, PALETTE.tunique, `thigh${s}` as BoneName, [-sx * 0.095, -0.1, 0], { scale: [1, 1, 0.84], to: 'hips', split: () => 0.45 })
   }
-  add(skirt(0.215, 0.262, 0.17, -1.15, 2.3, 7, 0.07, 0.7), PALETTE.tunique, 'hips', [0, -0.15, 0], { scale: [1, 1, 0.84] })
-  const nc = world.neck
-  const knit = (base: number, ribs: number): Tint => {
-    const a = new THREE.Color(base)
-    return (x, y, z, c) => {
-      const ang = Math.atan2(x - nc.x, z - nc.z)
-      c.copy(a).multiplyScalar(Math.sin(ang * ribs) > 0 ? 1 : 0.84)
-      if (y < nc.y - 0.035) c.multiplyScalar(0.88)
+  add(skirt(0.216, 0.272, 0.17, -1.15, 2.3, 7, 0.07, 0.7), PALETTE.tunique, 'hips', [0, -0.15, 0], { scale: [1, 1, 0.84] })
+  const scarfTint = (lo: number): Tint => {
+    const a = new THREE.Color(PALETTE.echarpe)
+    const sh = new THREE.Color(0xa8443a)
+    const y0 = world.neck.y
+    return (_x, y, _z, c) => {
+      c.copy(a).lerp(sh, THREE.MathUtils.smoothstep(y0 + lo - y, 0, 0.05) * 0.45)
     }
   }
-  add(new THREE.TorusGeometry(0.09, 0.036, 10, 28), knit(PALETTE.echarpe, 22), 'neck', [0, -0.03, 0.006], { rot: [Math.PI / 2 + 0.12, 0, 0.06], scale: [1.16, 1, 1] })
-  add(new THREE.TorusGeometry(0.084, 0.03, 9, 26), knit(PALETTE.echarpe, 22), 'neck', [0.004, 0.012, 0.012], { rot: [Math.PI / 2 - 0.1, 0, -0.08], scale: [1.1, 1, 1] })
-  add(new THREE.SphereGeometry(0.044, 12, 9), knit(PALETTE.echarpe, 9), 'neck', [-0.055, -0.035, -0.085], { scale: [1.15, 0.95, 0.85] })
+  add(knitUV(wrapRing(0.088, 0.04, 0.62, 30, 14, 0), 16, 50), scarfTint(-0.04), 'neck', [0, -0.03, 0.006], { rot: [Math.PI / 2 + 0.12, 0, 0.06], scale: [1.17, 1, 1] })
+  add(knitUV(wrapRing(0.083, 0.033, 0.6, 28, 12, 1.7), 14, 46), scarfTint(-0.01), 'neck', [0.004, 0.014, 0.012], { rot: [Math.PI / 2 - 0.1, 0, -0.08], scale: [1.1, 1, 1] })
+  const knot = new THREE.SphereGeometry(0.04, 16, 12)
+  const kp = knot.getAttribute('position')
+  for (let i = 0; i < kp.count; i++) {
+    const x = kp.getX(i)
+    const y = kp.getY(i)
+    const z = kp.getZ(i)
+    const pinch = 1 - 0.28 * Math.exp(-(y * y) / 0.00012) + 0.06 * Math.sin(Math.atan2(x, z) * 3 + y * 60)
+    kp.setXYZ(i, x * pinch, y * (1 + 0.12 * Math.sign(y)), z * pinch)
+  }
+  knot.computeVertexNormals()
+  add(knitUV(knot, 10, 9, true), scarfTint(-0.05), 'neck', [-0.068, -0.045, -0.08], { scale: [1.0, 0.95, 0.8], rot: [0.2, 0.7, 0.35] })
+  add(knitUV(wrapRing(0.034, 0.014, 0.75, 16, 8, 0.4), 8, 18), scarfTint(-0.05), 'neck', [-0.068, -0.045, -0.082], { rot: [0.3, 0.8, 1.25], scale: [0.9, 1.1, 1] })
+  const shoulder = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.065, -0.04, -0.078), new THREE.Vector3(-0.1, -0.004, -0.05), new THREE.Vector3(-0.114, 0.004, 0.012),
+    new THREE.Vector3(-0.097, -0.018, 0.07), new THREE.Vector3(-0.07, -0.05, 0.1),
+  ])
+  const over = new THREE.TubeGeometry(shoulder, 14, 0.027, 12, false)
+  const op = over.getAttribute('position')
+  const ouv = over.getAttribute('uv')
+  const fr = shoulder.computeFrenetFrames(14, false)
+  for (let i = 0; i < op.count; i++) {
+    const seg = Math.round(ouv.getX(i) * 14)
+    const c = shoulder.getPointAt(seg / 14)
+    const up = fr.normals[seg]!
+    const d = new THREE.Vector3(op.getX(i) - c.x, op.getY(i) - c.y, op.getZ(i) - c.z)
+    const along = d.dot(up)
+    d.addScaledVector(up, -along * 0.45)
+    op.setXYZ(i, c.x + d.x, c.y + d.y, c.z + d.z)
+  }
+  over.deleteAttribute('normal')
+  over.computeVertexNormals()
+  add(knitUV(over, 14, 24), scarfTint(-0.02), 'neck', [0, 0, 0])
   const geo = mergeGeometries(parts, false)
   if (!geo) throw new Error('hero geometry merge failed')
   geo.computeBoundingSphere()
@@ -397,13 +515,13 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   clip.position.set(0, 0.07, 0.17)
   bones.hips.add(clip)
 
-  const eyeY = HEAD_C[1] - 0.005
+  const eyeY = HEAD_C[1] + 0.016
   const eyeParts: THREE.BufferGeometry[] = []
   for (const sx of [-1, 1]) {
     const x = sx * 0.053
-    const z = faceZ(x, -0.005)
+    const z = faceZ(x, 0.016)
     const yaw = faceYaw(x)
-    const eye = new THREE.SphereGeometry(0.0225, 12, 10)
+    const eye = new THREE.SphereGeometry(0.0245, 14, 10)
     eye.scale(0.78, 1.22, 0.42)
     eye.rotateY(yaw)
     eye.translate(x, 0, z + 0.0035)
