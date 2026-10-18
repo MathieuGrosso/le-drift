@@ -80,7 +80,7 @@ export class TerrainStreamer {
 
   update(p: Vec3, indoor: boolean, budgetMs: number): void {
     const q = this.ctx.quality
-    const r0 = Math.max(1, q.chunkRadius - (indoor ? 1 : 0))
+    const r0 = indoor || q.level !== 'high' ? 1 : 2
     const r1 = Math.max(r0 + 1, q.lodRadius - (indoor ? 2 : 0))
     const jump = Math.hypot(p.x - this.center.x, p.z - this.center.z)
     const teleported = !(jump < 160)

@@ -60,8 +60,10 @@ export class SortieSpace {
   private readonly rings: InstancedRings
   private ropeMesh: THREE.Mesh | null = null
   private readonly ropeMaterial: THREE.Material
+  private readonly beadMaterial: THREE.Material
   private probeTimer = 0
   private dirty = true
+  version = 0
   private readonly lockRings = new Map<LockId, SortieRing>()
 
   constructor(private readonly ctx: GameContext) {
@@ -76,6 +78,7 @@ export class SortieSpace {
     this.rings = new InstancedRings(ctx, this.slots.length + 12)
     this.group.add(this.rings.group)
     this.ropeMaterial = makeMaterial(ctx, { color: 0xc9b089, onShader: ropeSway })
+    this.beadMaterial = makeMaterial(ctx, { color: 0xffe2a8, emissive: 0xff9e5e, onShader: ropeSway })
   }
 
   allRings(): readonly SortieRing[] {
@@ -186,8 +189,17 @@ export class SortieSpace {
     return best
   }
 
+  ringAnchors(): { kind: 'ring'; id: string; at: Vec3 }[] {
+    const out: { kind: 'ring'; id: string; at: Vec3 }[] = []
+    for (const r of [...this.allRings(), ...this.lockRings.values()]) {
+      out.push({ kind: 'ring', id: r.id, at: { x: r.local.x + r.normal.x * 0.4, y: r.local.y, z: r.local.z + r.normal.z * 0.4 } })
+    }
+    return out
+  }
+
   private rebuild(): void {
     this.dirty = false
+    this.version++
     const rings = this.allRings()
     this.rings.set([...rings, ...this.lockRings.values()])
     this.ropeMesh?.geometry.dispose()
@@ -221,7 +233,7 @@ export class SortieSpace {
     }
     if (pairs.length === 0) return
     const geo = ropeGeometry(pairs)
-    this.ropeMesh = new THREE.Mesh(geo, this.ropeMaterial)
+    this.ropeMesh = new THREE.Mesh(geo, [this.ropeMaterial, this.beadMaterial])
     this.ropeMesh.name = 'world-lignes-de-vie'
     this.group.add(this.ropeMesh)
   }
@@ -259,6 +271,7 @@ export class SortieSpace {
   dispose(): void {
     this.ropeMesh?.geometry.dispose()
     this.ropeMaterial.dispose()
+    this.beadMaterial.dispose()
     this.rings.dispose()
     this.group.removeFromParent()
   }
@@ -286,12 +299,15 @@ function ropeSway(shader: THREE.WebGLProgramParametersWithUniforms): void {
   )
 }
 
+const BEAD_STEP = 3.2
+const BEAD_R = 0.075
+
 function ropeGeometry(pairs: [SortieRing, SortieRing][]): THREE.BufferGeometry {
-  const vertsPerRope = (ROPE_SEG + 1) * ROPE_SIDES
-  const pos = new Float32Array(pairs.length * vertsPerRope * 3)
-  const nor = new Float32Array(pairs.length * vertsPerRope * 3)
-  const sag = new Float32Array(pairs.length * vertsPerRope)
-  const index: number[] = []
+  const pos: number[] = []
+  const nor: number[] = []
+  const sag: number[] = []
+  const rope: number[] = []
+  const beads: number[] = []
   const a = new THREE.Vector3()
   const b = new THREE.Vector3()
   const p = new THREE.Vector3()
@@ -300,13 +316,15 @@ function ropeGeometry(pairs: [SortieRing, SortieRing][]): THREE.BufferGeometry {
   const u = new THREE.Vector3()
   const v = new THREE.Vector3()
   const up = new THREE.Vector3(0, 1, 0)
-  let vi = 0
-  pairs.forEach(([ra, rb], ri) => {
+  const bead = new THREE.OctahedronGeometry(BEAD_R, 0)
+  const bp = bead.getAttribute('position') as THREE.BufferAttribute
+  for (const [ra, rb] of pairs) {
     a.set(ra.local.x + ra.normal.x * 0.22, ra.local.y, ra.local.z + ra.normal.z * 0.22)
     b.set(rb.local.x + rb.normal.x * 0.22, rb.local.y, rb.local.z + rb.normal.z * 0.22)
     const len = a.distanceTo(b)
     const drop = 0.4 + len * 0.035
     const at = (k: number, out: THREE.Vector3) => out.lerpVectors(a, b, k).addScaledVector(up, -drop * 4 * k * (1 - k))
+    const base = pos.length / 3
     for (let i = 0; i <= ROPE_SEG; i++) {
       const k = i / ROPE_SEG
       at(k, p)
@@ -319,36 +337,43 @@ function ropeGeometry(pairs: [SortieRing, SortieRing][]): THREE.BufferGeometry {
       v.crossVectors(u, t).normalize()
       for (let j = 0; j < ROPE_SIDES; j++) {
         const ang = (j / ROPE_SIDES) * Math.PI * 2
-        const cx = Math.cos(ang)
-        const cy = Math.sin(ang)
-        const nx = u.x * cx + v.x * cy
-        const ny = u.y * cx + v.y * cy
-        const nz = u.z * cx + v.z * cy
-        pos[vi * 3] = p.x + nx * 0.035
-        pos[vi * 3 + 1] = p.y + ny * 0.035
-        pos[vi * 3 + 2] = p.z + nz * 0.035
-        nor[vi * 3] = nx
-        nor[vi * 3 + 1] = ny
-        nor[vi * 3 + 2] = nz
-        sag[vi] = Math.sin(Math.PI * k)
-        vi++
+        const nx = u.x * Math.cos(ang) + v.x * Math.sin(ang)
+        const ny = u.y * Math.cos(ang) + v.y * Math.sin(ang)
+        const nz = u.z * Math.cos(ang) + v.z * Math.sin(ang)
+        pos.push(p.x + nx * 0.035, p.y + ny * 0.035, p.z + nz * 0.035)
+        nor.push(nx, ny, nz)
+        sag.push(Math.sin(Math.PI * k))
       }
     }
-    const base = ri * vertsPerRope
     for (let i = 0; i < ROPE_SEG; i++) {
       for (let j = 0; j < ROPE_SIDES; j++) {
         const j1 = (j + 1) % ROPE_SIDES
         const i0 = base + i * ROPE_SIDES
         const i1 = i0 + ROPE_SIDES
-        index.push(i0 + j, i1 + j, i0 + j1, i0 + j1, i1 + j, i1 + j1)
+        rope.push(i0 + j, i1 + j, i0 + j1, i0 + j1, i1 + j, i1 + j1)
       }
     }
-  })
+    const n = Math.max(1, Math.round(len / BEAD_STEP))
+    for (let i = 1; i < n; i++) {
+      const k = i / n
+      at(k, p)
+      const b0 = pos.length / 3
+      for (let w = 0; w < bp.count; w++) {
+        pos.push(p.x + bp.getX(w), p.y + bp.getY(w) - 0.05, p.z + bp.getZ(w))
+        nor.push(bp.getX(w) / BEAD_R, bp.getY(w) / BEAD_R, bp.getZ(w) / BEAD_R)
+        sag.push(Math.sin(Math.PI * k))
+        beads.push(b0 + w)
+      }
+    }
+  }
+  bead.dispose()
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
-  geo.setAttribute('aSag', new THREE.BufferAttribute(sag, 1))
-  geo.setIndex(index)
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
+  geo.setAttribute('aSag', new THREE.Float32BufferAttribute(sag, 1))
+  geo.setIndex([...rope, ...beads])
+  geo.addGroup(0, rope.length, 0)
+  geo.addGroup(rope.length, beads.length, 1)
   geo.computeBoundingSphere()
   return geo
 }

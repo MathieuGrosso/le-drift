@@ -12,8 +12,9 @@ export function farKelpDensity(x: number, z: number): number {
   if (Math.abs(x) > BLEU_EDGE - 20 || Math.abs(z) > BLEU_EDGE - 20) return 0
   const lam = 1 - smoothstep(160, 400, Math.hypot(x - REGIONS.laminaires.x, z - REGIONS.laminaires.z))
   const dr = routeDistance(x, z)
-  const band = smoothstep(150, 210, dr) * (1 - smoothstep(420, 520, dr))
-  const groves = smoothstep(0.08, 0.42, fbm(x / 170, z / 170, 3, 151))
+  const band = smoothstep(112, 150, dr) * (1 - smoothstep(420, 520, dr))
+  const rim = 1 - smoothstep(150, 260, dr)
+  const groves = smoothstep(0.08 - rim * 0.22, 0.42 - rim * 0.12, fbm(x / 170, z / 170, 3, 151))
   const vent = 1 - smoothstep(200, 320, Math.hypot(x - VENT.x, z - VENT.z))
   return Math.max(lam * 0.95, band * groves * 0.85) * (1 - blancWeight(z)) * (1 - vent)
 }
@@ -44,6 +45,11 @@ vDistK = length(toCam.xz);
 `
 
 const FRAGMENT_DECL = /* glsl */ `
+float wd_bayer(vec2 p) {
+  ivec2 q = ivec2(mod(p, 4.0));
+  float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[q.x + q.y * 4] + 0.5) / 16.0;
+}
 varying vec2 vK;
 varying float vSeedK;
 varying float vDistK;
@@ -51,8 +57,8 @@ varying float vDistK;
 
 const FRAGMENT_BODY = /* glsl */ `
 {
-  float near = smoothstep(115.0, 175.0, vDistK);
-  if (rd_hash(floor(gl_FragCoord.xy)) > near) discard;
+  float near = smoothstep(140.0, 172.0, vDistK);
+  if (wd_bayer(gl_FragCoord.xy) > near) discard;
   float cover = 0.0;
   float t = 0.0;
   for (int k = 0; k < 3; k++) {

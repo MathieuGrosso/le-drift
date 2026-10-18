@@ -9,6 +9,8 @@ import { driftShadeShader, updateDriftShade } from './shade'
 import { clampSwimLocal, SortieSpace, SWIM_LIMITS, type SortieRing, type SwimLimits } from './sortie'
 import { makeMaterial } from './surface'
 import { heightAt, normalAt, regionAt, TRENCH } from './terrain'
+import { Wake } from './wake'
+import { Wrecks } from './wrecks'
 
 export type { SortieRing, SwimLimits } from './sortie'
 
@@ -18,12 +20,14 @@ export interface WorldSortieService extends WorldService {
   swimLimits(): SwimLimits
   clampSwimLocal(local: Vec3, out?: Vec3): Vec3
   seaVisible(): boolean
+  ringAnchors(): { kind: 'ring'; id: string; at: Vec3 }[]
 }
 
 const STREAM_BUDGET_MS = 4
 
 type GlassAware = { glassPortalsVisible?: () => number }
 type FactoryRegistry = { registerFactory?: (name: string, f: (ctx: GameContext) => DebugPose) => void }
+type AnchorSink = { setAnchors?: (source: string, anchors: { kind: 'ring'; id: string; at: Vec3 }[] | null) => void }
 
 function seaVisible(ctx: GameContext): boolean {
   if (ctx.state.mode === 'sortie') return true
@@ -46,6 +50,13 @@ function registerPoses(ctx: GameContext): void {
   reg.registerFactory?.('sous-la-quille', (c) => local(c, { x: 30, y: -30, z: 60 }, { x: -10, y: TRENCH.floorY - 58, z: -40 }, 10, 62))
   reg.registerFactory?.('laminaires-lointaines', (c) => local(c, { x: -150, y: 4, z: 20 }, { x: -420, y: -12, z: 60 }, 9.5, 55))
   reg.registerFactory?.('anneaux', (c) => local(c, { x: 26, y: 7, z: 100 }, { x: 6, y: 3, z: 78 }, 7.5, 55))
+  reg.registerFactory?.('sillage', (c) => local(c, { x: 14, y: -6, z: 128 }, { x: 0, y: -16, z: 84 }, 8, 60))
+  reg.registerFactory?.('nuit-bio', (c) => ({ ...local(c, { x: 20, y: -30, z: 40 }, { x: -30, y: TRENCH.floorY - 55, z: -60 }, 22.5, 62), hour: 22.5 }))
+  ctx.services.debug.registerPose('epaves', {
+    hour: 11,
+    place: 'sortie',
+    camera: { position: { x: 436, y: 4, z: -296 }, target: { x: 405, y: -20, z: -323 }, fov: 60 },
+  })
 }
 
 export function createWorldSystem(): System {
@@ -54,6 +65,9 @@ export function createWorldSystem(): System {
   let kelp: FarKelp | null = null
   let debris: RouteDebris | null = null
   let sortie: SortieSpace | null = null
+  let wake: Wake | null = null
+  let wrecks: Wrecks | null = null
+  let anchorsSent = -1
   let material: THREE.Material | null = null
   let ctxRef: GameContext | null = null
   const backdrop = new THREE.Group()
@@ -71,6 +85,7 @@ export function createWorldSystem(): System {
     swimLimits: () => SWIM_LIMITS,
     clampSwimLocal: (l, out) => clampSwimLocal(l, out),
     seaVisible: () => (ctxRef ? seaVisible(ctxRef) : true),
+    ringAnchors: () => sortie?.ringAnchors() ?? [],
   }
 
   return {
@@ -82,7 +97,9 @@ export function createWorldSystem(): System {
       streamer = new TerrainStreamer(ctx, material)
       landmarks = new Landmarks(ctx)
       debris = new RouteDebris(ctx)
-      backdrop.add(streamer.group, landmarks.group, debris.group)
+      wrecks = new Wrecks(ctx)
+      wake = new Wake(ctx)
+      backdrop.add(streamer.group, landmarks.group, debris.group, wrecks.group, wake.mesh)
       if (ctx.services.render) {
         kelp = new FarKelp(ctx)
         backdrop.add(kelp.mesh)
@@ -93,6 +110,7 @@ export function createWorldSystem(): System {
       offs.push(ctx.quality.onChange((q) => {
         streamer?.rebuildForQuality()
         kelp?.setQuality(q.level)
+        wake?.setQuality(q.level)
       }))
       offs.push(ctx.bus.on('district:streamed', () => sortie?.invalidate()))
       offs.push(ctx.bus.on('sortie:start', ({ lockId }) => {
@@ -111,6 +129,12 @@ export function createWorldSystem(): System {
       landmarks?.update(ctx.clock.elapsed)
       sortie?.update(dt, outside)
       if (sortie) sortie.group.visible = visible
+      wake?.update(ctx.state)
+      const sink = ctx.services.hero as unknown as AnchorSink | undefined
+      if (sortie && sink?.setAnchors && anchorsSent !== sortie.version) {
+        anchorsSent = sortie.version
+        sink.setAnchors('world-anneaux', sortie.ringAnchors())
+      }
     },
     dispose() {
       for (const o of offs.splice(0)) o()
@@ -119,6 +143,8 @@ export function createWorldSystem(): System {
       kelp?.dispose()
       debris?.dispose()
       sortie?.dispose()
+      wake?.dispose()
+      wrecks?.dispose()
       material?.dispose()
       backdrop.removeFromParent()
       if (ctxRef?.services.world === service) delete ctxRef.services.world
@@ -127,6 +153,8 @@ export function createWorldSystem(): System {
       kelp = null
       debris = null
       sortie = null
+      wake = null
+      wrecks = null
       ctxRef = null
     },
   }
