@@ -8,9 +8,28 @@ export type RegionId = 'prairie' | 'laminaires' | 'pilier' | 'cheminee' | 'coque
 export type DayPhase = 'aube' | 'jour' | 'crepuscule' | 'nuit'
 export type QualityLevel = 'low' | 'medium' | 'high'
 export type HeroMode =
-  | 'idle' | 'walk' | 'swim' | 'sink' | 'climb' | 'glide' | 'scrub' | 'ride' | 'exhausted' | 'cutscene'
+  | 'idle' | 'walk' | 'swim' | 'climb' | 'scrub' | 'exhausted' | 'cutscene'
   | 'fall' | 'ladder' | 'sit' | 'lean' | 'sleep' | 'airlock'
+  // v1 seabed modes, never entered any more; kept so old readers still compile.
+  | 'sink' | 'glide' | 'ride'
 export type Medium = 'water' | 'air'
+// 'inside' = walking in the ship; 'sortie' = tethered swim outside the hull. Nobody walks the seabed.
+export type GameMode = 'inside' | 'sortie'
+export type DistrictId = 'ecluse' | 'marche' | 'serres' | 'nef' | 'machines' | 'ateliers' | 'scellees' | 'hauts' | 'proue'
+export type DeckId = 'cale' | 'machines' | 'bas' | 'principal' | 'haut' | 'toits' | 'domes'
+export type CellId = string
+export type DomeId =
+  | 'dome-ecluse' | 'dome-marche' | 'dome-serres' | 'dome-nef' | 'dome-machines' | 'dome-ateliers' | 'dome-scellees'
+export type LockId = 'sas' | 'echelle-toit' | `sas-${DistrictId}` | 'dome-proue'
+export type PlaceId = string
+export interface SortieState { lockId: LockId; ring: string; round: string[]; startedAt: number }
+export interface CameraEnv {
+  indoor: number
+  glassDist: number
+  airHaze: number
+  district: DistrictId | null
+  cell: CellId | null
+}
 export type RoomId =
   | 'sas' | 'coursive-sud' | 'refectoire' | 'rebord' | 'cuisine' | 'marche'
   | 'passerelle-1' | 'passerelle-2' | 'passerelle-3' | 'salle-des-cartes' | 'cabine'
@@ -56,6 +75,7 @@ export interface Services {
 export type ColliderKind =
   | 'terrain' | 'rock' | 'hull' | 'window' | 'kelp' | 'coral' | 'sonde' | 'shrine' | 'prop' | 'trigger' | 'fauna'
   | 'interior' | 'stair' | 'ladder' | 'door' | 'seat'
+  | 'floor' | 'wall' | 'net' | 'pipe' | 'rib' | 'shelf' | 'glass' | 'hull-outside'
 export interface ColliderTag { kind: ColliderKind; climbable: boolean; ownerId?: string }
 export interface RayHit { point: Vec3; normal: Vec3; distance: number; tag?: ColliderTag; handle: number }
 
@@ -115,7 +135,15 @@ export interface GameEvents {
   'hero:step': { surface: 'sable' | 'bois' | 'metal' | 'tapis'; wet: boolean }
   'room:entered': { roomId: RoomId }
   'room:left': { roomId: RoomId }
-  'airlock:cycle': { lockId: 'sas' | 'echelle-toit'; dir: 'in' | 'out'; phase: 'close' | 'pump' | 'open' | 'done' }
+  'cell:entered': { cellId: CellId; district: DistrictId }
+  'cell:left': { cellId: CellId }
+  'district:entered': { district: DistrictId; from: DistrictId | null }
+  'district:streamed': { loaded: readonly DistrictId[] }
+  'mode:changed': { from: GameMode; to: GameMode; lockId: LockId | null }
+  'sortie:start': { lockId: LockId; round: string[] }
+  'sortie:end': { lockId: LockId; scrubbed: number }
+  'tether:taut': { length: number }
+  'airlock:cycle': { lockId: LockId; dir: 'in' | 'out'; phase: 'close' | 'pump' | 'open' | 'done' }
   'door:changed': { doorId: string; open: boolean }
   'sleep:done': { fromHour: number; toHour: number; day: number }
   'scrub:progress': { windowId: string; coat: number }
@@ -145,7 +173,8 @@ export interface EventBus {
 }
 
 export interface GameState {
-  version: 1
+  version: 2
+  mode: GameMode
   act: Act
   quests: Record<string, string>
   flags: Record<string, boolean>
@@ -157,12 +186,16 @@ export interface GameState {
     yaw: number
     mode: HeroMode
     breath: number; breathMax: number; exhausted: boolean
-    lestOn: boolean; lastSafe: Vec3
+    lastSafe: Vec3
     medium: Medium; room: RoomId | null; wetness: number
+    // Drift-local position while inside; null during a sortie (world position is the truth outside).
     localPosition: Vec3 | null
+    district: DistrictId
+    sortie: SortieState | null
   }
   drift: {
     progress: number; position: Vec3; heading: number; velocity: Vec3; gate: string
+    altitude: number
     doors: Record<string, boolean>
   }
   chart: { sondes: string[]; reperes: string[]; pins: { x: number; z: number; icon: string }[] }
@@ -197,6 +230,8 @@ export interface RenderService {
     uIndoor: { value: number }
     uLamps: { value: THREE.Vector4[] }
     uLampColors: { value: THREE.Color[] }
+    uAirHaze: { value: number }
+    uGlassDist: { value: number }
   }
   addRipple(x: number, z: number, strength: number): void
   draw(ctx: GameContext): void
@@ -209,7 +244,6 @@ export interface WorldService {
   regionAt(x: number, z: number): RegionId
   currentAt(p: Vec3): Vec3
   isLoaded(cx: number, cz: number): boolean
-  safeSpawnNear(p: Vec3): Vec3
 }
 export interface FloraService {
   climbableKelpNear(p: Vec3, r: number): { base: Vec3; height: number }[]
@@ -218,6 +252,12 @@ export interface FloraService {
 export interface DriftService {
   pose(): { position: Vec3; heading: number; velocity: Vec3 }
   lockPosition(): Vec3
+  lockAnchor(lockId: LockId): Vec3 | null
+  districtAt(local: Vec3): DistrictId
+  cellAt(local: Vec3): CellId | null
+  cellSpawn(cell: CellId): { local: Vec3; yaw: number } | null
+  loadedDistricts(): readonly DistrictId[]
+  cameraEnv(): CameraEnv
   nearestWindow(p: Vec3, maxDist: number): { id: string; coat: number; position: Vec3; normal: Vec3 } | null
   scrub(windowId: string, amount: number): number
   npcPosition(npcId: string): Vec3 | null
@@ -242,6 +282,7 @@ export interface FaunaService {
 }
 export interface HeroService {
   teleport(p: Vec3, yaw?: number): void
+  teleportLocal(local: Vec3, yaw?: number): void
   setMode(m: HeroMode): void
   setCameraPose(pose: CameraPose | null): void
   headPosition(): Vec3
@@ -266,7 +307,7 @@ export interface AudioService { cue(c: MusicCue): void; sfx(id: string, at?: Vec
 export type MusicCue = 'explore' | 'drift' | 'sonde' | 'shallow' | 'danger' | 'night' | 'wonder' | 'rain' | 'silence'
 
 export interface CameraPose { position: Vec3; target: Vec3; fov?: number }
-export interface DebugPose { camera: CameraPose; hero?: { position: Vec3; yaw: number }; hour?: number }
+export interface DebugPose { camera: CameraPose; hero?: { position: Vec3; yaw: number }; place?: PlaceId; hour?: number }
 export interface DebugRegistry {
   registerPose(name: string, pose: DebugPose): void
 }
@@ -281,7 +322,7 @@ export interface QualitySettings {
 export interface DebugApi {
   state: GameState
   ready: Promise<void>
-  teleport(x: number, y: number, z: number): void
+  teleport(xOrPlace: number | PlaceId, y?: number, z?: number): void
   setAct(n: Act): void
   setTime(h: number): void
   giveItem(id: string, n?: number): void
@@ -293,5 +334,10 @@ export interface DebugApi {
   poses(): string[]
   stats(): { fps: number; drawCalls: number; triangles: number }
   enterRoom(room: RoomId): void
+  goto(place: PlaceId): boolean
+  places(): PlaceId[]
+  mode(): GameMode
+  startSortie(lockId?: LockId): Promise<void>
+  endSortie(): Promise<void>
   ctx: GameContext
 }

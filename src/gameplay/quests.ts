@@ -381,14 +381,6 @@ export function createQuests(gp: Gp): Quests {
               set('a2-raie', 'done')
             }),
         })
-      } else if (st().hero.mode !== 'ride') {
-        out.push({
-          id: 'raie', kind: 'manta', label: PROMPTS.chevaucher, key: 'interact', dist: d,
-          run: () => {
-            manta.mount()
-            gp.heroMode('ride')
-          },
-        })
       }
     },
     update(dt) {

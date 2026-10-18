@@ -1,7 +1,6 @@
-import { BLEU_EDGE } from '../core/layout'
 import type { RoomId } from '../core/types'
 import { dist3, type Candidate, type Gp, type Indoor } from './context'
-import { NPC_IDS, PROMPTS, ROOM_NAMES, TIPS, UI } from './text/fr'
+import { NPC_IDS, PROMPTS, ROOM_NAMES, TIPS } from './text/fr'
 
 const RAY_REACH = 2.4
 const LOCK_REACH = 7
@@ -17,7 +16,6 @@ const ROOF = /^(trappe|echelle-toit)/
 export function createIndoor(gp: Gp): Indoor {
   const ctx = gp.ctx
   const seenRooms = new Set<string>()
-  let bleuBusy = false
 
   ctx.bus.on('room:entered', ({ roomId }) => {
     const key = `${ctx.state.time.day}:${roomId}`
@@ -38,6 +36,20 @@ export function createIndoor(gp: Gp): Indoor {
     if (medium === 'water') h.wetness = 1
     ctx.bus.emit('hero:medium', { medium })
     if (room) ctx.bus.emit('room:entered', { roomId: room })
+  }
+
+  const reelIn = async () => {
+    const lockId = ctx.state.hero.sortie?.lockId === 'echelle-toit' ? 'echelle-toit' : 'sas'
+    gp.lock.count++
+    try {
+      await gp.cine.fade('black', 0.5)
+      const anchor = ctx.services.drift?.lockAnchor(lockId)
+      if (anchor) ctx.services.hero?.teleport(anchor)
+      await gp.cine.fade(null, 0.4)
+    } finally {
+      gp.lock.count--
+    }
+    await airlock('in', lockId)
   }
 
   const airlock = async (dir: 'in' | 'out', lockId: 'sas' | 'echelle-toit' = 'sas') => {
@@ -176,6 +188,7 @@ export function createIndoor(gp: Gp): Indoor {
         const lock = gp.driftLock()
         const d = dist3(gp.heroPos(), lock)
         if (d < LOCK_REACH) out.push({ id: 'sas', kind: 'airlock', label: PROMPTS.entrerSas, key: 'interact', dist: d, run: () => void airlock('in') })
+        else out.push({ id: 'longe', kind: 'airlock', label: PROMPTS.rentrer, key: 'interact', dist: 9, run: () => void reelIn() })
       } else {
         rayCandidate(out)
         roomFallbacks(out)
@@ -197,26 +210,7 @@ export function createIndoor(gp: Gp): Indoor {
       }
     },
     update() {
-      const h = ctx.state.hero
-      if (bleuBusy || h.medium !== 'water' || ctx.state.flags['ending']) return
-      if (h.position.z > BLEU_EDGE || h.position.x < -BLEU_EDGE) {
-        bleuBusy = true
-        void (async () => {
-          gp.lock.count++
-          try {
-            await gp.cine.fade('black', 0.5)
-            const safe = h.lastSafe
-            const p = ctx.services.world?.safeSpawnNear(safe) ?? safe
-            if (ctx.services.hero) ctx.services.hero.teleport(p)
-            else h.position = { ...p }
-            gp.hud.tip(UI.bleuRetour, 3)
-            await gp.cine.fade(null, 0.5)
-          } finally {
-            gp.lock.count--
-            bleuBusy = false
-          }
-        })()
-      }
+      /* the longe keeps Ilo near the hull: nothing to recover */
     },
   }
   return api

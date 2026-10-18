@@ -10,8 +10,6 @@ import { createShafts, type Shafts } from './shafts'
 import { computeSun, createSunState, phaseAt } from './sun'
 import { createInternalUniforms, createPublicUniforms, MAX_RIPPLES, shaderUniforms } from './uniforms'
 
-const VISTA_HAZE = HAZE_BY_VISIBILITY[999] ?? 620
-
 function hazeForVisibility(v: number): number {
   const keys = Object.keys(HAZE_BY_VISIBILITY).map(Number).sort((a, b) => a - b)
   if (v <= keys[0]!) return HAZE_BY_VISIBILITY[keys[0]!]!
@@ -43,7 +41,6 @@ export function createRenderSystem(): System {
   let dirLight: THREE.DirectionalLight | null = null
   let unsubs: (() => void)[] = []
   let rippleIdx = 0
-  let hazeOverride: number | null = null
   let hazeInit = false
   let lastMs = 0
   let phase: DayPhase = 'aube'
@@ -143,20 +140,25 @@ export function createRenderSystem(): System {
     int.rdPlafond.value.copy(BASE.plafond).lerp(BASE.aube, sun.warm * 0.12).lerp(BASE.nuit, night * 0.75)
     int.rdPlafond.value.multiplyScalar(1 - night * 0.45)
 
-    if (wasLocked && !s.debug.cameraLocked) hazeOverride = null
-    wasLocked = s.debug.cameraLocked
-    let target = hazeForVisibility(s.env.visibility) * (1 - (1 - BLOOM_HAZE_MUL) * plank)
-    if (hazeOverride !== null) target = hazeOverride
-    if (!hazeInit || hazeOverride !== null) {
+    const locked = s.debug.cameraLocked
+    const snap = locked !== wasLocked
+    wasLocked = locked
+    const target = hazeForVisibility(s.env.visibility) * (1 - (1 - BLOOM_HAZE_MUL) * plank)
+    if (!hazeInit || snap) {
       pub.uHazeDist.value = target
       hazeInit = true
     } else {
       pub.uHazeDist.value += (target - pub.uHazeDist.value) * (1 - Math.exp(-dt * 0.5))
     }
 
-    const inside = s.hero.medium === 'air' ? 1 : 0
-    pub.uIndoor.value += (inside - pub.uIndoor.value) * (1 - Math.exp(-dt * 3))
+    const camEnv = ctx.services.drift?.cameraEnv()
+    const inside = camEnv ? camEnv.indoor : s.mode === 'inside' && s.hero.medium === 'air' ? 1 : 0
+    const k = locked || snap ? 1 : 1 - Math.exp(-dt * 4)
+    pub.uIndoor.value += (inside - pub.uIndoor.value) * k
     if (Math.abs(inside - pub.uIndoor.value) < 1e-3) pub.uIndoor.value = inside
+    const airHaze = camEnv?.airHaze ?? 0
+    pub.uAirHaze.value += (airHaze - pub.uAirHaze.value) * k
+    pub.uGlassDist.value = camEnv?.glassDist ?? 4
 
     if (hemi && dirLight) {
       hemi.color.copy(int.rdPlafond.value)
@@ -199,10 +201,6 @@ export function createRenderSystem(): System {
         post?.setQuality(q)
       }))
       unsubs.push(ctx.bus.on('ceiling:ripple', ({ x, z, strength }) => addRipple(x, z, strength)))
-      unsubs.push(ctx.bus.on('debug:pose', ({ name }) => {
-        hazeOverride = name === 'vista' ? VISTA_HAZE : null
-      }))
-      if (new URLSearchParams(location.search).get('pose') === 'vista') hazeOverride = VISTA_HAZE
 
       ctx.services.render = service
       updateEnvironment(0, ctx)

@@ -1,7 +1,7 @@
 import type { Gp, Inventory } from './context'
 import { ITEMS, UI, trouvailleText } from './text/fr'
 
-export const KEY_ITEMS = ['frottoir', 'lest', 'voile', 'sifflet-raie', 'stylo', 'lanterne'] as const
+export const KEY_ITEMS = ['frottoir', 'longe', 'poulie', 'lest', 'voile', 'sifflet-raie', 'stylo', 'lanterne'] as const
 export const INGREDIENTS = [
   'poisson', 'algue-rouge', 'algue-doree', 'oursin', 'moule', 'crevette', 'sel-de-cheminee', 'plancton', 'mie-du-cuistot',
 ] as const

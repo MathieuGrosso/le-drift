@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type RAPIER from '@dimforge/rapier3d-compat'
-import { BLEU_EDGE, CEILING_Y, HERO_MAX_Y } from '../core/layout'
+import { HERO_MAX_Y, TETHER } from '../core/layout'
 import { INDOOR, MOVE, PHYSICS } from '../core/tuning'
 import type { ColliderKind, GameContext, HeroMode, Medium, RoomId, Vec3 } from '../core/types'
 import type { ClipId } from './anim'
@@ -97,7 +97,9 @@ export class HeroController {
   private yawRate = 0
   private lastSafeT = 0
   private stuckT = 0
-  private flattenT = 0
+  private tetherTaut = false
+  tetherAnchor = new THREE.Vector3()
+  tetherLength = 0
   private scrubEmitT = 0
   private scrubWindow: string | null = null
   private scrubDone = new Set<string>()
@@ -184,7 +186,7 @@ export class HeroController {
       this.wetness = 1
     }
     this.vel.set(0, 0, 0)
-    this.mode = this.medium === 'air' ? 'idle' : 'sink'
+    this.mode = this.medium === 'air' ? 'idle' : 'swim'
     this.syncLocal()
   }
 
@@ -199,7 +201,8 @@ export class HeroController {
     this.medium = drift ? drift.mediumAt(this.tmp.copy(this.pos).setY(this.pos.y + 1)) : 'water'
     if (this.medium === 'air') this.room = drift?.roomAt(this.pos) ?? this.ctx.state.hero.room
     if (this.medium === 'water') this.room = null
-    this.setMode(this.medium === 'air' ? 'idle' : 'sink')
+    this.setMode(this.medium === 'air' ? 'idle' : 'swim')
+    this.tetherTaut = false
     this.syncLocal()
     this.writeState()
   }
@@ -284,7 +287,6 @@ export class HeroController {
     if (this.mantleT >= 0) this.updateMantle(dt)
     else if (this.mode === 'airlock') this.updateAirlock(dt)
     else if (this.mode === 'cutscene') this.updateCutscene(dt)
-    else if (this.mode === 'ride') this.updateRide(dt, locked)
     else if (this.medium === 'air') this.updateAir(dt, wishLen, locked)
     else this.updateWater(dt, wishLen, locked)
 
@@ -375,10 +377,39 @@ export class HeroController {
     const b = this.breath()
     return b ? b.drain(rate, dt) : true
   }
-  private hasVoile(): boolean {
-    const g = this.ctx.services.gameplay
-    if (g) return g.hasItem('voile')
-    return (this.ctx.state.inventory.items['voile'] ?? 0) > 0
+  // The longe: outside, Ilo is held within TETHER.length of his lock's ring. It is also why the seabed is out of reach.
+  private applyTether(): void {
+    const st = this.ctx.state
+    if (st.mode !== 'sortie' || this.medium !== 'water') {
+      this.tetherTaut = false
+      return
+    }
+    const anchor = this.ctx.services.drift?.lockAnchor(st.hero.sortie?.lockId ?? 'sas')
+    if (!anchor) return
+    this.tetherAnchor.set(anchor.x, anchor.y, anchor.z)
+    const off = this.tmp.copy(this.pos).sub(this.tetherAnchor)
+    const d = off.length()
+    this.tetherLength = d
+    if (d <= TETHER.length) {
+      this.tetherTaut = false
+      return
+    }
+    off.multiplyScalar(1 / d)
+    this.pos.copy(this.tetherAnchor).addScaledVector(off, TETHER.length)
+    const radial = this.vel.dot(off)
+    if (radial > 0) this.vel.addScaledVector(off, -radial)
+    if (!this.tetherTaut) this.ctx.bus.emit('tether:taut', { length: TETHER.length })
+    this.tetherTaut = true
+  }
+
+  reelIn(dt: number): boolean {
+    if (this.ctx.state.mode !== 'sortie' || this.medium !== 'water') return false
+    const off = this.tmp.copy(this.tetherAnchor).sub(this.pos)
+    const d = off.length()
+    if (d < 1.5) return true
+    this.pos.addScaledVector(off, Math.min(1, (TETHER.reelSpeed * dt) / d))
+    this.vel.set(0, 0, 0)
+    return false
   }
 
   private updateWater(dt: number, wishLen: number, locked: boolean): void {
@@ -407,48 +438,21 @@ export class HeroController {
       this.updateClimb(dt, locked)
       return
     }
-    if (this.mode === 'glide') {
-      this.updateGlide(dt, locked)
-      return
-    }
-
     const sprint = !locked && input.down('sprint') && wishLen > 0.1 && !exhausted
-    if (this.grounded && this.vel.y <= 0.01) {
-      let speed = (sprint ? MOVE.run : MOVE.walk) * slow * wishLen
-      if (sprint && !this.drain(MOVE.sprintCostFloor, dt)) speed = MOVE.walk * slow * wishLen
-      out.sprinting = sprint
-      this.steerHorizontal(dt, speed, 9, 10)
-      this.vel.y = 0
-      if (!locked && input.pressed('up')) {
-        if (this.wallAhead() && this.canAct()) this.startClimb()
-        else this.kick()
-      } else if (wishLen > 0.3 && this.canAct() && this.wallAhead(0.55, true)) this.startClimb()
-      if (!this.isMode('climb')) {
-        this.setModeQuiet(exhausted ? 'exhausted' : wishLen > 0.05 ? 'walk' : 'idle')
-        this.moveKcc(dt, this.vel.y > 0 ? 0 : 0.3)
-      }
-    } else {
-      let speed = (sprint ? MOVE.swimSprint : MOVE.swim) * slow * wishLen
-      if (sprint && !this.drain(MOVE.sprintCostSwim, dt)) speed = MOVE.swim * slow * wishLen
-      out.sprinting = sprint
-      this.steerHorizontal(dt, speed, sprint ? 3.5 : 4.5, sprint ? 3 : 5)
-      const lest = ctx.state.hero.lestOn
-      let targetVy = lest ? -MOVE.sinkTerminal : 0.6
-      if (!locked && input.down('down')) targetVy = -MOVE.descend
-      const rate = this.vel.y > targetVy ? 1.6 : 3
-      this.vel.y += (targetVy - this.vel.y) * Math.min(1, rate * dt)
-      if (!locked && input.pressed('up')) {
-        const floor = this.floorDistance()
-        if (this.wallAhead(0.8) && this.canAct()) this.startClimb()
-        else if (this.hasVoile() && this.vel.y < -0.4 && this.kickT > 0.5 && floor > 3 && this.canAct()) this.openGlide()
-        else this.kick()
-      } else if (wishLen > 0.3 && this.canAct() && this.wallAhead(0.5, true)) this.startClimb()
-      if (!this.isMode('climb') && !this.isMode('glide')) {
-        const h = Math.hypot(this.vel.x, this.vel.z)
-        this.setModeQuiet(exhausted ? 'exhausted' : h > 0.6 || this.kickT < 0.6 ? 'swim' : 'sink')
-        out.pitch = THREE.MathUtils.clamp(this.vel.y / 4, -0.6, 0.7)
-        this.moveKcc(dt, 0)
-      }
+    let speed = (sprint ? MOVE.swimSprint : MOVE.swim) * slow * wishLen
+    if (sprint && !this.drain(MOVE.sprintCostSwim, dt)) speed = MOVE.swim * slow * wishLen
+    out.sprinting = sprint
+    this.steerHorizontal(dt, speed, sprint ? 3.5 : 4.5, sprint ? 3 : 5)
+    let targetVy = 0
+    if (!locked && input.down('up')) targetVy = MOVE.swimVertical
+    if (!locked && input.down('down')) targetVy = -MOVE.swimVertical
+    this.vel.y += (targetVy - this.vel.y) * Math.min(1, 3 * dt)
+    if (!locked && input.pressed('up') && this.wallAhead(0.8) && this.canAct()) this.startClimb()
+    else if (wishLen > 0.3 && this.canAct() && this.wallAhead(0.5, true)) this.startClimb()
+    if (!this.isMode('climb')) {
+      this.setModeQuiet(exhausted ? 'exhausted' : 'swim')
+      out.pitch = THREE.MathUtils.clamp(this.vel.y / 4, -0.6, 0.7)
+      this.moveKcc(dt, 0)
     }
     this.pickWaterClip(sprint)
   }
@@ -473,30 +477,13 @@ export class HeroController {
     }
   }
 
-  private kick(): void {
-    if (!this.spend(MOVE.kickCost)) return
-    this.vel.y = Math.max(this.vel.y, 0) + MOVE.kickImpulse
-    this.kickT = 0
-    this.grounded = false
-    this.ctx.bus.emit('hero:kick', {})
-  }
-
   private pickWaterClip(sprint: boolean): void {
     const out = this.out
     const h = Math.hypot(this.vel.x, this.vel.z)
     out.speed = h
     out.moving = Math.min(1, h / MOVE.swim)
     if (this.mode === 'exhausted') return this.clip('exhausted')
-    if (this.grounded) {
-      if (this.landT < 0.4) return this.clip('land', 0.08)
-      if (h > 0.25) {
-        const run = sprint && h > 3
-        this.phase += (h * this.dtLast) / (run ? 2.4 : 1.5)
-        this.stepCheck()
-        return this.clip(run ? 'run' : 'walk')
-      }
-      return this.clip(this.talking ? 'talk' : 'idle-floor', 0.35)
-    }
+    void sprint
     if (this.kickT < 0.55) return this.clip('kick', 0.08)
     if (h > 3.6) {
       this.phase += this.dtLast * 1.25
@@ -506,7 +493,7 @@ export class HeroController {
       this.phase += this.dtLast * (0.45 + h * 0.12)
       return this.clip('swim', 0.3)
     }
-    return this.clip(this.vel.y > -0.8 ? 'idle' : 'sink', 0.4)
+    return this.clip('idle', 0.4)
   }
 
   private dtLast = 1 / 60
@@ -515,15 +502,6 @@ export class HeroController {
     this.out.clip = id
     this.out.clipFade = fade
   }
-
-  private floorDistance(): number {
-    const hit = this.ctx.physics.raycast(this.pos, { x: 0, y: -1, z: 0 }, 40, { excludeKinds: [...IGNORE] })
-    const ground = this.ctx.services.world?.heightAt(this.pos.x, this.pos.z)
-    let d = hit ? hit.distance : 40
-    if (ground !== undefined) d = Math.min(d, this.pos.y - ground)
-    return d
-  }
-
 
   private wallAhead(reach = 0.7, moving = false): boolean {
     const dir = moving && this.wish.lengthSq() > 0.01 ? this.tmp2.copy(this.wish).normalize() : forward(this.yaw, this.tmp2)
@@ -555,7 +533,7 @@ export class HeroController {
   private letGo(push = 1): void {
     this.vel.copy(this.climbN).multiplyScalar(push)
     this.vel.y = Math.min(this.vel.y, 0)
-    this.setMode(this.medium === 'air' ? 'fall' : 'sink')
+    this.setMode(this.medium === 'air' ? 'fall' : 'swim')
   }
 
   private updateClimb(dt: number, locked: boolean): void {
@@ -667,49 +645,6 @@ export class HeroController {
   }
 
 
-  private openGlide(): void {
-    this.setMode('glide')
-    this.vel.y = Math.max(this.vel.y, -MOVE.voileSink)
-  }
-
-  private updateGlide(dt: number, locked: boolean): void {
-    const ctx = this.ctx
-    const input = ctx.input
-    const out = this.out
-    out.gliding = true
-    if (!locked && (input.pressed('up') || input.pressed('down'))) {
-      this.setMode('sink')
-      return
-    }
-    if (!this.drain(MOVE.voileCost, dt)) {
-      this.setMode('sink')
-      return
-    }
-    if (this.wish.lengthSq() > 0.01) {
-      const target = yawOf(this.wish.x, this.wish.z)
-      this.yaw += THREE.MathUtils.clamp(angleDiff(this.yaw, target), -1, 1) * 1.9 * dt
-    }
-    const f = forward(this.yaw, this.tmp2)
-    const a = Math.min(1, 1.6 * dt)
-    this.vel.x += (f.x * MOVE.voileForward - this.vel.x) * a
-    this.vel.z += (f.z * MOVE.voileForward - this.vel.z) * a
-    this.vel.y += (-MOVE.voileSink - this.vel.y) * Math.min(1, 2 * dt)
-    this.moveKcc(dt, 0, 1.4)
-    if (this.grounded) {
-      this.setMode('idle')
-      return
-    }
-    if (this.wallAhead(0.4) && this.canAct()) {
-      this.startClimb()
-      return
-    }
-    out.pitch = THREE.MathUtils.clamp(this.vel.y / 3, -0.5, 0.5)
-    out.speed = MOVE.voileForward
-    out.moving = 1
-    this.clip('glide', 0.3)
-  }
-
-
   private updateScrub(dt: number, locked: boolean): boolean {
     const ctx = this.ctx
     const drift = ctx.services.drift
@@ -763,7 +698,7 @@ export class HeroController {
 
   private endScrub(): void {
     if (this.scrubFromClimb && this.findWall(true)) this.setMode('climb')
-    else this.setMode('sink')
+    else this.setMode(this.medium === 'air' ? 'idle' : 'swim')
     this.scrubFromClimb = false
   }
 
@@ -778,7 +713,7 @@ export class HeroController {
     if (this.activity.kind !== 'none') {
       if (this.updateActivity(dt, wishLen, locked)) return
     }
-    if (this.mode === 'glide' || this.mode === 'swim' || this.mode === 'sink' || this.mode === 'scrub') this.setMode('fall')
+    if (this.mode === 'swim' || this.mode === 'scrub') this.setMode('fall')
     if (this.mode === 'climb') {
       this.updateClimb(dt, locked)
       return
@@ -1051,7 +986,7 @@ export class HeroController {
       if (dir === 'in') this.setMedium('air')
       else this.setMedium('water')
       this.airlock = null
-      this.setMode(this.medium === 'air' ? 'idle' : 'sink')
+      this.setMode(this.medium === 'air' ? 'idle' : 'swim')
     }
   }
 
@@ -1060,7 +995,7 @@ export class HeroController {
     this.out.speed = 0
     this.out.moving = 0
     if (!al) {
-      this.setMode(this.medium === 'air' ? 'idle' : 'sink')
+      this.setMode(this.medium === 'air' ? 'idle' : 'swim')
       return
     }
     al.t += dt
@@ -1086,39 +1021,11 @@ export class HeroController {
   }
 
   private updateCutscene(dt: number): void {
-    const lest = this.ctx.state.hero.lestOn
     this.out.speed = 0
     this.out.moving = 0
-    if (this.medium === 'water' && !lest) {
-      const top = CEILING_Y - 1.75
-      this.vel.set(0, this.pos.y < top ? 0.9 : 0, 0)
-      this.pos.y = Math.min(top, this.pos.y + this.vel.y * dt)
-      this.clip(this.pos.y > top - 1.5 ? 'hand-on-ceiling' : 'idle', 0.8)
-      return
-    }
     this.vel.multiplyScalar(Math.max(0, 1 - dt * 3))
     this.clip(this.medium === 'air' ? 'idle-dry' : this.grounded ? 'idle-floor' : 'idle', 0.4)
   }
-
-  private updateRide(dt: number, locked: boolean): void {
-    const manta = this.ctx.services.fauna?.manta()
-    this.out.riding = true
-    if (!manta || (!locked && this.ctx.input.pressed('down'))) {
-      manta?.dismount()
-      this.setMode('sink')
-      return
-    }
-    const p = manta.position
-    const dx = p.x - this.pos.x
-    const dz = p.z - this.pos.z
-    if (dx * dx + dz * dz > 1e-4) this.yaw += angleDiff(this.yaw, yawOf(dx, dz)) * Math.min(1, dt * 4)
-    this.vel.set(dx / Math.max(dt, 1e-3), (p.y + 0.55 - this.pos.y) / Math.max(dt, 1e-3), dz / Math.max(dt, 1e-3))
-    this.pos.set(p.x, p.y + 0.55, p.z)
-    this.out.speed = Math.hypot(this.vel.x, this.vel.z)
-    this.out.moving = 1
-    this.clip('ride', 0.3)
-  }
-
 
   private filter = (c: RAPIER.Collider) => {
     const t = this.ctx.physics.tagOf(c.handle)
@@ -1147,6 +1054,7 @@ export class HeroController {
       this.kcc.disableSnapToGround()
     }
     this.moveRaw(d)
+    this.applyTether()
   }
 
   private freeKcc(): void {
@@ -1179,17 +1087,7 @@ export class HeroController {
     this.pos.z += mz
     if (Math.abs(my - d.y) > 1e-4 && d.y > 0 && my < d.y * 0.5) this.vel.y = Math.min(this.vel.y, 0)
 
-    const world = this.ctx.services.world
-    if (this.medium === 'water' && world) {
-      const gy = world.heightAt(this.pos.x, this.pos.z)
-      if (this.pos.y < gy) {
-        this.pos.y = gy
-        if (this.vel.y < 0) this.grounded = true
-      } else if (this.pos.y - gy < 0.05 && this.vel.y <= 0) this.grounded = true
-    } else if (!world && this.medium === 'water' && this.pos.y < 0) {
-      this.pos.y = 0
-      this.grounded = true
-    }
+    if (this.medium === 'water') this.grounded = false
     if (this.mode !== 'cutscene' && this.pos.y > HERO_MAX_Y) {
       this.pos.y += (HERO_MAX_Y - this.pos.y) * 0.2
       this.vel.y = Math.min(this.vel.y, -0.5)
@@ -1243,30 +1141,22 @@ export class HeroController {
     if (this.medium === 'water') this.wetness = 1
     else this.wetness = Math.max(0, this.wetness - dt / INDOOR.wetnessDrySeconds)
 
-    if (this.medium === 'water' && this.grounded) {
-      this.flattenT -= dt
-      if (this.flattenT <= 0) {
-        this.flattenT = 0.1
-        ctx.services.flora?.flatten(this.pos, 0.6)
-      }
-      this.lastSafeT += dt
-      if (this.lastSafeT > 1) {
-        this.lastSafeT = 0
-        const region = ctx.services.world?.regionAt(this.pos.x, this.pos.z)
-        if (region !== 'bleu' && Math.abs(this.pos.x) < BLEU_EDGE && Math.abs(this.pos.z) < BLEU_EDGE) {
-          s.hero.lastSafe = { x: this.pos.x, y: this.pos.y, z: this.pos.z }
-        }
-      }
-    }
-    if (!this.recovering && this.medium === 'water' && (Math.abs(this.pos.x) > BLEU_EDGE + 25 || Math.abs(this.pos.z) > BLEU_EDGE + 25)) {
+    if (!this.recovering && this.medium === 'water' && s.mode === 'inside' && this.mode !== 'airlock') {
       this.recovering = true
-      const back = s.hero.lastSafe
       const go = () => {
-        this.teleport(back)
+        this.snapToRoom()
+        this.setMedium('air')
         this.recovering = false
       }
       if (this.fader) void this.fader(go)
       else go()
+    }
+    if (this.medium === 'air' && this.grounded) {
+      this.lastSafeT += dt
+      if (this.lastSafeT > 1) {
+        this.lastSafeT = 0
+        s.hero.lastSafe = { x: this.pos.x, y: this.pos.y, z: this.pos.z }
+      }
     }
     if (this.medium === 'air' && this.activity.kind === 'none' && this.mode !== 'airlock' && this.mode !== 'cutscene') {
       const tryingToMove = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5

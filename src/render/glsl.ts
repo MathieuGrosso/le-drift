@@ -9,6 +9,12 @@ uniform vec3 rdHeroPos;
 uniform float rdHazeDist;
 uniform float rdHazeMax;
 uniform float rdIndoor;
+uniform float rdAirHaze;
+uniform float rdGlassDist;
+uniform vec3 rdAirBrume;
+uniform vec3 rdCreme;
+uniform vec3 rdBoisOmbre;
+uniform vec3 rdVitreMer;
 uniform vec4 rdLamps[${MAX_LAMPS}];
 uniform vec3 rdLampColors[${MAX_LAMPS}];
 uniform vec3 rdAbysse;
@@ -84,13 +90,31 @@ vec3 rd_hazeColor(vec3 v, float worldY) {
 float rd_hazeAmount(float d) {
   return 1.0 - exp(-pow(d / rdHazeDist, 1.35));
 }
+// Sea haze is water between the eye and the thing: from inside, only the stretch beyond the glass counts.
+// Air haze is dust in a big room, over the in-air stretch only. Never mix the two.
+float rd_airAmount(float d) {
+  return (1.0 - exp(-d / 140.0)) * 0.45 * rdAirHaze * rdIndoor;
+}
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;
   float d = length(dv);
   vec3 v = dv / max(d, 1e-4);
-  hz = min(rd_hazeAmount(d), rdHazeMax);
+  float dAir = mix(0.0, min(d, rdGlassDist), rdIndoor);
+  hz = min(rd_hazeAmount(max(d - dAir, 0.0)), rdHazeMax);
   if (absorb) col *= mix(vec3(1.0), vec3(0.88, 0.97, 1.0), hz);
-  return mix(col, rd_hazeColor(v, wp.y), hz);
+  col = mix(col, rd_hazeColor(v, wp.y), hz);
+  float ah = rd_airAmount(dAir);
+  hz = max(hz, ah);
+  return mix(col, rdAirBrume, ah);
+}
+vec3 rd_applyIndoorHaze(vec3 col, vec3 wp, out float hz) {
+  vec3 dv = wp - cameraPosition;
+  float d = length(dv);
+  float sea = min(rd_hazeAmount(d), rdHazeMax) * (1.0 - rdIndoor);
+  col = mix(col, rd_hazeColor(dv / max(d, 1e-4), wp.y), sea);
+  float ah = rd_airAmount(d);
+  hz = max(sea, ah);
+  return mix(col, rdAirBrume, ah);
 }
 float rd_caustics(vec3 wp) {
   vec3 L = rdSunDir;

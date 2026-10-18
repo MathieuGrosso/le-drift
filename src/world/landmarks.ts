@@ -6,6 +6,7 @@ import { valueNoise } from './noise'
 import { rockColor } from './rocks'
 import { PAL, makeMaterial } from './surface'
 import { blancWeight, heightAt, smoothstep, VENT } from './terrain'
+import { SEABED_COLLIDERS } from './chunks'
 
 interface ArchDef { id: string; x: number; z: number; radius: number; tube: number; yaw: number }
 
@@ -100,10 +101,12 @@ export class Landmarks {
         indices.push(idx.getX(i) + offset)
         local.push(idx.getX(i))
       }
-      const desc = R.ColliderDesc.trimesh(new Float32Array(gp.array), new Uint32Array(local)).setCollisionGroups(this.groups())
-      const c = this.ctx.physics.world.createCollider(desc, this.body!)
-      this.ctx.physics.tag(c, { kind: 'rock', climbable: true, ownerId: a.id })
-      this.colliders.push(c)
+      if (SEABED_COLLIDERS) {
+        const desc = R.ColliderDesc.trimesh(new Float32Array(gp.array), new Uint32Array(local)).setCollisionGroups(this.groups())
+        const c = this.ctx.physics.world.createCollider(desc, this.body!)
+        this.ctx.physics.tag(c, { kind: 'rock', climbable: true, ownerId: a.id })
+        this.colliders.push(c)
+      }
       geo.dispose()
     })
 
@@ -162,12 +165,14 @@ export class Landmarks {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI * 2)
       mesh.setMatrixAt(placed, m.compose(p.set(x, y, z), q, s.set(rad, h, rad)))
       tips.setMatrixAt(placed, m.compose(p.set(x, y + h, z), q, s.set(rad * 0.5, rad * 0.35, rad * 0.5)))
-      const c = this.ctx.physics.world.createCollider(
-        R.ColliderDesc.cylinder(h / 2, rad * 0.8).setTranslation(x, y + h / 2, z).setCollisionGroups(this.groups()),
-        this.body!,
-      )
-      this.ctx.physics.tag(c, { kind: 'rock', climbable: true, ownerId: `fumeur-${placed}` })
-      this.colliders.push(c)
+      if (SEABED_COLLIDERS) {
+        const c = this.ctx.physics.world.createCollider(
+          R.ColliderDesc.cylinder(h / 2, rad * 0.8).setTranslation(x, y + h / 2, z).setCollisionGroups(this.groups()),
+          this.body!,
+        )
+        this.ctx.physics.tag(c, { kind: 'rock', climbable: true, ownerId: `fumeur-${placed}` })
+        this.colliders.push(c)
+      }
       placed++
     }
     mesh.count = placed

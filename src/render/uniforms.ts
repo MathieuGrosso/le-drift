@@ -28,6 +28,10 @@ export interface InternalUniforms {
   rdShadowOn: { value: number }
   rdShadowTexel: { value: number }
   rdRipples: { value: THREE.Vector4[] }
+  rdAirBrume: { value: THREE.Color }
+  rdCreme: { value: THREE.Color }
+  rdBoisOmbre: { value: THREE.Color }
+  rdVitreMer: { value: THREE.Color }
 }
 
 export function createPublicUniforms(): PublicUniforms {
@@ -42,6 +46,8 @@ export function createPublicUniforms(): PublicUniforms {
     uIndoor: { value: 0 },
     uLamps: { value: Array.from({ length: MAX_LAMPS }, () => new THREE.Vector4(0, 0, 0, 0)) },
     uLampColors: { value: Array.from({ length: MAX_LAMPS }, () => new THREE.Color(PALETTE.soleilAube)) },
+    uAirHaze: { value: 0 },
+    uGlassDist: { value: 4 },
   }
 }
 
@@ -65,6 +71,10 @@ export function createInternalUniforms(): InternalUniforms {
     rdShadowOn: { value: 0 },
     rdShadowTexel: { value: 1 / 2048 },
     rdRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -1000, 0)) },
+    rdAirBrume: { value: new THREE.Color(PALETTE.airBrume) },
+    rdCreme: { value: new THREE.Color(PALETTE.creme) },
+    rdBoisOmbre: { value: new THREE.Color(PALETTE.boisOmbre) },
+    rdVitreMer: { value: new THREE.Color(PALETTE.vitreMer) },
   }
 }
 
@@ -84,6 +94,8 @@ export function shaderUniforms(pub: PublicUniforms, int: InternalUniforms): AllU
     rdIndoor: pub.uIndoor,
     rdLamps: pub.uLamps,
     rdLampColors: pub.uLampColors,
+    rdAirHaze: pub.uAirHaze,
+    rdGlassDist: pub.uGlassDist,
     ...int,
   }
 }

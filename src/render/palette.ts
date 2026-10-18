@@ -14,4 +14,8 @@ export const PALETTE = {
   plancton: 0xa9c86a,
   interieurOmbre: 0x3e3a5a,
   blanc: 0xf4f1e6,
+  creme: 0xf1e4c8,
+  airBrume: 0xe9dcc2,
+  boisOmbre: 0x5e4a5c,
+  vitreMer: 0x9fd6d0,
 } as const

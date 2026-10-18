@@ -62,7 +62,6 @@ export function createWorldSystem(): System {
     regionAt,
     currentAt: (p) => currentAt(p, ctxRef?.state.env.current ?? { x: 0, y: 0, z: 0 }),
     isLoaded: (cx, cz) => streamer?.isLoaded(cx, cz) ?? false,
-    safeSpawnNear,
   }
 
   return {

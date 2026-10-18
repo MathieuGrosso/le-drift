@@ -202,7 +202,7 @@ export function createFloraSystem(): System {
       if (!indoor) tufts?.update(cam.x, cam.z, 2)
       coral?.update(cam.x, cam.z)
       if (kelp && frame % 4 === 0) kelp.updateLod(ctx.camera)
-      if (kelp && frame % 15 === 0) kelp.updateColliders(ctx.physics, hp, !indoor && st.hero.room === null)
+      if (kelp && frame % 15 === 0) kelp.updateColliders(ctx.physics, hp, false)
     },
 
     dispose() {

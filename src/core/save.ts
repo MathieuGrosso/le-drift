@@ -1,7 +1,8 @@
 import { migrateState } from './state'
 import type { EventBus, GameState, SaveStore } from './types'
 
-export const SAVE_KEY = 'le-drift:save:v1'
+export const SAVE_KEY = 'le-drift:save:v2'
+export const LEGACY_SAVE_KEYS = ['le-drift:save:v1'] as const
 
 export function createSaveStore(getState: () => GameState, bus: EventBus, enabled: boolean): SaveStore {
   return {
@@ -19,6 +20,7 @@ export function createSaveStore(getState: () => GameState, bus: EventBus, enable
     load() {
       if (!enabled) return null
       try {
+        for (const k of LEGACY_SAVE_KEYS) localStorage.removeItem(k)
         const raw = localStorage.getItem(SAVE_KEY)
         if (!raw) return null
         return migrateState(JSON.parse(raw), getState().settings.quality)

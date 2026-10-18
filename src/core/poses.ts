@@ -1,4 +1,4 @@
-import { REGIONS, VISTA } from './layout'
+import { PLACES } from './layout'
 import type { DebugPose, DebugRegistry, GameContext, Vec3 } from './types'
 
 export type PoseSource = DebugPose | ((ctx: GameContext) => DebugPose)
@@ -11,7 +11,7 @@ export interface PoseRegistry extends DebugRegistry {
 
 export function createPoseRegistry(): PoseRegistry {
   const poses = new Map<string, PoseSource>()
-  return {
+  const reg: PoseRegistry = {
     registerPose(name, pose) {
       poses.set(name, pose)
     },
@@ -25,92 +25,52 @@ export function createPoseRegistry(): PoseRegistry {
       return typeof p === 'function' ? p(ctx) : p
     },
   }
+  return reg
 }
-
-const ground = (ctx: GameContext, x: number, z: number) => ctx.services.world?.heightAt(x, z) ?? 0
 
 function forward(yaw: number): Vec3 {
   return { x: Math.sin(yaw), y: 0, z: -Math.cos(yaw) }
 }
 
+const fallbackPose = (ctx: GameContext): DebugPose => {
+  const p = ctx.state.hero.position
+  return { camera: { position: { x: p.x, y: p.y + 2, z: p.z + 4 }, target: { x: p.x, y: p.y + 1, z: p.z } } }
+}
+
 export function registerCorePoses(reg: PoseRegistry): void {
-  reg.registerFactory('vista', (ctx) => {
-    const { x, z, yaw } = VISTA.hero
-    const y = ctx.services.world ? ground(ctx, x, z) : VISTA.ridgeY
-    const f = forward(yaw)
-    const r = { x: Math.cos(yaw), z: Math.sin(yaw) }
-    return {
-      hour: 6.5,
-      hero: { position: { x, y, z }, yaw },
-      camera: {
-        position: { x: x - f.x * 5 + r.x * 1.0, y: y + 1.2 + 1.5, z: z - f.z * 5 + r.z * 1.0 },
-        target: { x: x + f.x * 60, y: y - 4, z: z + f.z * 60 },
-        fov: 55,
-      },
-    }
-  })
-  reg.registerFactory('drift-vitre', (ctx) => {
-    const d = ctx.services.drift?.pose() ?? { position: ctx.state.drift.position, heading: ctx.state.drift.heading }
-    const f = forward(d.heading)
-    const p = d.position
-    return {
-      hour: 7.75,
-      camera: {
-        position: { x: p.x + f.x * 110, y: p.y + 2, z: p.z + f.z * 110 },
-        target: { x: p.x + f.x * 80, y: p.y, z: p.z + f.z * 80 },
-        fov: 55,
-      },
-    }
-  })
-  reg.registerFactory('laminaires', (ctx) => {
-    const { x, z } = REGIONS.laminaires
-    const y = ground(ctx, x, z)
-    return {
-      hour: 12,
-      hero: { position: { x, y, z }, yaw: 0 },
-      camera: { position: { x: x + 3, y: y + 3, z: z + 7 }, target: { x, y: y + 25, z: z - 30 }, fov: 55 },
-    }
-  })
-  reg.registerFactory('cheminee', (ctx) => {
-    const { x, z } = REGIONS.cheminee
-    const cx = x - 70
-    const cz = z + 70
-    const y = ground(ctx, cx, cz)
-    return {
-      hour: 12,
-      camera: { position: { x: cx, y: y + 4, z: cz }, target: { x, y: 90, z }, fov: 55 },
-    }
-  })
-  reg.registerFactory('blanc', (ctx) => {
-    const { x, z } = REGIONS.blanc
-    const y = ground(ctx, x, z)
-    return {
-      hour: 12,
-      hero: { position: { x, y, z }, yaw: 0 },
-      camera: { position: { x: x + 1, y: y + 2.7, z: z + 5 }, target: { x, y: y + 8, z: z - 80 }, fov: 55 },
-    }
-  })
-  reg.registerFactory('plafond', (ctx) => {
-    const x = 0
-    const z = 600
-    const y = ground(ctx, x, z) + 20
-    return {
-      hour: 12,
-      camera: { position: { x, y, z }, target: { x: 0.01, y: y + 100, z: z - 0.5 }, fov: 70 },
-    }
-  })
+  reg.registerFactory('vista', (ctx) => reg.resolve('atrium-vista', ctx) ?? fallbackPose(ctx))
   reg.registerFactory('heros', (ctx) => {
-    const { x, z, yaw } = VISTA.hero
-    const y = ctx.services.world ? ground(ctx, x, z) : VISTA.ridgeY
+    const drift = ctx.services.drift
+    const pl = PLACES.coursive!
+    if (!drift) return fallbackPose(ctx)
+    const at = drift.toWorld(pl.local)
+    const yaw = pl.yaw + drift.pose().heading
     const f = forward(yaw)
     return {
       hour: 9,
-      hero: { position: { x, y, z }, yaw },
+      place: 'coursive',
       camera: {
-        position: { x: x + f.x * 2.4, y: y + 1.4, z: z + f.z * 2.4 },
-        target: { x, y: y + 1.1, z },
+        position: { x: at.x + f.x * 2.2, y: at.y + 1.4, z: at.z + f.z * 2.2 },
+        target: { x: at.x, y: at.y + 1.1, z: at.z },
         fov: 45,
       },
+    }
+  })
+  reg.registerFactory('sortie', (ctx) => {
+    const drift = ctx.services.drift
+    if (!drift) return fallbackPose(ctx)
+    const at = drift.toWorld(PLACES.sortie!.local)
+    const eye = drift.toWorld({ x: 9, y: 4, z: 89 })
+    const look = drift.toWorld({ x: 0, y: 1.5, z: 72 })
+    return { hour: 7.2, place: 'sortie', camera: { position: eye, target: { x: (at.x + look.x) / 2, y: (at.y + look.y) / 2, z: (at.z + look.z) / 2 }, fov: 55 } }
+  })
+  reg.registerFactory('sortie-loin', (ctx) => {
+    const drift = ctx.services.drift
+    if (!drift) return fallbackPose(ctx)
+    return {
+      hour: 8,
+      place: 'sortie',
+      camera: { position: drift.toWorld({ x: 150, y: 22, z: 120 }), target: drift.toWorld({ x: 0, y: 0, z: 0 }), fov: 55 },
     }
   })
 }

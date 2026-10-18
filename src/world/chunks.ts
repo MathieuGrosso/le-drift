@@ -6,6 +6,9 @@ import { RockLayer, rocksForChunk, type RockInstance } from './rocks'
 import { surfaceColor } from './surface'
 import { heightAt } from './terrain'
 
+// Nobody walks the seabed: it is a backdrop seen through glass, out of reach of the longe.
+export const SEABED_COLLIDERS = false
+
 const FAR_EXTENT = 1280
 const SKIRT = 2.5
 const N_CHUNKS = CHUNKS_PER_SIDE * CHUNKS_PER_SIDE
@@ -255,26 +258,28 @@ export class TerrainStreamer {
       R.RigidBodyDesc.fixed().setTranslation(o.x + CHUNK_SIZE / 2, 0, o.z + CHUNK_SIZE / 2),
     )
     const colliders: RAPIER.Collider[] = []
-    const hf = physics.world.createCollider(
-      R.ColliderDesc.heightfield(seg, seg, heights, { x: CHUNK_SIZE, y: 1, z: CHUNK_SIZE })
-        .setCollisionGroups(groups)
-        .setFriction(0.9),
-      body,
-    )
-    physics.tag(hf, { kind: 'terrain', climbable: true, ownerId: `chunk-${cx}-${cz}` })
-    colliders.push(hf)
+    if (SEABED_COLLIDERS) {
+      const hf = physics.world.createCollider(
+        R.ColliderDesc.heightfield(seg, seg, heights, { x: CHUNK_SIZE, y: 1, z: CHUNK_SIZE })
+          .setCollisionGroups(groups)
+          .setFriction(0.9),
+        body,
+      )
+      physics.tag(hf, { kind: 'terrain', climbable: true, ownerId: `chunk-${cx}-${cz}` })
+      colliders.push(hf)
 
-    for (const r of this.rocksOf(cx, cz)) {
-      if (Math.max(r.sx, r.sy, r.sz) < ROCK_COLLIDER_MIN) continue
-      const desc = R.ColliderDesc.convexHull(this.rocks.scaledHull(r.variant, r.sx, r.sy, r.sz))
-      if (!desc) continue
-      desc
-        .setTranslation(r.x - (o.x + CHUNK_SIZE / 2), r.y, r.z - (o.z + CHUNK_SIZE / 2))
-        .setRotation({ x: r.quat.x, y: r.quat.y, z: r.quat.z, w: r.quat.w })
-        .setCollisionGroups(groups)
-      const c = physics.world.createCollider(desc, body)
-      physics.tag(c, { kind: 'rock', climbable: true, ownerId: `rock-${cx}-${cz}` })
-      colliders.push(c)
+      for (const r of this.rocksOf(cx, cz)) {
+        if (Math.max(r.sx, r.sy, r.sz) < ROCK_COLLIDER_MIN) continue
+        const desc = R.ColliderDesc.convexHull(this.rocks.scaledHull(r.variant, r.sx, r.sy, r.sz))
+        if (!desc) continue
+        desc
+          .setTranslation(r.x - (o.x + CHUNK_SIZE / 2), r.y, r.z - (o.z + CHUNK_SIZE / 2))
+          .setRotation({ x: r.quat.x, y: r.quat.y, z: r.quat.z, w: r.quat.w })
+          .setCollisionGroups(groups)
+        const c = physics.world.createCollider(desc, body)
+        physics.tag(c, { kind: 'rock', climbable: true, ownerId: `rock-${cx}-${cz}` })
+        colliders.push(c)
+      }
     }
 
     this.built.set(k, { mesh, body, colliders })

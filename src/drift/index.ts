@@ -1,13 +1,15 @@
 import * as THREE from 'three'
-import type { DriftService, GameContext, Medium, RoomId, System, Vec3 } from '../core/types'
+import { DISTRICT_BY_ID, DISTRICT_NEIGHBOURS, PLACES, districtAt, inDistrict } from '../core/layout'
+import type { CameraEnv, CellId, DistrictId, DriftService, GameContext, LockId, Medium, RoomId, System, Vec3 } from '../core/types'
 import { ForecastBoard } from './board'
 import { ChartTable } from './chart'
 import { Chatter } from './chatter'
 import { dirToWorld, toLocal, toWorld, yawToWorld, type DriftPose } from './frame'
 import { Hulls } from './hulls'
-import { LOCK_OUTSIDE } from './interiors/layout'
-import { Quarter, type LockId } from './interiors/quarter'
+import { LOCK_OUTSIDE, PORTHOLES, RECT_WINDOWS, partById } from './interiors/layout'
+import { Quarter, type LockId as QuarterLock } from './interiors/quarter'
 import { createMats, type Mats } from './materials'
+import { Nef } from './nef'
 import { Npcs } from './npcs'
 import { PAL } from './palette'
 import { registerDriftPoses } from './poses'
@@ -31,6 +33,34 @@ const SPAWNS: Record<RoomId, { x: number; y: number; z: number; yaw: number }> =
   'echelle-toit': { x: -2.35, y: 3.05, z: 64.6, yaw: Math.PI / 2 },
 }
 
+const LOCK_ANCHORS: Record<'sas' | 'echelle-toit', Vec3> = {
+  sas: LOCK_OUTSIDE,
+  'echelle-toit': { x: -2.3, y: 6.6, z: 64.6 },
+}
+const ATRIUM_AIR: Partial<Record<RoomId, number>> = { refectoire: 0.15, marche: 0.2 }
+
+function glassPoints(): Map<RoomId, Vec3[]> {
+  const out = new Map<RoomId, Vec3[]>()
+  const at = (partId: string, side: string, a: number, y: number): Vec3 => {
+    const p = partById(partId)
+    if (side === 'n') return { x: a, y: p.floorY + y, z: p.z0 }
+    if (side === 's') return { x: a, y: p.floorY + y, z: p.z1 }
+    if (side === 'w') return { x: p.x0, y: p.floorY + y, z: a }
+    return { x: p.x1, y: p.floorY + y, z: a }
+  }
+  const push = (partId: string, v: Vec3) => {
+    const room = partById(partId).room
+    const list = out.get(room) ?? []
+    list.push(v)
+    out.set(room, list)
+  }
+  for (const h of PORTHOLES) push(h.part, at(h.part, h.side, h.at, h.y))
+  for (const w of RECT_WINDOWS) {
+    for (const k of [-0.4, 0, 0.4]) push(w.part, at(w.part, w.side, w.at + k * w.w, w.y0 + w.h / 2))
+  }
+  return out
+}
+
 const GUIDE_ROPE: readonly [number, number, number][] = [
   [0.7, 0.4, 73.7], [3.5, -0.2, 74.6], [8, 0.1, 73.4], [12.4, 0.6, 72.4], [23.6, 0.6, 72.4],
   [27, -0.3, 70.5], [33, 0.1, 68.4], [38.2, 0.5, 67.4], [42, 0.4, 67.4],
@@ -42,6 +72,12 @@ export function createDriftSystem(): System {
   root.name = 'le-drift'
   let mats: Mats
   let hulls: Hulls | null = null
+  let nef: Nef | null = null
+  let district: DistrictId = 'ecluse'
+  let loadedKey = ''
+  const loaded = new Set<DistrictId>()
+  const glass = glassPoints()
+  const camEnv: CameraEnv = { indoor: 1, glassDist: 4, airHaze: 0, district: 'ecluse', cell: 'cabine' }
   let quarter: Quarter | null = null
   let windows: Windows | null = null
   let npcs: Npcs | null = null
@@ -99,7 +135,11 @@ export function createDriftSystem(): System {
       return l ? toWorld(pose, l) : null
     },
     playScene: (id) => npcs?.playScene(id) ?? Promise.resolve(),
-    mediumAt: (p): Medium => (quarter ? quarter.mediumAt(toLocal(pose, p, tmp)) : 'water'),
+    mediumAt: (p): Medium => {
+      const l = toLocal(pose, p, tmp)
+      if (nef?.contains(l)) return 'air'
+      return quarter ? quarter.mediumAt(l) : 'water'
+    },
     roomAt: (p) => (quarter ? quarter.roomAt(toLocal(pose, p, tmp)) : null),
     toLocal: (p) => toLocal(pose, p),
     toWorld: (p) => toWorld(pose, p),
@@ -117,16 +157,81 @@ export function createDriftSystem(): System {
       return { position: toWorld(pose, s), yaw: yawToWorld(pose, s.yaw) }
     },
     openDoor: (id, open) => quarter?.openDoor(id, open),
-    cycleAirlock: (lockId: LockId, dir) => {
+    cycleAirlock: (lockId: QuarterLock, dir) => {
       const ctx = ctxRef
       if (!quarter || !ctx) return Promise.resolve()
       return quarter.cycleAirlock(lockId, dir, heroPlace(ctx), () => toLocal(pose, ctx.state.hero.position))
     },
     roomCeilingAt: (p) => {
-      if (!quarter) return null
-      const y = quarter.ceilingAt(toLocal(pose, p, tmp))
+      const l = toLocal(pose, p, tmp)
+      const y = quarter?.ceilingAt(l) ?? nef?.ceilingAt(l) ?? null
       return y === null ? null : y + pose.position.y
     },
+    lockAnchor: (lockId: LockId) => {
+      const a = lockId === 'sas' || lockId === 'echelle-toit' ? LOCK_ANCHORS[lockId] : null
+      return a ? toWorld(pose, a) : null
+    },
+    districtAt: (local) => districtAt(local),
+    cellAt: (local): CellId | null => quarter?.roomAt(local) ?? nef?.cellAt(local) ?? null,
+    cellSpawn: (cell) => {
+      const s = (SPAWNS as Record<string, { x: number; y: number; z: number; yaw: number }>)[cell]
+      if (s) return { local: { x: s.x, y: s.y, z: s.z }, yaw: s.yaw }
+      const place = PLACES[cell]
+      return place && place.mode === 'inside' ? { local: { ...place.local }, yaw: place.yaw } : null
+    },
+    loadedDistricts: () => [...loaded],
+    cameraEnv: () => camEnv,
+  }
+
+  const updateCameraEnv = (st: GameContext['state']) => {
+    const room = quarter?.roomAt(camLocal) ?? null
+    const nefCell = room ? null : nef?.cellAt(camLocal) ?? null
+    camEnv.district = districtAt(camLocal)
+    camEnv.cell = room ?? nefCell
+    if (room && quarter?.mediumAt(camLocal) === 'air') {
+      camEnv.indoor = 1
+      camEnv.airHaze = ATRIUM_AIR[room] ?? 0
+      let best = 30
+      for (const g of glass.get(room) ?? []) best = Math.min(best, Math.hypot(g.x - camLocal.x, g.y - camLocal.y, g.z - camLocal.z))
+      camEnv.glassDist = Math.max(0.5, best)
+    } else if (nefCell) {
+      camEnv.indoor = 1
+      camEnv.airHaze = 1
+      camEnv.glassDist = 140
+    } else {
+      const heroInside = st.mode === 'inside' && st.hero.medium === 'air' && !st.debug.cameraLocked
+      camEnv.indoor = heroInside ? 1 : 0
+      camEnv.airHaze = 0
+      camEnv.glassDist = heroInside ? 4 : 0
+    }
+  }
+
+  const levelLoad = (ctx: GameContext): number => {
+    const q = ctx.quality.level
+    return q === 'high' ? 99 : q === 'medium' ? 2 : 1
+  }
+
+  const updateStreaming = (ctx: GameContext) => {
+    const st = ctx.state
+    const ref = st.mode === 'inside' && st.hero.localPosition ? st.hero.localPosition : heroLocal
+    const here = districtAt(ref)
+    if (here !== district && !inDistrict(DISTRICT_BY_ID[district], ref, 20)) {
+      const from = district
+      district = here
+      st.hero.district = here
+      ctx.bus.emit('district:entered', { district: here, from })
+    } else if (here !== district && st.hero.district !== district) st.hero.district = district
+    loaded.clear()
+    loaded.add(district)
+    for (const n of DISTRICT_NEIGHBOURS[district].slice(0, levelLoad(ctx))) loaded.add(n)
+    const key = [...loaded].sort().join(',')
+    if (key !== loadedKey) {
+      loadedKey = key
+      hulls?.setLoaded(loaded)
+      ctx.bus.emit('district:streamed', { loaded: [...loaded] })
+    }
+    const smallRoom = camEnv.indoor > 0.5 && camEnv.airHaze < 0.5 && camEnv.cell !== null
+    hulls?.setVisible(smallRoom && ctx.quality.level !== 'high' ? loaded : null)
   }
 
   return {
@@ -156,6 +261,12 @@ export function createDriftSystem(): System {
       }
       quarter = new Quarter(ctx, mats, textures, pose)
       root.add(quarter.root)
+      try {
+        nef = new Nef(ctx, mats, root, pose)
+      } catch (err) {
+        console.error('[drift] nef', err)
+      }
+      district = ctx.state.hero.localPosition ? districtAt(ctx.state.hero.localPosition) : ctx.state.hero.district
       windows = new Windows(ctx, mats, quarter, quarter.root)
       npcs = new Npcs(ctx, mats, quarter)
       quarter.root.add(npcs.group)
@@ -202,8 +313,12 @@ export function createDriftSystem(): System {
       const cp = ctx.camera.position
       toLocal(pose, { x: cp.x, y: cp.y, z: cp.z }, camLocal)
 
-      hulls?.update(dt, pose, jumped, quarter.roomAt(heroLocal) !== null)
+      updateCameraEnv(st)
+      hulls?.update(dt, pose, jumped)
       quarter.update(dt, pose, heroLocal, camLocal, jumped)
+      nef?.update(pose, jumped)
+      if (nef && camEnv.cell?.startsWith('nef')) nef.writeLamps({ x: cp.x, y: cp.y, z: cp.z })
+      updateStreaming(ctx)
       windows?.update(dt)
       npcs?.update(dt)
       chart?.update(dt, ctx, quarter.isDetailVisible('salle-des-cartes'))
@@ -261,6 +376,7 @@ export function createDriftSystem(): System {
       npcs?.dispose()
       quarter?.dispose()
       hulls?.dispose()
+      nef?.dispose()
       root.removeFromParent()
       if (ctxRef && ctxRef.services.drift === service) delete ctxRef.services.drift
     },

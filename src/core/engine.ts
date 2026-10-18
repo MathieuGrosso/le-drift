@@ -8,9 +8,10 @@ import { seededRng } from './rng'
 import { createSaveStore } from './save'
 import { createInitialState, phaseAt } from './state'
 import { AUTOSAVE_SECONDS, AUTO_QUALITY, PHYSICS } from './tuning'
-import { ROOMS } from './layout'
+import { PLACES, ROOMS } from './layout'
+import { createModeController } from './mode'
 import type {
-  Act, CameraPose, DebugApi, DebugPose, EnvState, GameContext, GameState, QualityLevel, RoomId, System,
+  Act, CameraPose, DebugApi, DebugPose, EnvState, GameContext, GameState, PlaceId, QualityLevel, RoomId, System,
 } from './types'
 
 const LOADING_LABELS: Record<System['id'], string> = {
@@ -157,6 +158,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     }
 
     const toast = makeToast(uiRoot)
+    const modes = createModeController(ctx)
     const setQuality = (q: QualityLevel) => {
       state.settings.quality = q
       quality.set(q)
@@ -215,7 +217,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       menuOpen = open !== null
       inputRt.setMenuOpen(menuOpen)
     })
-    for (const k of ['sonde:activated', 'shallow:completed', 'act:changed', 'quest:step', 'sleep:done'] as const) {
+    for (const k of ['sonde:activated', 'shallow:completed', 'act:changed', 'quest:step', 'sleep:done', 'sortie:end'] as const) {
       bus.on(k, () => {
         save.write()
       })
@@ -344,16 +346,14 @@ export async function boot({ systems }: BootOptions): Promise<void> {
 
     const applyPose = (pose: DebugPose) => {
       if (pose.hour !== undefined) api.setTime(pose.hour)
-      if (pose.hero) {
+      if (pose.place) modes.goto(pose.place)
+      else if (pose.hero) {
         const { position, yaw } = pose.hero
         if (ctx.services.hero) ctx.services.hero.teleport(position, yaw)
         else {
           state.hero.position = { ...position }
           state.hero.yaw = yaw
         }
-        state.hero.medium = 'water'
-        state.hero.room = null
-        state.hero.localPosition = null
       }
       lockedPose = pose.camera
       state.debug.cameraLocked = true
@@ -366,11 +366,25 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       },
       ready,
       ctx,
-      teleport(x, y, z) {
-        const p = { x, y, z }
+      teleport(xOrPlace, y = 0, z = 0) {
+        lockedPose = null
+        state.debug.cameraLocked = false
+        if (typeof xOrPlace === 'string') {
+          if (!modes.goto(xOrPlace)) console.warn(`[core] lieu inconnu : ${xOrPlace}`, Object.keys(PLACES))
+          return
+        }
+        const p = { x: xOrPlace, y, z }
         if (ctx.services.hero) ctx.services.hero.teleport(p)
         else state.hero.position = p
       },
+      goto(place: PlaceId) {
+        lockedPose = null
+        return modes.goto(place)
+      },
+      places: () => Object.keys(PLACES),
+      mode: () => state.mode,
+      startSortie: (lockId) => modes.startSortie(lockId),
+      endSortie: () => modes.endSortie(),
       setAct(n: Act) {
         if (ctx.services.gameplay) ctx.services.gameplay.setAct(n)
         else {
@@ -430,6 +444,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         state.hero.wetness = 0
         state.debug.cameraLocked = false
         lockedPose = null
+        modes.set('inside', null)
         const drift = ctx.services.drift
         if (!drift) return
         const spawn = drift.roomSpawn(room)
@@ -447,8 +462,12 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     if (actParam === 1 || actParam === 2 || actParam === 3) api.setAct(actParam)
     const tParam = params.get('t')
     if (tParam !== null && Number.isFinite(Number(tParam))) api.setTime(Number(tParam))
-    const roomParam = params.get('room')
+    const roomParam = params.get('room') ?? params.get('cell')
     if (roomParam && (ROOMS as readonly string[]).includes(roomParam)) api.enterRoom(roomParam as RoomId)
+    const placeParam = params.get('place') ?? (params.get('mode') === 'sortie' ? 'sortie' : null)
+      ?? (params.get('district') ? Object.entries(PLACES).find(([, p]) => p.district === params.get('district'))?.[0] ?? null : null)
+    if (placeParam) api.goto(placeParam)
+    if (!loaded && !roomParam && !placeParam) api.enterRoom('cabine')
     const poseParam = params.get('pose')
     if (poseParam) {
       const pose = poses.resolve(poseParam, ctx)
@@ -471,6 +490,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
 
     window.addEventListener('beforeunload', () => {
       save.write()
+      modes.dispose()
       for (const s of [...systems].reverse()) {
         try {
           s.dispose()

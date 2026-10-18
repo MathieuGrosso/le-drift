@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { TETHER } from '../core/layout'
 import { INDOOR } from '../core/tuning'
 import type { GameContext, HeroService, QualityLevel, System } from '../core/types'
 import { Animator, type AnimParams } from './anim'
@@ -38,6 +39,14 @@ export function createHeroSystem(): System {
   let dripAcc = 0
   let bubbleT = 2
   let lastKick = 0
+  const ROPE_POINTS = 24
+  const ropePos = new Float32Array(ROPE_POINTS * 3)
+  const ropeGeo = new THREE.BufferGeometry()
+  ropeGeo.setAttribute('position', new THREE.BufferAttribute(ropePos, 3))
+  const rope = new THREE.Line(ropeGeo, new THREE.LineBasicMaterial({ color: 0xe0c9a0 }))
+  rope.name = 'longe'
+  rope.frustumCulled = false
+  rope.visible = false
 
   const onBack = (m: HeroModel) => {
     m.bones.chest.add(m.scrubber)
@@ -75,6 +84,7 @@ export function createHeroSystem(): System {
     e.set(THREE.MathUtils.clamp(pitch, -0.4, 0.45) * 0.7, -THREE.MathUtils.clamp(rel, -0.9, 0.9) * (target ? 0.8 : 0.45), 0)
   }
 
+  let ctx0: GameContext | null = null
   const service: HeroService = {
     teleport(p, yaw) {
       ctrl?.teleport(p, yaw)
@@ -88,6 +98,12 @@ export function createHeroSystem(): System {
       drops?.clear()
       hasLastDrift = false
       if (cam && ctrl) cam.snapBehind(ctrl.yaw)
+    },
+    teleportLocal(local, yaw) {
+      const drift = ctx0?.services.drift
+      if (!drift) return
+      const heading = drift.pose().heading
+      service.teleport(drift.toWorld(local), yaw === undefined ? undefined : yaw + heading)
     },
     setMode(m) {
       ctrl?.setMode(m)
@@ -117,7 +133,10 @@ export function createHeroSystem(): System {
       mats = createHeroMaterials(ctx)
       model = buildHero(mats)
       onBack(model)
+      ctx0 = ctx
       ctx.scene.add(model.root)
+      ctx.services.render?.patchWater(rope.material)
+      ctx.scene.add(rope)
       scarf = new Scarf(mats.cloth)
       ctx.scene.add(scarf.mesh)
       prints = new Footprints(PRINTS.high)
@@ -249,6 +268,19 @@ export function createHeroSystem(): System {
       }
       drops.update(dt, inWater, ctrl.pos.y)
 
+      rope.visible = inWater && ctx.state.mode === 'sortie' && ctrl.tetherLength > 0
+      if (rope.visible) {
+        const a = ctrl.tetherAnchor
+        const sag = THREE.MathUtils.clamp((TETHER.length - ctrl.tetherLength) * 0.12, 0, 3)
+        for (let i = 0; i < ROPE_POINTS; i++) {
+          const t = i / (ROPE_POINTS - 1)
+          ropePos[i * 3] = a.x + (hipsW.x - a.x) * t
+          ropePos[i * 3 + 1] = a.y + (hipsW.y - a.y) * t - Math.sin(t * Math.PI) * sag
+          ropePos[i * 3 + 2] = a.z + (hipsW.z - a.z) * t
+        }
+        ropeGeo.attributes.position!.needsUpdate = true
+      }
+
       const out = ctrl.out
       cam.update(dt, {
         focus: ctrl.pos,
@@ -275,6 +307,8 @@ export function createHeroSystem(): System {
         model.scrubber.geometry.dispose()
         model.voile.geometry.dispose()
       }
+      rope.removeFromParent()
+      ropeGeo.dispose()
       scarf?.mesh.removeFromParent()
       scarf?.mesh.geometry.dispose()
       prints?.mesh.removeFromParent()

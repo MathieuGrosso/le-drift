@@ -5,7 +5,8 @@ import type { DayPhase, GameState, QualityLevel } from './types'
 export function createInitialState(quality: QualityLevel = 'high'): GameState {
   const start = DRIFT_ROUTE[0]!
   return {
-    version: 1,
+    version: 2,
+    mode: 'inside',
     act: 1,
     quests: {},
     flags: {},
@@ -19,12 +20,13 @@ export function createInitialState(quality: QualityLevel = 'high'): GameState {
       breath: 1,
       breathMax: 1,
       exhausted: false,
-      lestOn: true,
       lastSafe: { x: start.x, y: DRIFT_Y, z: start.z },
       medium: 'air',
       room: 'cabine',
       wetness: 0,
-      localPosition: null,
+      localPosition: { x: -7, y: 0, z: 65.4 },
+      district: 'ecluse',
+      sortie: null,
     },
     drift: {
       progress: 0,
@@ -32,10 +34,11 @@ export function createInitialState(quality: QualityLevel = 'high'): GameState {
       heading: 0,
       velocity: { x: 0, y: 0, z: 0 },
       gate: 'halte-prairie',
+      altitude: DRIFT_Y,
       doors: {},
     },
     chart: { sondes: [], reperes: [], pins: [] },
-    inventory: { items: { frottoir: 1, lest: 1 }, slots: 20 },
+    inventory: { items: { frottoir: 1, longe: 1 }, slots: 20 },
     shallows: [],
     trouvailles: [],
     windows: {},
@@ -69,6 +72,6 @@ function deepMerge<T>(base: T, patch: unknown): T {
 
 export function migrateState(raw: unknown, quality: QualityLevel): GameState | null {
   if (!isObject(raw) || typeof raw.version !== 'number') return null
-  if (raw.version !== 1) return null
+  if (raw.version !== 2) return null
   return deepMerge(createInitialState(quality), raw)
 }

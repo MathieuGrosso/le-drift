@@ -68,7 +68,9 @@ export interface ItemText { nom: string; desc: string }
 
 export const ITEMS: Record<string, ItemText> = {
   frottoir: { nom: 'Le frottoir', desc: 'Une brosse de laiton au bout d’un long manche. Elle a lavé onze mille vitres, plusieurs fois.' },
-  lest: { nom: 'Le lest', desc: 'Ta ceinture de laiton. Sans elle, tu remontes.' },
+  lest: { nom: 'Le lest', desc: 'Ta vieille ceinture de laiton. Plus besoin : on ne marche pas au fond.' },
+  longe: { nom: 'La longe', desc: 'Une corde et un tuyau d’air, clippés à l’anneau de l’écluse. Trente-cinq mètres de dehors.' },
+  poulie: { nom: 'La poulie', desc: 'Le vieux crochet de Grand-père. Accroche-le à une tyrolienne et laisse-toi filer.' },
   voile: { nom: 'La voile', desc: 'La vieille voile de Grand-père. Ouvre-la en tombant ; le courant fait le reste.' },
   'sifflet-raie': { nom: 'Le sifflet', desc: 'Siffle, et la raie vient.' },
   stylo: { nom: 'Le stylo', desc: 'Le stylo de Grand-père. Il a creusé un sillon dans le papier.' },
@@ -95,6 +97,7 @@ export const PROMPTS = {
   frotter: 'Frotter',
   sonde: 'Activer la sonde',
   entrerSas: 'Entrer dans le sas',
+  rentrer: 'Rentrer',
   sortir: 'Sortir',
   ouvrir: 'Ouvrir',
   fermer: 'Fermer',

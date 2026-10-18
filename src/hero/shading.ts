@@ -71,9 +71,9 @@ void main() {
     float att = clamp(1.0 - dist / l.w, 0.0, 1.0);
     float nl = dot(n, dl / max(dist, 1e-3));
     float step1 = 0.5 * band(nl, 0.0) + 0.5 * band(nl, 0.5);
-    lamp += uLampColors[i] * att * att * (0.35 + 0.65 * step1);
+    lamp += mix(vec3(1.0), uLampColors[i], 0.4) * att * att * (0.35 + 0.65 * step1);
   }
-  vec3 inside = albedo * mix(vec3(0.24, 0.23, 0.35), vec3(1.0), 0.35) + albedo * lamp * 1.1;
+  vec3 inside = albedo * mix(vec3(0.24, 0.23, 0.35), vec3(0.95, 0.9, 0.8), 0.35) + albedo * lamp;
   inside += vec3(1.0, 0.76, 0.48) * pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.22;
 
   vec3 col = mix(outside, inside, uIndoor);

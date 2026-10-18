@@ -34,8 +34,6 @@ export function createEnding(gp: Gp): Ending {
       shot = 'below'
       try {
         await gp.dialogue.play(DIALOGUES.fin.slice(0, 2))
-        st.hero.lestOn = false
-        gp.sfx('lest', st.hero.position)
         await gp.dialogue.play(DIALOGUES.fin.slice(2, 4))
         const from = { ...st.hero.position }
         rise = { from, to: { x: from.x, y: CEILING_Y - 1.1, z: from.z }, t: 0 }
@@ -52,7 +50,6 @@ export function createEnding(gp: Gp): Ending {
         st.quests['a3-seuil'] = 'done'
         ctx.bus.emit('quest:step', { questId: 'a3-seuil', step: 'done' })
         ctx.bus.emit('quest:completed', { questId: 'a3-seuil' })
-        st.hero.lestOn = true
         const p = st.hero.position
         teleport({ x: p.x, y: CEILING_Y - 6, z: p.z })
         gp.camera.set(null)

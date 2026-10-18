@@ -97,6 +97,7 @@ uniform float uNight;
 uniform vec3 uProfond;
 uniform vec3 uShadowTone;
 uniform vec3 uHighTone;
+uniform vec3 uInterieur;
 varying vec2 vUv;
 
 float viewZ(vec2 uv) {
@@ -162,16 +163,16 @@ void main() {
 
   float l = luma(col);
   col = mix(col, col * uShadowTone * 1.6, (1.0 - smoothstep(0.0, 0.35, l)) * 0.22);
-  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * (0.18 + 0.2 * uWarm));
+  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.08, uIndoor));
   l = luma(col);
   col = mix(vec3(l), col, 1.06 - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
   float m = max(col.r, max(col.g, col.b));
   if (m > 0.82) col *= (0.82 + 0.18 * (1.0 - exp(-(m - 0.82) / 0.18))) / m;
 
-  col *= mix(vec3(1.0), vec3(0.72, 0.84, 1.12), uNight);
+  col *= mix(vec3(1.0), vec3(0.72, 0.84, 1.12), uNight * (1.0 - 0.75 * uIndoor));
   vec2 vq = vUv - 0.5;
   float vig = smoothstep(0.35, 0.95, length(vq * vec2(1.15, 1.0)));
-  col = mix(col, col * 0.6 + uProfond * 0.25, vig * 0.35);
+  col = mix(col, col * 0.6 + mix(uProfond, uInterieur, uIndoor) * 0.25, vig * 0.35);
 
   col = toSRGB(col);
   float g = hash(vUv * 1000.0 + fract(uTime) * 37.0) - 0.5;
@@ -236,6 +237,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     uProfond: int.rdProfond,
     uShadowTone: { value: new THREE.Color(0x45507a) },
     uHighTone: { value: new THREE.Color(1.08, 1.0, 0.86) },
+    uInterieur: int.rdInterieur,
   }
   const compositeMat = new THREE.ShaderMaterial({
     uniforms: compositeUniforms, vertexShader: QUAD_VS, fragmentShader: COMPOSITE_FS, depthTest: false, depthWrite: false,
