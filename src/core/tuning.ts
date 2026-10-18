@@ -78,7 +78,7 @@ export const CAMERA = {
     distance: 3.0,
     distanceMin: 0.6,
     shoulderOffset: 0.5,
-    fov: 60,
+    fov: 68,
     pitchMinDeg: -50,
     pitchMaxDeg: 60,
     sphereRadius: 0.25,
