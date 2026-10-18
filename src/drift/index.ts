@@ -420,6 +420,9 @@ export function createDriftSystem(): System {
     loaded.add(district)
     for (const n of DISTRICT_NEIGHBOURS[district].slice(0, levelLoad(ctx))) loaded.add(n)
     loaded.add('ecluse')
+    loaded.add('hauts')
+    const heroCell = cityCell(ref)
+    if (heroCell) for (const d of heroCell.pvs) loaded.add(d)
     const key = [...loaded].sort().join(',')
     if (key !== loadedKey) {
       loadedKey = key
