@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { CelMaterialParams } from '../core/types'
 import { GLSL_COMMON } from './glsl'
-import { MAX_LAMPS, type AllUniforms } from './uniforms'
+import { MAX_GLASS, MAX_LAMPS, type AllUniforms } from './uniforms'
 import { PALETTE } from './palette'
 
 const NORMAL_GATE = '#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )'
@@ -24,12 +24,12 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
 #ifdef CEL_INDOOR
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
   float dayK = 0.55 + 0.45 * rdDay;
-  vec3 skyB = rdCreme * 0.3;
-  vec3 floorB = rdBoisOmbre * 0.3 + rdCreme * 0.05;
+  vec3 skyB = rdCreme * mix(0.17, 0.26, rdAirHaze);
+  vec3 floorB = rdBoisOmbre * 0.22 + rdCreme * 0.025;
   vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(mix(vec3(1.0), plum, 0.6), vec3(1.0), smoothstep(0.0, 0.9, N.y) * 0.6);
   amb *= dayK * (1.0 + 0.3 * rdAirHaze * rdDay);
   float fillL = dot(rdLampFill, vec3(0.33));
-  amb += mix(vec3(fillL), rdLampFill, 0.6) * 0.22;
+  amb += mix(vec3(fillL), rdLampFill, 0.6) * 0.1;
   vec3 key = vec3(0.0);
   vec3 lampRim = vec3(0.0);
   for (int i = 0; i < ${MAX_LAMPS}; i++) {
@@ -50,18 +50,32 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     float wrap = smoothstep(-0.2, 0.3, nl);
     vec3 tone = mix(plum * 0.3, vec3(1.0), wrap);
     vec3 lc = mix(vec3(1.0), rdLampColors[i], 0.4);
-    key += lc * tone * band * shade * flick;
-    lampRim += rdLampColors[i] * smoothstep(0.0, 0.25, att) * smoothstep(-0.1, 0.6, dot(-V, Ld));
+    float pool = smoothstep(0.55, 0.92, down) * smoothstep(0.35, 0.85, N.y) * smoothstep(0.0, 0.35, att);
+    key += lc * (tone * band * shade + pool * 0.55) * flick;
+    lampRim += rdLampColors[i] * smoothstep(0.0, 0.25, att) * smoothstep(-0.1, 0.6, dot(-V, Ld)) * (1.0 - smoothstep(0.3, 0.75, nl));
   }
-  key = (1.0 - exp(-key * 1.3)) * 0.95;
+  key = (1.0 - exp(-key * 1.4)) * 0.82;
   vec3 canopy = mix(rdVitreMer, rdCreme, 0.6) * rdAirHaze * (0.25 + 0.75 * rdDay);
   canopy *= smoothstep(0.1, 0.5, N.y) * 0.26 + smoothstep(0.6, 0.85, N.y) * 0.14;
   vec3 patchL;
   vec3 sea = rd_glassLight(W, N, length(fwidth(W)), patchL);
-  vec3 col = albedo * (amb + key + canopy + sea * 2.0 + patchL * 1.7);
+  vec3 col = albedo * (amb + key + canopy + sea * 2.0 + patchL * 1.2);
   float rimI = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * rdCelRim;
   float rimEdge = smoothstep(0.25, 0.45, rimI);
-  col += (sea * 0.9 + lampRim * 0.55) * rimEdge + rdCreme * 0.02 * dayK * rimI;
+  vec3 backRim = vec3(0.0);
+  for (int i = 0; i < ${MAX_GLASS}; i++) {
+    vec4 gC = rdGlassC[i];
+    if (gC.z <= 0.0) continue;
+    vec3 tg = rdGlassA[i].xyz - W;
+    float dg = length(tg);
+    vec3 Lg = tg / max(dg, 1e-3);
+    float behind = smoothstep(-0.1, 0.55, dot(-V, Lg));
+    float face = smoothstep(-0.05, 0.4, dot(N, Lg));
+    float size = rdGlassA[i].w * rdGlassB[i].w;
+    backRim += vec3(0.82, 1.0, 0.94) * behind * face * gC.z * (0.45 + 0.55 * gC.x) * min(1.0, size * 0.6) / (1.0 + dg * dg * mix(0.006, 0.0015, gC.w));
+  }
+  backRim *= 0.3 + 0.7 * rdDay;
+  col += (sea * 0.9 + lampRim * 0.55) * rimEdge + backRim * 0.8 * smoothstep(0.1, 0.32, rimI) + rdCreme * 0.02 * dayK * rimI;
   float hz;
   col = rd_applyIndoorHaze(col, W, hz);
   return col + rdCelEmissive * 1.6 * (1.0 - 0.6 * hz);

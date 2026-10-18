@@ -43,7 +43,7 @@ const BASE = {
   aube: C(PALETTE.soleilAube), airBrume: C(PALETTE.airBrume),
 }
 const AIR_TINT: Record<string, { color: THREE.Color; k: number }> = {
-  serres: { color: C(0xb9d98a), k: 0.3 },
+  serres: { color: C(0xb9d98a), k: 0.5 },
   machines: { color: C(0xc98e5e), k: 0.22 },
   scellees: { color: C(0x8fb8b0), k: 0.2 },
 }
@@ -67,11 +67,14 @@ export function createRenderSystem(): System {
   let lastRenderer: THREE.WebGLRenderer | null = null
   let wasLocked = false
   let wipeIdx = 0
-  const glassLights = new GlassLights(int)
   let seaVis = true
   const glassPass = createGlassPassUniforms()
   let glassSeenFrame = -1000
   let frameNo = 0
+  const glassFactory = createGlassFactory(shared, glassPass, () => {
+    glassSeenFrame = frameNo
+  })
+  const glassLights = new GlassLights(int, glassFactory)
   let lastDt = 1 / 60
   let snapFrame = true
 
@@ -86,9 +89,7 @@ export function createRenderSystem(): System {
   const service: RenderServiceV2 = {
     cel: createCelFactory(shared),
     patchWater: createPatchWater(shared),
-    glass: createGlassFactory(shared, glassPass, () => {
-      glassSeenFrame = frameNo
-    }),
+    glass: glassFactory,
     setGlassLights: (lights) => glassLights.set(lights),
     wipeGlass(p) {
       int.rdWipes.value[wipeIdx]!.set(p.x, p.y, p.z, int.rdHours.value)
@@ -132,7 +133,7 @@ export function createRenderSystem(): System {
       renderer.render(scene, camera)
 
       let color: THREE.Texture = post.sceneTarget.texture
-      if (frameNo - glassSeenFrame < 30) {
+      if (frameNo - glassSeenFrame < 30 || glassLights.liveGlass > 0) {
         const merged = post.prepareGlass(renderer, glassPass)
         glassPass.rgLive.value = 1
         camera.layers.set(GLASS_LAYER)

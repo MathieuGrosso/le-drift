@@ -103,11 +103,11 @@ float rd_hazeAmount(float d) {
 // Sea haze is water between the eye and the thing: from inside, only the stretch beyond the glass counts.
 // Air haze is dust in a big room, over the in-air stretch only. Never mix the two.
 float rd_airAmount(float d) {
-  return (1.0 - exp(-d / 140.0)) * 0.45 * rdAirHaze * rdIndoor;
+  return (1.0 - exp(-pow(d / 56.0, 1.8))) * 0.65 * rdAirHaze * rdIndoor;
 }
 vec3 rd_airColor() {
   float near = step(0.001, rdLamps[0].w);
-  return mix(rdAirBrume, rdAirBrume * mix(vec3(1.0), rdLampColors[0] / max(max(rdLampColors[0].r, rdLampColors[0].g), 1e-3), 0.2), near);
+  return 0.78 * mix(rdAirBrume, rdAirBrume * mix(vec3(1.0), rdLampColors[0] / max(max(rdLampColors[0].r, rdLampColors[0].g), 1e-3), 0.2), near);
 }
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;
@@ -166,7 +166,7 @@ float rd_shadow(vec3 wp, float ndl) {
 }
 `
 
-// Glass slots: A = centre.xyz + half width, B = inward normal.xyz + half height, C = (clean, round, strength, -).
+// Glass slots: A = centre.xyz + half width, B = inward normal.xyz + half height, C = (clean, round, strength, roof).
 export const GLSL_GLASS = /* glsl */ `
 vec3 rd_glassT(vec3 n) {
   vec3 t = cross(vec3(0.0, 1.0, 0.0), n);
@@ -193,9 +193,11 @@ vec3 rd_beamColor() {
 float rd_beamStreak(vec2 uv, float halfW, int i) {
   float k = smoothstep(0.7, 1.8, halfW);
   if (k <= 0.0) return 1.0;
+  float roof = rdGlassC[i].w;
+  uv *= mix(1.0, 0.28, roof);
   float s = rd_noise(vec2(uv.x * 0.9 + uv.y * 0.22 + float(i) * 7.3 + rdTime * 0.04, rdTime * 0.06 + float(i)));
   float s2 = rd_noise(vec2(uv.x * 2.3 - rdTime * 0.05, 3.0 + float(i)));
-  return mix(1.0, 0.12 + 0.88 * smoothstep(0.38, 0.72, s * 0.75 + s2 * 0.25), k);
+  return mix(1.0, mix(0.12, 0.0, roof) + 0.88 * smoothstep(mix(0.38, 0.62, roof), mix(0.72, 0.8, roof), s * 0.75 + s2 * 0.25), k);
 }
 float rd_beamAt(vec3 P, int i, out float along) {
   along = 0.0;
@@ -212,7 +214,7 @@ float rd_beamAt(vec3 P, int i, out float along) {
   vec3 hit = rel + Lb * t;
   vec3 T = rd_glassT(B.xyz);
   vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
-  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * rd_beamStreak(uv, A.w, i) * C.x * C.z * exp(-t * 0.09) * smoothstep(0.0, 0.25, front);
+  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * rd_beamStreak(uv, A.w, i) * C.x * C.z * exp(-t * mix(0.09, 0.022, C.w)) * smoothstep(0.0, 0.25, front) * mix(1.0, 0.12, C.w);
 }
 vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
   vec3 fill = vec3(0.0);
@@ -233,19 +235,19 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     float facing = smoothstep(0.15, 0.75, front * inversesqrt(d2));
     float reach = 2.2 + 0.5 * max(A.w, B.w);
     float k = 1.0 - sqrt(d2) / reach;
-    float cone = smoothstep(0.0, 0.1, k) * 0.35 + smoothstep(0.4, 0.5, k) * 0.65;
+    float cone = (smoothstep(0.0, 0.1, k) * 0.35 + smoothstep(0.4, 0.5, k) * 0.65) * (1.0 - C.w);
     fill += rdVitreMer * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
 
     vec3 Lb = rd_beamDir(B.xyz);
     float denom = min(dot(Lb, B.xyz), -0.05);
     float t = -front / denom;
-    if (t <= 0.0 || t > 16.0) continue;
+    if (t <= 0.0 || t > mix(16.0, 48.0, C.w)) continue;
     vec3 hit = rel + Lb * t;
     vec3 T = rd_glassT(B.xyz);
     vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
     float m = rd_glassMask(uv, A, B, C, 0.03 + t * 0.025) * rd_beamStreak(uv, A.w, i);
     if (m <= 0.0) continue;
-    float lit = m * smoothstep(-0.05, 0.3, dot(N, Lb)) * exp(-t * 0.06) * C.x * C.z;
+    float lit = m * smoothstep(-0.05, 0.3, dot(N, Lb)) * exp(-t * mix(0.06, 0.02, C.w)) * C.x * C.z * mix(1.0, 0.5, C.w);
     vec2 cu = uv * 2.4 + vec2(rdTime * 0.07, -rdTime * 0.05) + float(i) * 3.7;
     float aa = 1.0 - smoothstep(0.03, 0.12, foot * 2.4);
     float pattern = 0.8;

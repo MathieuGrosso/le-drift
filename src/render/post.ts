@@ -195,7 +195,7 @@ void main() {
     }
   }
   float avg = exp(acc / wsum);
-  float key = mix(0.36, 0.33, uIndoor);
+  float key = mix(0.36, 0.3, uIndoor);
   float target = clamp(key / max(avg, 1e-3), mix(0.86, 0.82, uIndoor), mix(1.18, mix(1.1, 1.0, uNight), uIndoor));
   float prev = texture2D(tPrev, vec2(0.5)).r;
   if (prev <= 0.0) prev = 1.0;
@@ -218,6 +218,7 @@ uniform float uNear;
 uniform float uFar;
 uniform float uTime;
 uniform float uIndoor;
+uniform float uAirHaze;
 uniform float uWarm;
 uniform float uNight;
 uniform vec3 uProfond;
@@ -288,20 +289,38 @@ void main() {
     float d = (1.0 - ao) * uAO * mix(0.6, 1.0, uIndoor);
     col *= mix(vec3(1.0), aoTint, d) * (1.0 - 0.6 * d);
   }
+  if (dc < 28.0) {
+    vec2 px = uTexel * max(1.0, 1.0 / (uTexel.y * 720.0)) * 2.5;
+    vec3 wrap = vec3(0.0);
+    float wn = 0.0;
+    for (int k = 0; k < 8; k++) {
+      float a = float(k) * 0.7854;
+      vec2 o = vec2(cos(a), sin(a)) * px;
+      float far = smoothstep(1.35, 1.9, viewZ(vUv + o) / dc);
+      wrap += texture2D(tScene, vUv + o).rgb * far;
+      wn += far;
+    }
+    if (wn > 0.0) {
+      vec3 bg = wrap / wn;
+      float lift = smoothstep(0.0, 0.25, luma(bg) - luma(col));
+      vec3 coolBg = mix(bg, bg * vec3(0.85, 1.05, 1.08), uIndoor);
+      col += coolBg * lift * min(wn / 3.0, 1.0) * 0.55 * (1.0 - smoothstep(14.0, 28.0, dc));
+    }
+  }
   col *= texture2D(tExposure, vec2(0.5)).r;
   col += texture2D(tShafts, vUv).rgb;
 #ifdef RADIAL
   col += texture2D(tRadial, vUv).rgb * 0.9 * (1.0 - uIndoor);
 #endif
-  col += texture2D(tBloom, vUv).rgb * mix(0.55, 0.7, uIndoor);
+  col += texture2D(tBloom, vUv).rgb * mix(0.55, mix(0.3, 0.45, clamp(uAirHaze, 0.0, 1.0)), uIndoor);
 
   float l = luma(col);
   vec3 shadowTone = mix(uShadowTone, uInterieur, uIndoor);
   col = mix(col, col * shadowTone * 1.6, (1.0 - smoothstep(0.0, 0.3, l)) * mix(0.22, 0.16, uIndoor));
   col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.08, uIndoor));
   float lc = max(luma(col), 1e-4);
-  float pivot = 0.2;
-  float lcC = pivot * pow(lc / pivot, 1.0 + 0.16 * uIndoor);
+  float pivot = 0.22;
+  float lcC = pivot * pow(lc / pivot, 1.0 + 0.3 * uIndoor);
   col *= mix(1.0, lcC / lc, smoothstep(0.0, 0.02, lc));
   l = luma(col);
   float mid = smoothstep(0.03, 0.15, l) * (1.0 - smoothstep(0.45, 0.85, l));
@@ -312,11 +331,12 @@ void main() {
 
   col *= mix(vec3(1.0), vec3(0.72, 0.84, 1.12), uNight * (1.0 - 0.75 * uIndoor));
   vec2 vq = vUv - 0.5;
-  float vig = smoothstep(0.3, 0.95, length(vq * vec2(1.15, 1.0)));
-  vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * 0.5 + uInterieur * 0.3, uIndoor);
-  col = mix(col, vigCol, vig * mix(0.35, 0.42, uIndoor));
+  float vig = smoothstep(0.25, 0.95, length(vq * vec2(1.15, 1.0)));
+  vec3 plumHue = uInterieur / max(max(uInterieur.r, uInterieur.g), uInterieur.b);
+  vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * plumHue * 0.5, uIndoor);
+  col = mix(col, vigCol, vig * mix(0.35, 0.5, uIndoor));
   vec3 toe = vec3(0.027, 0.023, 0.058);
-  col += toe * (1.0 - smoothstep(0.0, 0.12, luma(col)));
+  col = max(col, toe * 0.5) + toe * 0.5 * (1.0 - smoothstep(0.0, 0.05, luma(col)));
 
   col = toSRGB(col);
   float g = hash(vUv * 1000.0 + fract(uTime) * 37.0) - 0.5;
@@ -407,7 +427,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     tShafts: { value: shaftTarget.texture }, tRadial: { value: radialTarget.texture },
     tAO: { value: aoBlurTarget.texture }, tExposure: { value: exposure[0]!.texture }, uAO: { value: AO_LEVELS[quality.level] },
     uTexel: { value: new THREE.Vector2() }, uNear: { value: 0.1 }, uFar: { value: 4000 },
-    uTime: pub.uTime, uIndoor: pub.uIndoor, uWarm: { value: 0 }, uNight: { value: 0 },
+    uTime: pub.uTime, uIndoor: pub.uIndoor, uAirHaze: pub.uAirHaze, uWarm: { value: 0 }, uNight: { value: 0 },
     uProfond: int.rdProfond,
     uShadowTone: { value: new THREE.Color(0x45507a) },
     uHighTone: { value: new THREE.Color(1.08, 1.0, 0.86) },
@@ -527,7 +547,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
         const t = bloom[i]!.rt
         downMat.uniforms.tSrc!.value = src
         downMat.uniforms.uTexel!.value.set(1 / srcW, 1 / srcH)
-        downMat.uniforms.uThreshold!.value = i === 0 ? 1.15 - 0.3 * pub.uIndoor.value : 0
+        downMat.uniforms.uThreshold!.value = i === 0 ? 1.15 - pub.uIndoor.value * (0.12 + 0.1 * Math.min(1, pub.uAirHaze.value)) : 0
         pass(renderer, downMat, t, true)
         src = t.texture
         srcW = t.width

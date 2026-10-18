@@ -163,16 +163,20 @@ void main() {
     if (rgCondense > 0.5 && rdCondensation > 0.001) {
       fog = rdCondensation * (1.0 - rg_wiped(vW)) * (0.7 + 0.3 * rd_noise(q * 3.0));
     }
-    vec3 behind = rgLive > 0.5 ? rg_behind(suv, off, max(fog, thick * 0.8)) : rdVitreMer * (0.35 + 0.5 * rdDay);
-    vec3 tinted = behind * mix(vec3(1.0), tint / max(max(tint.r, tint.g), tint.b), 0.22);
-    tinted *= 1.0 - 0.18 * smoothstep(0.82, 1.0, edgeDist) * (1.0 - rgRound * 0.5);
-    float dayG = 0.25 + 0.75 * rdDay;
-    vec3 seaGlow = rd_hazeColor(-V, vW.y);
-    seaGlow = mix(seaGlow, rdPlafond, smoothstep(-0.3, 0.55, rgDome > 0.5 ? 0.6 : c.y) * 0.5);
-    col = tinted * 0.75 + seaGlow * 0.85 * dayG;
-    col += vec3(0.91, 1.0, 0.96) * (fres * 0.22 + smoothstep(0.9, 0.99, edgeDist) * 0.14) * dayG;
-    vec3 refl = mix(rdCreme * 0.16, rdLampFill * 0.5 + rdCreme * 0.08, 0.5);
-    col = mix(col, col + refl, fres * 0.6);
+    vec3 behind = rgLive > 0.5 ? rg_behind(suv, off, max(fog, thick * 0.6)) : rdVitreMer * (0.35 + 0.5 * rdDay);
+    float dayG = 0.55 + 0.45 * rdDay;
+    float vy = rgDome > 0.5 ? smoothstep(-0.1, 0.95, -V.y) : smoothstep(-0.45, 0.5, c.y);
+    vec3 seaFloor = mix(vec3(0.15, 0.44, 0.41), vec3(0.62, 0.86, 0.77), vy * vy * (3.0 - 2.0 * vy));
+    vec3 sunUp = normalize(rdSunDir + vec3(0.0, 1.2, 0.0));
+    float hot = pow(max(dot(-V, sunUp), 0.0), 7.0) * (rgDome > 0.5 ? 1.0 : 0.45);
+    seaFloor += vec3(0.75, 0.95, 0.86) * hot * 0.8;
+    seaFloor *= dayG * (1.0 + 0.2 * rdSunI);
+    vec3 tinted = behind * mix(vec3(1.0), tint / max(max(tint.r, tint.g), tint.b), 0.18);
+    col = seaFloor * 0.7 + tinted * 0.32;
+    col *= 1.0 - 0.12 * smoothstep(0.86, 1.0, edgeDist) * (1.0 - rgRound * 0.5) * (1.0 - rgDome);
+    vec3 edgeC = vec3(0.80, 1.0, 0.92);
+    col += edgeC * (fres * 0.35 + smoothstep(0.9, 0.99, edgeDist) * 0.18 * (1.0 - rgDome)) * dayG;
+    col += rdLampFill * 0.12 * fres;
     vec3 R = reflect(-V, Nf);
     for (int i = 0; i < ${MAX_LAMPS}; i++) {
       vec4 lp = rdLamps[i];
@@ -182,17 +186,17 @@ void main() {
       float s = pow(max(dot(R, tl / d), 0.0), 2500.0) * (1.0 - smoothstep(lp.w * 0.5, lp.w * 1.6, d));
       col += rdLampColors[i] * s * 0.9;
     }
-    float seaL = dot(col, vec3(0.3, 0.55, 0.15));
-    vec3 furBack = mix(mix(rdRevetement, vec3(0.72, 0.88, 0.5), 0.2), rdVitreMer, 0.35) * (0.15 + 1.05 * seaL) * (1.0 - 0.55 * thick) * (0.65 + 0.7 * n) * (0.85 + 0.3 * fine);
-    furBack += mix(rdRevetement, vec3(0.86, 0.95, 0.45), 0.45) * rim * (0.35 + 1.4 * seaL) * (0.4 + 0.6 * rdDay);
-    furBack += rdLampFill * 0.08 * cover;
-    col = mix(col, furBack, cover * (0.55 + 0.45 * thick));
+    float soft = rd_noise(q * 2.2 + vSeed * 5.0) * 0.6 + n * 0.4;
+    vec3 algae = mix(vec3(0.42, 0.62, 0.30), vec3(0.78, 0.90, 0.48), soft);
+    vec3 furBack = seaFloor * mix(vec3(1.0), algae / max(algae.g, 1e-3), 0.4) * (0.78 + 0.34 * soft);
+    furBack += vec3(0.86, 0.95, 0.52) * rim * 0.3 * dayG;
+    col = mix(col, furBack, cover * (0.35 + 0.25 * thick));
     if (fog > 0.0) {
       float drops = 1.0 - smoothstep(0.0, 0.07, rd_cellEdge(q * 9.0 + vec2(0.0, rdTime * 0.01), 0.0));
       vec3 fogC = mix(rdCreme * 0.55, rdLampFill * 0.5 + rdCreme * 0.3, 0.45);
       col = mix(col, col * 0.7 + fogC * 0.45, fog * 0.7) + rdCreme * drops * fog * 0.12;
     }
-    float ah = rd_airAmount(dist);
+    float ah = rd_airAmount(dist) * 0.6;
     col = mix(col, rd_airColor(), ah);
   } else {
     vec3 behind = rgLive > 0.5 ? rg_behind(suv, off * 1.3, thick * 0.5) : rdVitreLumiere * 0.4;

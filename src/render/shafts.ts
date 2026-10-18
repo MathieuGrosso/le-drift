@@ -170,7 +170,9 @@ void main() {
         acc += b * dust * stepL * smoothstep(0.2, 1.2, t);
       }
     }
-    col += rd_beamColor() * acc * 0.2;
+    vec3 bc = rd_beamColor();
+    bc = mix(bc, vec3(0.78, 1.0, 0.93) * dot(bc, vec3(0.33)), 0.45);
+    col += bc * (1.0 - exp(-acc * 2.0)) * 0.5;
   }
   if (uHalos > 0.5) {
     for (int i = 0; i < ${MAX_LAMPS}; i++) {
@@ -182,7 +184,7 @@ void main() {
       vec3 q = rel - rd * s;
       float d2 = dot(q, q);
       float far = 1.0 / (1.0 + dot(rel, rel) * 0.004);
-      float h = exp(-d2 * 18.0) * 0.5 * behind + exp(-d2 * 1.4) * 0.05 + exp(-d2 * 0.2) * 0.008;
+      float h = exp(-d2 * 18.0) * 0.5 * behind + (exp(-d2 * 1.4) * 0.05 + exp(-d2 * 0.2) * 0.008) * rdAirHaze;
       col += mix(vec3(1.0), rdLampColors[i], 0.75) * h * far;
     }
   }
