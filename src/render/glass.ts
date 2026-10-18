@@ -197,7 +197,7 @@ void main() {
       col = mix(col, col * 0.7 + fogC * 0.45, fog * 0.7) + rdCreme * drops * fog * 0.12;
     }
     float ah = rd_airAmount(dist) * 0.6;
-    col = mix(col, rd_airColor(), ah);
+    col = mix(col, rd_airColor(dist), ah);
   } else {
     vec3 behind = rgLive > 0.5 ? rg_behind(suv, off * 1.3, thick * 0.5) : rdVitreLumiere * 0.4;
     vec3 glow = rdVitreLumiere * (0.08 + 0.4 * (1.0 - rdDay));

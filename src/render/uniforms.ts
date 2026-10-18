@@ -43,6 +43,7 @@ export interface InternalUniforms {
   rdCondensation: { value: number }
   rdWipes: { value: THREE.Vector4[] }
   rdLampFill: { value: THREE.Color }
+  rdAirTint: { value: THREE.Vector4 }
 }
 
 export function createPublicUniforms(): PublicUniforms {
@@ -96,6 +97,7 @@ export function createInternalUniforms(): InternalUniforms {
     rdCondensation: { value: 0 },
     rdWipes: { value: Array.from({ length: MAX_WIPES }, () => new THREE.Vector4(0, -1e4, 0, -100)) },
     rdLampFill: { value: new THREE.Color(0, 0, 0) },
+    rdAirTint: { value: new THREE.Vector4(1, 1, 1, 0) },
   }
 }
 

@@ -43,7 +43,7 @@ const BASE = {
   aube: C(PALETTE.soleilAube), airBrume: C(PALETTE.airBrume),
 }
 const AIR_TINT: Record<string, { color: THREE.Color; k: number }> = {
-  serres: { color: C(0xb9d98a), k: 0.5 },
+  serres: { color: C(0xb9d98a), k: 0.3 },
   machines: { color: C(0xc98e5e), k: 0.22 },
   scellees: { color: C(0x8fb8b0), k: 0.2 },
 }
@@ -223,9 +223,10 @@ export function createRenderSystem(): System {
     pub.uAirHaze.value += (airHaze - pub.uAirHaze.value) * k
     pub.uGlassDist.value = camEnv?.glassDist ?? 4
     const tint = AIR_TINT[camEnv?.district ?? ''] ?? null
-    tmpColor.copy(BASE.airBrume)
-    if (tint) tmpColor.lerp(tint.color, tint.k)
-    int.rdAirBrume.value.lerp(tmpColor, k)
+    int.rdAirBrume.value.lerp(BASE.airBrume, k)
+    const at = int.rdAirTint.value
+    if (tint) at.set(at.x + (tint.color.r - at.x) * k, at.y + (tint.color.g - at.y) * k, at.z + (tint.color.b - at.z) * k, at.w + (tint.k - at.w) * k)
+    else at.w += (0 - at.w) * k
 
     int.rdHours.value = (s.time.day - 1) * 24 + s.time.hours
     const cond = (s.env as { condensation?: number }).condensation

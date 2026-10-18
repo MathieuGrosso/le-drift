@@ -12,6 +12,30 @@ uniform float rdCelRim;
 uniform vec3 rdCelEmissive;
 varying vec3 vRdW;
 varying vec3 vRdN;
+varying vec3 vRdL;
+varying vec3 vRdLN;
+
+// Painted plaster vault: strokes along the vault axis, batten shadow bands, value sinking toward the crown.
+vec3 rd_vault(vec3 albedo, vec3 P, vec3 n) {
+  float side = length(n.xz);
+  bool alongZ = abs(n.x) > abs(n.z);
+  float u = alongZ ? P.z : P.x;
+  float v = (alongZ ? P.x : P.z) + P.y;
+  float aniso = smoothstep(0.12, 0.35, side);
+  float fw = length(fwidth(P));
+  float aa = 1.0 - smoothstep(0.03, 0.12, fw);
+  float strokes = mix(rd_noise(P.xz * 1.7 + P.y * 0.9), rd_noise(vec2(u * 0.45, v * 6.0)) * 0.7 + rd_noise(vec2(u * 1.3, v * 15.0)) * 0.3, aniso);
+  float mott = rd_noise(vec2(u, v) * 0.32 + 3.1);
+  vec3 c = albedo * (0.86 + 0.16 * strokes * aa + 0.12 * (mott - 0.5));
+  float fu = fract(u / 1.45);
+  float band = smoothstep(0.0, 0.05, fu) * (1.0 - smoothstep(0.05, 0.24, fu));
+  float lip = 1.0 - smoothstep(0.0, 0.02 + fw * 0.5, min(fu, 1.0 - fu) * 1.45);
+  c *= 1.0 - (band * 0.2 + lip * 0.25) * aniso * aa;
+  float crack = 1.0 - smoothstep(0.0, 0.012, abs(rd_noise(vec2(u, v) * 2.3 + 9.0) - 0.5));
+  c *= 1.0 - crack * step(0.62, rd_noise(vec2(u, v) * 0.5 + 1.7)) * 0.18 * aa;
+  c *= mix(1.0, 0.58, smoothstep(0.45, 0.97, -n.y));
+  return c;
+}
 
 vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   vec3 L = rdSunDir;
@@ -22,6 +46,10 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   vec3 shadowTint = mix(vec3(1.0), shadowHue, 0.62);
   vec3 sun = rdSunColor * rdSunI;
 #ifdef CEL_INDOOR
+  float overhead = smoothstep(0.2, 0.55, -N.y) * smoothstep(1.7, 2.3, W.y - rdHeroPos.y);
+  if (overhead > 0.0 && dot(vRdLN, vRdLN) > 1e-6) albedo = mix(albedo, rd_vault(albedo, vRdL, normalize(vRdLN)), overhead);
+  float floorUp = smoothstep(0.75, 0.95, N.y);
+  albedo = mix(albedo, albedo * vec3(1.07, 1.0, 0.86), floorUp * 0.75);
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
   float dayK = 0.55 + 0.45 * rdDay;
   vec3 skyB = rdCreme * mix(0.17, 0.26, rdAirHaze);
@@ -54,14 +82,15 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     key += lc * (tone * band * shade + pool * 0.55) * flick;
     lampRim += rdLampColors[i] * smoothstep(0.0, 0.25, att) * smoothstep(-0.1, 0.6, dot(-V, Ld)) * (1.0 - smoothstep(0.3, 0.75, nl));
   }
-  key = (1.0 - exp(-key * 1.4)) * 0.82;
+  key = (1.0 - exp(-key * 1.4)) * 0.74;
   vec3 canopy = mix(rdVitreMer, rdCreme, 0.6) * rdAirHaze * (0.25 + 0.75 * rdDay);
   canopy *= smoothstep(0.1, 0.5, N.y) * 0.26 + smoothstep(0.6, 0.85, N.y) * 0.14;
   vec3 patchL;
   vec3 sea = rd_glassLight(W, N, length(fwidth(W)), patchL);
-  vec3 col = albedo * (amb + key + canopy + sea * 2.0 + patchL * 1.2);
+  vec3 col = albedo * (amb + key + canopy + sea * 1.5 + patchL);
   float rimI = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * rdCelRim;
   float rimEdge = smoothstep(0.25, 0.45, rimI);
+  float rimK = smoothstep(0.62, 0.7, rdCelRim);
   vec3 backRim = vec3(0.0);
   for (int i = 0; i < ${MAX_GLASS}; i++) {
     vec4 gC = rdGlassC[i];
@@ -74,8 +103,9 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     float size = rdGlassA[i].w * rdGlassB[i].w;
     backRim += vec3(0.82, 1.0, 0.94) * behind * face * gC.z * (0.45 + 0.55 * gC.x) * min(1.0, size * 0.6) / (1.0 + dg * dg * mix(0.006, 0.0015, gC.w));
   }
-  backRim *= 0.3 + 0.7 * rdDay;
-  col += (sea * 0.9 + lampRim * 0.55) * rimEdge + backRim * 0.8 * smoothstep(0.1, 0.32, rimI) + rdCreme * 0.02 * dayK * rimI;
+  backRim *= (0.3 + 0.7 * rdDay) * mix(smoothstep(1.5, 4.5, length(cameraPosition - W)), 1.0, rimK);
+  rimEdge *= mix(0.35 * smoothstep(1.5, 4.5, length(cameraPosition - W)), 1.0, rimK);
+  col += (sea * 0.9 + lampRim * 0.55) * rimEdge + backRim * mix(0.8, 1.9, rimK) * smoothstep(mix(0.1, 0.05, rimK), mix(0.32, 0.22, rimK), rimI) + rdCreme * 0.02 * dayK * rimI;
   float hz;
   col = rd_applyIndoorHaze(col, W, hz);
   return col + rdCelEmissive * 1.6 * (1.0 - 0.6 * hz);
@@ -126,13 +156,24 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
 }
 `
 
-const VERTEX_DECL = 'varying vec3 vRdW;\nvarying vec3 vRdN;\n'
+const VERTEX_DECL = 'varying vec3 vRdW;\nvarying vec3 vRdN;\nvarying vec3 vRdL;\nvarying vec3 vRdLN;\n'
 const VERTEX_BODY = /* glsl */ `
 vRdW = (mvPosition.xyz - viewMatrix[3].xyz) * mat3(viewMatrix);
+#ifdef USE_INSTANCING
+vRdL = (instanceMatrix * vec4(transformed, 1.0)).xyz;
+#else
+vRdL = transformed;
+#endif
 #ifdef RD_HAS_NORMAL
 vRdN = transformedNormal * mat3(viewMatrix);
+#ifdef USE_INSTANCING
+vRdLN = mat3(instanceMatrix) * objectNormal;
+#else
+vRdLN = objectNormal;
+#endif
 #else
 vRdN = vec3(0.0);
+vRdLN = vec3(0.0);
 #endif
 `
 

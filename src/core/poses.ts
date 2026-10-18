@@ -80,7 +80,6 @@ export function registerCorePoses(reg: PoseRegistry): void {
 const ART_ALIASES: Record<string, { base: string; hour?: number }> = {
   'art-atrium': { base: 'atrium-vista', hour: 10 },
   'art-refectoire': { base: 'refectoire-window', hour: 7.7 },
-  'art-cartes': { base: 'salle-des-cartes', hour: 15 },
   'art-serre': { base: 'serre-cathedrale', hour: 11.5 },
   'art-sortie': { base: 'sortie', hour: 7.2 },
   'art-ilo': { base: 'heros', hour: 8 },
@@ -102,7 +101,8 @@ function registerArtPoses(reg: PoseRegistry): void {
       camera: { position: drift.toWorld(from), target: drift.toWorld(to), fov },
     }
   }
-  reg.registerFactory('art-cabine', local(5.9, { x: -8.7, y: 1.75, z: 63.5 }, { x: -5.4, y: 1.0, z: 66.5 }, 64, { x: -6.1, y: 0, z: 66.7, yaw: Math.PI / 2 }))
+  reg.registerFactory('art-cabine', local(5.9, { x: -8.7, y: 1.75, z: 63.5 }, { x: -6.2, y: 1.15, z: 65.15 }, 64, { x: -7.15, y: 0, z: 66.5, yaw: Math.PI }))
+  reg.registerFactory('art-cartes', local(15, { x: 43.2, y: 1.3, z: 59.8 }, { x: 39.72, y: 1.05, z: 61.77 }, 60, { x: 43.5, y: 0, z: 58.9, yaw: -Math.PI / 2 }))
   reg.registerFactory('art-cuisine', local(7.2, { x: 11.0, y: 1.6, z: 55.2 }, { x: 16.0, y: 1.15, z: 49.4 }, 62, { x: 12.0, y: 0, z: 50.2, yaw: Math.PI / 2 }))
   reg.registerFactory('art-marche', local(10.5, { x: -86.5, y: 2.6, z: 4 }, { x: -89, y: 3.2, z: 40 }, 60, { x: -87.2, y: 0, z: 9, yaw: Math.PI }))
 }

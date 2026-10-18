@@ -13,8 +13,11 @@ void main() {
 
 const DOWN_FS = /* glsl */ `
 uniform sampler2D tSrc;
+uniform sampler2D tDepth;
 uniform vec2 uTexel;
 uniform float uThreshold;
+uniform float uNear;
+uniform float uFar;
 varying vec2 vUv;
 void main() {
   vec2 o = uTexel;
@@ -30,7 +33,9 @@ void main() {
     float soft = clamp(br - uThreshold + knee, 0.0, 2.0 * knee);
     soft = soft * soft / (4.0 * knee + 1e-4);
     float w = max(soft, br - uThreshold) / max(br, 1e-4);
-    c *= w;
+    float z = texture2D(tDepth, vUv).r * 2.0 - 1.0;
+    float vz = 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+    c *= w * smoothstep(1.0, 1.8, vz);
   }
   gl_FragColor = vec4(c, 1.0);
 }
@@ -289,7 +294,7 @@ void main() {
     float d = (1.0 - ao) * uAO * mix(0.6, 1.0, uIndoor);
     col *= mix(vec3(1.0), aoTint, d) * (1.0 - 0.6 * d);
   }
-  if (dc < 28.0) {
+  if (dc < 28.0 && dc > 1.0) {
     vec2 px = uTexel * max(1.0, 1.0 / (uTexel.y * 720.0)) * 2.5;
     vec3 wrap = vec3(0.0);
     float wn = 0.0;
@@ -303,10 +308,12 @@ void main() {
     if (wn > 0.0) {
       vec3 bg = wrap / wn;
       float lift = smoothstep(0.0, 0.25, luma(bg) - luma(col));
-      vec3 coolBg = mix(bg, bg * vec3(0.85, 1.05, 1.08), uIndoor);
-      col += coolBg * lift * min(wn / 3.0, 1.0) * 0.55 * (1.0 - smoothstep(14.0, 28.0, dc));
+      vec3 coolBg = mix(bg, bg * vec3(0.82, 1.04, 1.1), uIndoor);
+      float coolK = smoothstep(0.0, 0.08, bg.b - bg.r) * uIndoor;
+      col += coolBg * lift * min(wn / 3.0, 1.0) * mix(0.55, 1.1, coolK) * smoothstep(1.2, 2.2, dc) * (1.0 - smoothstep(14.0, 28.0, dc));
     }
   }
+  col *= mix(1.0, mix(0.6, 1.0, smoothstep(0.35, 1.6, dc)), uIndoor);
   col *= texture2D(tExposure, vec2(0.5)).r;
   col += texture2D(tShafts, vUv).rgb;
 #ifdef RADIAL
@@ -401,7 +408,10 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
   const quadMat = (fragmentShader: string, uniforms: Record<string, THREE.IUniform>, extra: Partial<THREE.ShaderMaterialParameters> = {}) =>
     new THREE.ShaderMaterial({ uniforms, vertexShader: QUAD_VS, fragmentShader, depthTest: false, depthWrite: false, ...extra })
 
-  const downMat = quadMat(DOWN_FS, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0 } })
+  const downMat = quadMat(DOWN_FS, {
+    tSrc: { value: null }, tDepth: { value: depthTex }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0 },
+    uNear: { value: 0.1 }, uFar: { value: 4000 },
+  })
   const upMat = quadMat(UP_FS, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, {
     blending: THREE.AdditiveBlending, transparent: true,
   })
@@ -547,7 +557,9 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
         const t = bloom[i]!.rt
         downMat.uniforms.tSrc!.value = src
         downMat.uniforms.uTexel!.value.set(1 / srcW, 1 / srcH)
-        downMat.uniforms.uThreshold!.value = i === 0 ? 1.15 - pub.uIndoor.value * (0.12 + 0.1 * Math.min(1, pub.uAirHaze.value)) : 0
+        downMat.uniforms.uThreshold!.value = i === 0 ? 1.15 + pub.uIndoor.value * 0.3 : 0
+        downMat.uniforms.uNear!.value = cam.near
+        downMat.uniforms.uFar!.value = cam.far
         pass(renderer, downMat, t, true)
         src = t.texture
         srcW = t.width

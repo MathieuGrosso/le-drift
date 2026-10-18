@@ -45,6 +45,7 @@ uniform float rdHours;
 uniform float rdCondensation;
 uniform vec4 rdWipes[${MAX_WIPES}];
 uniform vec3 rdLampFill;
+uniform vec4 rdAirTint;
 `
 
 export const GLSL_NOISE = /* glsl */ `
@@ -103,11 +104,16 @@ float rd_hazeAmount(float d) {
 // Sea haze is water between the eye and the thing: from inside, only the stretch beyond the glass counts.
 // Air haze is dust in a big room, over the in-air stretch only. Never mix the two.
 float rd_airAmount(float d) {
-  return (1.0 - exp(-pow(d / 56.0, 1.8))) * 0.65 * rdAirHaze * rdIndoor;
+  float x = max(d - 15.0, 0.0) / 65.0;
+  return (1.0 - exp(-1.2 * pow(x, 1.6))) * 0.78 * rdAirHaze * rdIndoor;
 }
-vec3 rd_airColor() {
+vec3 rd_airColor(float d) {
   float near = step(0.001, rdLamps[0].w);
-  return 0.78 * mix(rdAirBrume, rdAirBrume * mix(vec3(1.0), rdLampColors[0] / max(max(rdLampColors[0].r, rdLampColors[0].g), 1e-3), 0.2), near);
+  vec3 lamp = rdLampColors[0] / max(max(rdLampColors[0].r, rdLampColors[0].g), 1e-3);
+  vec3 c = rdAirBrume * mix(vec3(1.0), mix(vec3(1.0), lamp, 0.2), near * (1.0 - smoothstep(20.0, 60.0, d)));
+  c = mix(c, rdAirTint.rgb, rdAirTint.w * smoothstep(25.0, 60.0, d));
+  c = mix(c, rdVitreMer * dot(c, vec3(0.33)) / max(dot(rdVitreMer, vec3(0.33)), 1e-3), 0.2 * smoothstep(30.0, 80.0, d));
+  return c * 0.62;
 }
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;
@@ -119,7 +125,7 @@ vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   col = mix(col, rd_hazeColor(v, wp.y), hz);
   float ah = rd_airAmount(dAir);
   hz = max(hz, ah);
-  return mix(col, rd_airColor(), ah);
+  return mix(col, rd_airColor(dAir), ah);
 }
 vec3 rd_applyIndoorHaze(vec3 col, vec3 wp, out float hz) {
   vec3 dv = wp - cameraPosition;
@@ -128,7 +134,7 @@ vec3 rd_applyIndoorHaze(vec3 col, vec3 wp, out float hz) {
   col = mix(col, rd_hazeColor(dv / max(d, 1e-4), wp.y), sea);
   float ah = rd_airAmount(d);
   hz = max(sea, ah);
-  return mix(col, rd_airColor(), ah);
+  return mix(col, rd_airColor(d), ah);
 }
 float rd_caustics(vec3 wp) {
   vec3 L = rdSunDir;
@@ -238,7 +244,8 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     float reach = 2.2 + 0.5 * max(A.w, B.w);
     float k = 1.0 - sqrt(d2) / reach;
     float cone = (smoothstep(0.0, 0.1, k) * 0.35 + smoothstep(0.4, 0.5, k) * 0.65) * (1.0 - C.w);
-    fill += rdVitreMer * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
+    float floorK = mix(1.0, 0.3, smoothstep(0.55, 0.9, N.y));
+    fill += mix(rdVitreMer, vec3(dot(rdVitreMer, vec3(0.33))), 0.35) * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone * floorK / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
 
     vec3 Lb = rd_beamDir(B.xyz);
     float denom = min(dot(Lb, B.xyz), -0.05);
@@ -250,15 +257,18 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     float m = rd_glassMask(uv, A, B, C, 0.03 + t * 0.025) * rd_beamStreak(uv, A.w, i);
     if (m <= 0.0) continue;
     float lit = m * smoothstep(-0.05, 0.3, dot(N, Lb)) * exp(-t * mix(0.06, 0.02, C.w)) * C.x * C.z * mix(1.0, 0.5, C.w);
+    lit = min(lit, 0.85);
+    lit = (smoothstep(0.1, 0.15, lit) + smoothstep(0.3, 0.35, lit) + smoothstep(0.55, 0.6, lit)) * 0.25;
     vec2 cu = uv * 2.4 + vec2(rdTime * 0.07, -rdTime * 0.05) + float(i) * 3.7;
     float aa = 1.0 - smoothstep(0.03, 0.12, foot * 2.4);
     float pattern = 0.8;
     if (aa > 0.0) {
       float e1 = 1.0 - smoothstep(0.0, 0.11, rd_cellEdge(cu, rdTime * 0.9));
       float e2 = 1.0 - smoothstep(0.0, 0.16, rd_cellEdge(cu * 1.37 + 4.1, rdTime * 0.7 + 1.3));
-      pattern = mix(0.8, 0.45 + 0.75 * e1 + 0.45 * e2 + e1 * e2 * 0.8, aa);
+      pattern = mix(0.85, clamp(0.7 + 0.3 * e1 + 0.15 * e2, 0.7, 1.15), aa);
     }
-    patchLight += beam * lit * pattern;
+    vec3 landed = mix(beam, vec3(dot(beam, vec3(0.33))) * vec3(1.08, 1.0, 0.86), 0.65);
+    patchLight += landed * lit * pattern;
   }
   return fill;
 }

@@ -108,7 +108,7 @@ void main() {
       inC += rdLampColors[i] * (1.0 - x) * (1.0 - x) * 1.6;
     }
     float along;
-    for (int i = 0; i < ${MAX_GLASS}; i++) inC += rd_beamColor() * rd_beamAt(wp, i, along) * 3.0;
+    for (int i = 0; i < ${MAX_GLASS}; i++) inC += mix(rd_beamColor(), vec3(1.0, 0.93, 0.8) * dot(rd_beamColor(), vec3(0.4)), 0.5) * rd_beamAt(wp, i, along) * 4.5;
   }
   vCol = mix(outC, inC, rdIndoor);
   if (rdIndoor > 0.5 && vViewZ > rdGlassDist + 0.5) vCol = outC * 0.5;
@@ -172,7 +172,8 @@ void main() {
     }
     vec3 bc = rd_beamColor();
     bc = mix(bc, vec3(0.78, 1.0, 0.93) * dot(bc, vec3(0.33)), 0.45);
-    col += bc * (1.0 - exp(-acc * 2.0)) * 0.5;
+    bc = mix(bc, vec3(dot(bc, vec3(0.33))) * vec3(1.06, 1.0, 0.88), 0.5);
+    col += bc * min((1.0 - exp(-acc * 1.5)) * 0.3, 0.09);
   }
   if (uHalos > 0.5) {
     for (int i = 0; i < ${MAX_LAMPS}; i++) {
@@ -184,7 +185,9 @@ void main() {
       vec3 q = rel - rd * s;
       float d2 = dot(q, q);
       float far = 1.0 / (1.0 + dot(rel, rel) * 0.004);
-      float h = exp(-d2 * 18.0) * 0.5 * behind + (exp(-d2 * 1.4) * 0.05 + exp(-d2 * 0.2) * 0.008) * rdAirHaze;
+      float L = length(rel);
+      float nearK = smoothstep(1.5, 6.0, L);
+      float h = exp(-d2 * max(18.0, 900.0 / max(L * L, 0.01))) * 0.5 * behind + (exp(-d2 * 1.4) * 0.03 + exp(-d2 * 0.2) * 0.002) * rdAirHaze * nearK;
       col += mix(vec3(1.0), rdLampColors[i], 0.75) * h * far;
     }
   }
