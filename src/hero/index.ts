@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { TETHER } from '../core/layout'
 import { INDOOR } from '../core/tuning'
-import type { GameContext, HeroService, QualityLevel, System, Vec3 } from '../core/types'
+import { PLACES } from '../core/layout'
+import type { DebugPose, GameContext, HeroService, QualityLevel, System, Vec3 } from '../core/types'
 import type { HeroAnchor } from './anchors'
 import { Animator, type AnimParams, type ClipId, type GestureClip } from './anim'
 import { HeroCamera } from './camera'
@@ -61,8 +62,11 @@ export function createHeroSystem(): System {
   const thighLW = new THREE.Vector3()
   const thighRW = new THREE.Vector3()
   const clipW = new THREE.Vector3()
+  const brushW = new THREE.Vector3()
+  const handleW = new THREE.Vector3()
   const colliders = [
-    { c: chestW, r: 0.2 }, { c: hipsW, r: 0.18 }, { c: headW, r: 0.16 }, { c: thighLW, r: 0.1 }, { c: thighRW, r: 0.1 },
+    { c: chestW, r: 0.17 }, { c: hipsW, r: 0.215 }, { c: headW, r: 0.17 }, { c: thighLW, r: 0.11 }, { c: thighRW, r: 0.11 },
+    { c: brushW, r: 0.11 }, { c: handleW, r: 0.05 },
   ]
   const qYaw = new THREE.Quaternion()
   const qLean = new THREE.Quaternion()
@@ -80,8 +84,8 @@ export function createHeroSystem(): System {
 
   const onBack = (m: HeroModel) => {
     m.bones.chest.add(m.scrubber)
-    m.scrubber.position.set(0.02, 0.0, 0.17)
-    m.scrubber.rotation.set(0.1, 0, 0.65)
+    m.scrubber.position.set(-0.01, -0.1, 0.2)
+    m.scrubber.rotation.set(-0.2, 0, Math.PI - 0.62)
   }
   const inHand = (m: HeroModel) => {
     m.bones.handR.add(m.scrubber)
@@ -137,6 +141,54 @@ export function createHeroSystem(): System {
   }
 
   let ctx0: GameContext | null = null
+  let portrait = false
+  const keyLocal = new THREE.Vector3()
+  const keyWant = new THREE.Vector4()
+  const lightGlass = (ctx: GameContext, dt: number) => {
+    if (!mats) return
+    const drift = ctx.services.drift
+    const room = ctx.state.hero.room
+    keyWant.set(0, 0, 0, 0)
+    let fill = 0
+    if (portrait && !ctx.state.debug.cameraLocked) portrait = false
+    if (drift && ctrl?.medium === 'air' && (room === 'refectoire' || room === 'rebord')) {
+      const h = ctx.state.time.hours
+      const day = THREE.MathUtils.smoothstep(h, 5.5, 7) * (1 - THREE.MathUtils.smoothstep(h, 19, 20.5))
+      keyLocal.set(portrait ? 1 : 0, portrait ? 0.4 : 0.25, portrait ? 0.3 : 1).normalize().applyAxisAngle(THREE.Object3D.DEFAULT_UP, -drift.pose().heading)
+      keyWant.set(keyLocal.x, keyLocal.y, keyLocal.z, (portrait ? 0.8 : 0.38) * (0.3 + 0.7 * day))
+      fill = portrait ? 0.16 : 0
+    }
+    const k = portrait ? 1 : 1 - Math.exp(-dt * 2)
+    mats.key.value.lerp(keyWant, k)
+    if (keyWant.w > 0) mats.key.value.set(keyWant.x, keyWant.y, keyWant.z, mats.key.value.w)
+    const fv = mats.fill.value
+    const tmpF = v2.set(-0.9, 0.3, -0.6).normalize()
+    if (drift) tmpF.applyAxisAngle(THREE.Object3D.DEFAULT_UP, -drift.pose().heading)
+    fv.set(tmpF.x, tmpF.y, tmpF.z, fv.w + (fill - fv.w) * k)
+    focusVeil(ctx)
+  }
+  let veil: THREE.Mesh | null = null
+  const focusVeil = (ctx: GameContext) => {
+    if (!portrait || !ctrl) {
+      veil?.removeFromParent()
+      return
+    }
+    if (!veil) {
+      veil = new THREE.Mesh(
+        new THREE.PlaneGeometry(6, 4),
+        new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, roughness: 0.42, ior: 1.5, thickness: 0, metalness: 0, specularIntensity: 0, transparent: false }),
+      )
+      veil.name = 'hero-portrait-focus'
+      veil.renderOrder = 10
+    }
+    if (!veil.parent) ctx.scene.add(veil)
+    const camObj = ctx.camera
+    camObj.getWorldDirection(v)
+    v.y = 0
+    v.normalize()
+    veil.position.set(ctrl.pos.x + v.x * 0.75, ctrl.pos.y + 1.4, ctrl.pos.z + v.z * 0.75)
+    veil.lookAt(camObj.position.x, veil.position.y, camObj.position.z)
+  }
   const service: HeroServiceExt = {
     teleport(p, yaw) {
       ctrl?.teleport(p, yaw)
@@ -261,6 +313,10 @@ export function createHeroSystem(): System {
       model.root.updateMatrixWorld(true)
       scarf.reset(model.scarfAnchor.getWorldPosition(v))
       ctx.services.hero = service
+      registerPortrait(ctx)
+      unsubs.push(ctx.bus.on('debug:pose', ({ name }) => {
+        portrait = name === 'art-ilo'
+      }))
       if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __hero?: HeroServiceExt }).__hero = service
     },
 
@@ -313,8 +369,16 @@ export function createHeroSystem(): System {
       model.bones.head.getWorldPosition(headW)
       model.bones.thighL.getWorldPosition(thighLW)
       model.bones.thighR.getWorldPosition(thighRW)
-      chestW.y += 0.05
+      chestW.y += 0.06
+      hipsW.y -= 0.1
       headW.y += 0.1
+      if (model.scrubber.parent === model.bones.chest) {
+        model.scrubber.localToWorld(brushW.set(0, 0.46, 0.05))
+        model.scrubber.localToWorld(handleW.set(0, 0.05, 0.03))
+      } else {
+        brushW.set(0, -1e4, 0)
+        handleW.set(0, -1e4, 0)
+      }
       thighLW.y -= 0.2
       thighRW.y -= 0.2
       const driftSvc = ctx.services.drift
@@ -403,6 +467,7 @@ export function createHeroSystem(): System {
         headingDelta: ctrl.headingDelta,
       })
       mats.fade.value = ctx.state.debug.cameraLocked ? 1 : 0.15 + 0.85 * cam.closeness
+      lightGlass(ctx, dt)
     },
 
     dispose() {
@@ -422,6 +487,8 @@ export function createHeroSystem(): System {
         model.tuft.geometry.dispose()
       }
       longe?.dispose()
+      veil?.removeFromParent()
+      veil?.geometry.dispose()
       scarf?.mesh.removeFromParent()
       scarf?.mesh.geometry.dispose()
       prints?.mesh.removeFromParent()
@@ -432,4 +499,36 @@ export function createHeroSystem(): System {
       mats?.cloth.dispose()
     },
   }
+}
+
+const PORTRAIT_AT = { x: 18.75, y: 0, z: 68.3 }
+const PORTRAIT_YAW = 0.55
+const PORTRAIT_CAM_YAW = -0.24
+
+function registerPortrait(ctx: GameContext): void {
+  const reg = ctx.services.debug as typeof ctx.services.debug & { registerFactory?: (name: string, f: (c: GameContext) => DebugPose) => void }
+  reg.registerFactory?.('art-ilo', (c) => {
+    const drift = c.services.drift
+    const st = c.state.hero
+    if (!drift) {
+      const p = st.position
+      return { hour: 8, camera: { position: { x: p.x, y: p.y + 1.6, z: p.z - 1.4 }, target: { x: p.x, y: p.y + 1.45, z: p.z }, fov: 30 } }
+    }
+    const place = PLACES['grande-vitre']!
+    st.medium = 'air'
+    st.room = place.room ?? 'refectoire'
+    st.district = place.district
+    st.localPosition = { ...PORTRAIT_AT }
+    const heading = drift.pose().heading
+    const cy = PORTRAIT_CAM_YAW
+    return {
+      hour: 8,
+      hero: { position: drift.toWorld(PORTRAIT_AT), yaw: PORTRAIT_YAW + heading },
+      camera: {
+        position: drift.toWorld({ x: PORTRAIT_AT.x + Math.sin(cy) * 1.5, y: 1.47, z: PORTRAIT_AT.z - Math.cos(cy) * 1.5 }),
+        target: drift.toWorld({ x: PORTRAIT_AT.x + 0.2, y: 1.47, z: PORTRAIT_AT.z }),
+        fov: 30,
+      },
+    }
+  })
 }

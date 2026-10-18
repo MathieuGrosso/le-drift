@@ -112,8 +112,10 @@ function gait(o: PoseOut, s: AnimParams, k: { stride: number; knee: number; arm:
   legs(o, sw * k.stride, -0.15 - lk * k.knee, -sw * k.stride, -0.15 - rk * k.knee)
   o.r('footL', 0.15 * sin(p - 0.6) + 0.1)
   o.r('footR', -0.15 * sin(p - 0.6) + 0.1)
-  arms(o, -sw * k.arm, 0.12 + k.floaty * 0.25, 0.35 + k.floaty * 0.25, 'L')
-  arms(o, sw * k.arm, 0.12 + k.floaty * 0.25, 0.35 + k.floaty * 0.25, 'R')
+  const lag = sin(p - 0.9) * k.arm * 0.45
+  arms(o, -sw * k.arm, 0.12 + k.floaty * 0.25, 0.35 + k.floaty * 0.25 + max(0, -lag), 'L')
+  arms(o, sw * k.arm, 0.12 + k.floaty * 0.25, 0.35 + k.floaty * 0.25 + max(0, lag), 'R')
+  o.r('hips', 0, -sw * 0.07, 0)
   o.r('spine', -k.lean, sw * 0.08, 0)
   o.r('chest', 0, -sw * 0.12, s.bank * 0.4)
   o.r('head', 0.05 + k.lean * 0.5, sw * 0.05, 0)
@@ -167,8 +169,9 @@ const CLIPS: Record<ClipId, Clip> = {
     const ws = w * w * w
     o.r('head', 0.02 + sin(s.t * 0.5) * 0.03, sin(s.t * 0.27) * 0.3, ws * 0.05)
     arms(o, 0.04, 0.12, 0.2 + sin(s.t * 1.7 - 0.6) * 0.02)
-    o.r('upperArmL', 0.04 + ws * 0.04, 0, -0.12 - max(0, ws) * 0.04)
-    o.r('upperArmR', 0.04 - ws * 0.04, 0, 0.12 + max(0, -ws) * 0.04)
+    const lift = sin(s.t * 1.7) * 0.012
+    o.r('upperArmL', 0.04 + ws * 0.04, 0, -0.12 - max(0, ws) * 0.04 - lift)
+    o.r('upperArmR', 0.04 - ws * 0.04, 0, 0.12 + max(0, -ws) * 0.04 + lift)
     legs(o, 0.02 + max(0, ws) * 0.08, -0.04 - max(0, ws) * 0.16, -0.02 + max(0, -ws) * 0.08, -0.02 - max(0, -ws) * 0.16, 0.06)
     o.r('spine', 0, 0, sin(s.t * 0.6) * 0.02 - ws * 0.035)
     o.r('chest', sin(s.t * 1.7) * 0.02, 0, ws * 0.03)

@@ -41,6 +41,9 @@ uniform float uFade;
 uniform float uHazeDist;
 uniform float uHazeMax;
 uniform vec3 uSea;
+uniform vec4 uKey;
+uniform vec3 uKeyColor;
+uniform vec4 uFill;
 varying vec3 vNormalW;
 varying vec3 vWorldPos;
 varying vec3 vColor;
@@ -66,6 +69,7 @@ void main() {
   outside += uSunColor * rim * 0.6;
 
   vec3 lamp = vec3(0.0);
+  vec3 lampDir = vec3(0.0);
   for (int i = 0; i < 8; i++) {
     vec4 l = uLamps[i];
     if (l.w <= 0.0) continue;
@@ -75,9 +79,21 @@ void main() {
     float nl = dot(n, dl / max(dist, 1e-3));
     float step1 = 0.5 * band(nl, 0.0) + 0.5 * band(nl, 0.5);
     lamp += mix(vec3(1.0), uLampColors[i], 0.4) * att * att * (0.35 + 0.65 * step1);
+    lampDir += dl / max(dist, 1e-3) * att * att;
   }
-  vec3 inside = albedo * mix(vec3(0.24, 0.23, 0.35), vec3(0.95, 0.9, 0.8), 0.35) + albedo * lamp;
-  inside += vec3(1.0, 0.76, 0.48) * pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.22;
+  vec3 amb = mix(vec3(0.24, 0.23, 0.35), vec3(0.95, 0.9, 0.8), 0.35);
+  float warmth = vColor.r - vColor.b;
+  amb = mix(amb, amb * vec3(1.12, 0.92, 0.9), clamp(warmth * 2.0, 0.0, 1.0));
+  vec3 inside = albedo * amb + albedo * lamp;
+  float kl = dot(n, uKey.xyz);
+  inside += albedo * uKeyColor * uKey.w * (0.5 * band(kl, 0.0) + 0.5 * band(kl, 0.4));
+  inside += albedo * vec3(1.0, 0.78, 0.55) * uFill.w * clamp(dot(n, uFill.xyz) * 0.6 + 0.4, 0.0, 1.0);
+  float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
+  float lampSide = length(lampDir) > 1e-3 ? dot(n, normalize(lampDir)) * 0.5 + 0.5 : 0.5;
+  vec3 coolRim = mix(vec3(0.62, 0.86, 0.88), uKeyColor, step(0.001, uKey.w));
+  float coolSide = max(lampSide < 0.5 ? 1.0 - lampSide : 0.0, uKey.w > 0.0 ? smoothstep(-0.2, 0.5, kl) : 0.0);
+  inside += vec3(1.0, 0.76, 0.48) * fres * smoothstep(0.45, 0.8, lampSide) * 0.3;
+  inside += coolRim * smoothstep(mix(0.55, 0.3, uKey.w), 0.8, fres) * coolSide * (0.35 + uKey.w * 0.5);
 
   vec3 col = mix(outside, inside, uIndoor);
   float sea = 1.0 - uIndoor;
@@ -98,6 +114,8 @@ export interface HeroMaterials {
   cloth: THREE.ShaderMaterial
   wet: { value: number }
   fade: { value: number }
+  key: { value: THREE.Vector4 }
+  fill: { value: THREE.Vector4 }
 }
 
 function lampDefaults(): { lamps: THREE.Vector4[]; colors: THREE.Color[] } {
@@ -115,6 +133,9 @@ export function createHeroMaterials(ctx: GameContext): HeroMaterials {
   const fallback = lampDefaults()
   const wet = { value: 0 }
   const fade = { value: 1 }
+  const key = { value: new THREE.Vector4(0, 0, 0, 0) }
+  const fill = { value: new THREE.Vector4(0, 0, 0, 0) }
+  const keyColor = { value: new THREE.Color(0x9fd6e0) }
   const make = (side: THREE.Side) => {
     const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog])
     Object.assign(uniforms, {
@@ -131,10 +152,13 @@ export function createHeroMaterials(ctx: GameContext): HeroMaterials {
       uHazeDist: shared?.uHazeDist ?? { value: 170 },
       uHazeMax: shared?.uHazeMax ?? { value: 0.9 },
       uSea: { value: new THREE.Color(0x2e7f8c) },
+      uKey: key,
+      uKeyColor: keyColor,
+      uFill: fill,
     })
     const m = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, fog: true, side })
     m.name = 'hero-cel'
     return m
   }
-  return { body: make(THREE.FrontSide), cloth: make(THREE.DoubleSide), wet, fade }
+  return { body: make(THREE.FrontSide), cloth: make(THREE.DoubleSide), wet, fade, key, fill }
 }
