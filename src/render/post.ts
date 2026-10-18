@@ -195,8 +195,8 @@ void main() {
     }
   }
   float avg = exp(acc / wsum);
-  float key = mix(0.36, 0.4, uIndoor);
-  float target = clamp(key / max(avg, 1e-3), mix(0.86, 0.82, uIndoor), mix(1.18, mix(1.3, 1.06, uNight), uIndoor));
+  float key = mix(0.36, 0.33, uIndoor);
+  float target = clamp(key / max(avg, 1e-3), mix(0.86, 0.82, uIndoor), mix(1.18, mix(1.1, 1.0, uNight), uIndoor));
   float prev = texture2D(tPrev, vec2(0.5)).r;
   if (prev <= 0.0) prev = 1.0;
   float e = mix(prev, target, uK);
@@ -297,18 +297,26 @@ void main() {
 
   float l = luma(col);
   vec3 shadowTone = mix(uShadowTone, uInterieur, uIndoor);
-  col = mix(col, col * shadowTone * 1.6, (1.0 - smoothstep(0.0, 0.35, l)) * mix(0.22, 0.16, uIndoor));
-  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.06, uIndoor));
-  col += uInterieur * 0.035 * uIndoor * (1.0 - smoothstep(0.0, 0.25, l));
+  col = mix(col, col * shadowTone * 1.6, (1.0 - smoothstep(0.0, 0.3, l)) * mix(0.22, 0.16, uIndoor));
+  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.08, uIndoor));
+  float lc = max(luma(col), 1e-4);
+  float pivot = 0.2;
+  float lcC = pivot * pow(lc / pivot, 1.0 + 0.16 * uIndoor);
+  col *= mix(1.0, lcC / lc, smoothstep(0.0, 0.02, lc));
   l = luma(col);
-  col = mix(vec3(l), col, 1.06 - 0.08 * uIndoor - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
+  float mid = smoothstep(0.03, 0.15, l) * (1.0 - smoothstep(0.45, 0.85, l));
+  col *= mix(vec3(1.0), vec3(1.05, 1.0, 0.92), mid * uIndoor);
+  col = mix(vec3(l), col, 1.06 - uIndoor * (0.02 + 0.12 * mid) - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
   float m = max(col.r, max(col.g, col.b));
   if (m > 0.82) col *= (0.82 + 0.18 * (1.0 - exp(-(m - 0.82) / 0.18))) / m;
 
   col *= mix(vec3(1.0), vec3(0.72, 0.84, 1.12), uNight * (1.0 - 0.75 * uIndoor));
   vec2 vq = vUv - 0.5;
-  float vig = smoothstep(0.35, 0.95, length(vq * vec2(1.15, 1.0)));
-  col = mix(col, col * 0.6 + mix(uProfond, uInterieur, uIndoor) * 0.25, vig * 0.35);
+  float vig = smoothstep(0.3, 0.95, length(vq * vec2(1.15, 1.0)));
+  vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * 0.5 + uInterieur * 0.3, uIndoor);
+  col = mix(col, vigCol, vig * mix(0.35, 0.42, uIndoor));
+  vec3 toe = vec3(0.027, 0.023, 0.058);
+  col += toe * (1.0 - smoothstep(0.0, 0.12, luma(col)));
 
   col = toSRGB(col);
   float g = hash(vUv * 1000.0 + fract(uTime) * 37.0) - 0.5;

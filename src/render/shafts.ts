@@ -170,7 +170,7 @@ void main() {
         acc += b * dust * stepL * smoothstep(0.2, 1.2, t);
       }
     }
-    col += rd_beamColor() * acc * 0.17;
+    col += rd_beamColor() * acc * 0.2;
   }
   if (uHalos > 0.5) {
     for (int i = 0; i < ${MAX_LAMPS}; i++) {

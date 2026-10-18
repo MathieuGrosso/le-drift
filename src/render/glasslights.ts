@@ -187,7 +187,7 @@ export class GlassLights {
       if (p) {
         A.set(p.center.x, p.center.y, p.center.z, p.halfW)
         B.set(p.normal.x, p.normal.y, p.normal.z, p.halfH)
-        s.clean = THREE.MathUtils.clamp(1 - p.coat * 1.05, 0, 1)
+        s.clean = THREE.MathUtils.clamp(1 - p.coat * 1.05, 0.2, 1)
         s.round = p.round ? 1 : 0
       }
       if (s.strength < 0.005) {

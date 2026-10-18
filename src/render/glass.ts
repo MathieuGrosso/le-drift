@@ -166,7 +166,11 @@ void main() {
     vec3 behind = rgLive > 0.5 ? rg_behind(suv, off, max(fog, thick * 0.8)) : rdVitreMer * (0.35 + 0.5 * rdDay);
     vec3 tinted = behind * mix(vec3(1.0), tint / max(max(tint.r, tint.g), tint.b), 0.22);
     tinted *= 1.0 - 0.18 * smoothstep(0.82, 1.0, edgeDist) * (1.0 - rgRound * 0.5);
-    col = tinted;
+    float dayG = 0.25 + 0.75 * rdDay;
+    vec3 seaGlow = rd_hazeColor(-V, vW.y);
+    seaGlow = mix(seaGlow, rdPlafond, smoothstep(-0.3, 0.55, rgDome > 0.5 ? 0.6 : c.y) * 0.5);
+    col = tinted * 0.75 + seaGlow * 0.85 * dayG;
+    col += vec3(0.91, 1.0, 0.96) * (fres * 0.22 + smoothstep(0.9, 0.99, edgeDist) * 0.14) * dayG;
     vec3 refl = mix(rdCreme * 0.16, rdLampFill * 0.5 + rdCreme * 0.08, 0.5);
     col = mix(col, col + refl, fres * 0.6);
     vec3 R = reflect(-V, Nf);
@@ -178,8 +182,8 @@ void main() {
       float s = pow(max(dot(R, tl / d), 0.0), 2500.0) * (1.0 - smoothstep(lp.w * 0.5, lp.w * 1.6, d));
       col += rdLampColors[i] * s * 0.9;
     }
-    float seaL = dot(behind, vec3(0.3, 0.55, 0.15));
-    vec3 furBack = rdRevetement * (0.12 + 0.95 * seaL) * (1.0 - 0.6 * thick) * (0.65 + 0.7 * n) * (0.85 + 0.3 * fine);
+    float seaL = dot(col, vec3(0.3, 0.55, 0.15));
+    vec3 furBack = mix(mix(rdRevetement, vec3(0.72, 0.88, 0.5), 0.2), rdVitreMer, 0.35) * (0.15 + 1.05 * seaL) * (1.0 - 0.55 * thick) * (0.65 + 0.7 * n) * (0.85 + 0.3 * fine);
     furBack += mix(rdRevetement, vec3(0.86, 0.95, 0.45), 0.45) * rim * (0.35 + 1.4 * seaL) * (0.4 + 0.6 * rdDay);
     furBack += rdLampFill * 0.08 * cover;
     col = mix(col, furBack, cover * (0.55 + 0.45 * thick));

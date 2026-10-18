@@ -40,7 +40,12 @@ const C = (hex: number) => new THREE.Color(hex)
 const BASE = {
   abysse: C(PALETTE.abysse), profond: C(PALETTE.profond), milieu: C(PALETTE.milieu),
   clair: C(PALETTE.clair), plafond: C(PALETTE.plafond), nuit: C(PALETTE.nuit), plancton: C(PALETTE.plancton),
-  aube: C(PALETTE.soleilAube),
+  aube: C(PALETTE.soleilAube), airBrume: C(PALETTE.airBrume),
+}
+const AIR_TINT: Record<string, { color: THREE.Color; k: number }> = {
+  serres: { color: C(0xb9d98a), k: 0.3 },
+  machines: { color: C(0xc98e5e), k: 0.22 },
+  scellees: { color: C(0x8fb8b0), k: 0.2 },
 }
 
 export function createRenderSystem(): System {
@@ -216,6 +221,10 @@ export function createRenderSystem(): System {
     const airHaze = camEnv?.airHaze ?? 0
     pub.uAirHaze.value += (airHaze - pub.uAirHaze.value) * k
     pub.uGlassDist.value = camEnv?.glassDist ?? 4
+    const tint = AIR_TINT[camEnv?.district ?? ''] ?? null
+    tmpColor.copy(BASE.airBrume)
+    if (tint) tmpColor.lerp(tint.color, tint.k)
+    int.rdAirBrume.value.lerp(tmpColor, k)
 
     int.rdHours.value = (s.time.day - 1) * 24 + s.time.hours
     const cond = (s.env as { condensation?: number }).condensation

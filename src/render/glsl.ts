@@ -230,8 +230,11 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     float d2 = dot(rel, rel) + 0.05;
     vec3 L = -rel * inversesqrt(d2);
     float ndl = clamp(dot(N, L) * 0.65 + 0.35, 0.0, 1.0);
-    float facing = clamp(front * inversesqrt(d2) + 0.15, 0.0, 1.0);
-    fill += rdVitreMer * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
+    float facing = smoothstep(0.15, 0.75, front * inversesqrt(d2));
+    float reach = 2.2 + 0.5 * max(A.w, B.w);
+    float k = 1.0 - sqrt(d2) / reach;
+    float cone = smoothstep(0.0, 0.1, k) * 0.35 + smoothstep(0.4, 0.5, k) * 0.65;
+    fill += rdVitreMer * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
 
     vec3 Lb = rd_beamDir(B.xyz);
     float denom = min(dot(Lb, B.xyz), -0.05);
