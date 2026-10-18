@@ -24,21 +24,43 @@ interface Walker {
 const CLOTHES = [PAL.tissu1, PAL.tissu2, PAL.tissu3, PAL.teal, PAL.vertDoux, PAL.rouille, PAL.bleuDoux, PAL.laiton, PAL.creme, 0x8fbf6a, 0xb0405a]
 const SKINS = [PAL.peau1, PAL.peau2, PAL.peau3, PAL.peau4]
 const HAIRS = [PAL.cheveux1, PAL.cheveux2, PAL.cheveux3, PAL.cheveux4, PAL.cheveux1, PAL.tissu2, PAL.toile]
+const TENUES = [PAL.creme, PAL.toile, PAL.tissu2, PAL.vertDoux, PAL.teal, PAL.tissu1, PAL.bleuDoux, PAL.boisClair]
 const MAX: Record<QualityLevel, number> = { high: 600, medium: 300, low: 120 }
 
 function bodyGeo(): THREE.BufferGeometry {
   const torso = new THREE.CapsuleGeometry(0.2, 0.5, 3, 8)
   torso.scale(1, 1, 0.78)
   torso.translate(0, 1.08, 0)
-  const skirt = new THREE.CylinderGeometry(0.2, 0.25, 0.78, 8)
+  const skirt = new THREE.CylinderGeometry(0.2, 0.27, 0.78, 10)
   skirt.translate(0, 0.42, 0)
-  return merge([torso, skirt])
+  const arms = [-1, 1].map((s) => {
+    const a = new THREE.CapsuleGeometry(0.055, 0.4, 2, 6)
+    a.rotateZ(s * 0.12)
+    a.translate(s * 0.255, 1.08, 0.01)
+    return a
+  })
+  return merge([torso, skirt, ...arms])
 }
 
 function headGeo(): THREE.BufferGeometry {
   const head = new THREE.SphereGeometry(0.15, 10, 8)
   head.translate(0, 1.6, 0)
-  return head
+  const nose = new THREE.SphereGeometry(0.03, 5, 4)
+  nose.translate(0, 1.58, -0.15)
+  const hands = [-1, 1].map((s) => new THREE.SphereGeometry(0.058, 6, 5).translate(s * 0.29, 0.79, 0.0))
+  return merge([head, nose, ...hands])
+}
+
+function tenueGeo(): THREE.BufferGeometry {
+  const scarf = new THREE.TorusGeometry(0.15, 0.055, 5, 12)
+  scarf.rotateX(Math.PI / 2)
+  scarf.scale(1, 1, 0.85)
+  scarf.translate(0, 1.42, 0)
+  const apron = new THREE.BoxGeometry(0.3, 0.6, 0.03)
+  apron.translate(0, 0.74, -0.215)
+  const belt = new THREE.CylinderGeometry(0.205, 0.205, 0.06, 10)
+  belt.translate(0, 0.98, 0)
+  return merge([scarf, apron, belt])
 }
 
 function hairGeo(): THREE.BufferGeometry {
@@ -77,7 +99,6 @@ const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const _p = new THREE.Vector3()
 const _s = new THREE.Vector3()
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
 
 // The many: cheap residents walking district paths and holding spots, by the hour.
 export class Crowd {
@@ -86,6 +107,8 @@ export class Crowd {
   private readonly meshes: THREE.InstancedMesh[]
   private time = 0
   private active: ReadonlySet<DistrictId> | null = null
+  private shown: ReadonlySet<DistrictId> | null = null
+  private readonly colors: THREE.Color[][] = []
 
   constructor(mats: Mats, paths: readonly PathSpec[], spots: readonly SpotSpec[], quality: QualityLevel, seed = 4242) {
     this.group.name = 'drift-foule'
@@ -107,13 +130,22 @@ export class Crowd {
     const body = new THREE.InstancedMesh(bodyGeo(), mat, Math.max(1, n))
     const head = new THREE.InstancedMesh(headGeo(), mat, Math.max(1, n))
     const hair = new THREE.InstancedMesh(hairGeo(), mat, Math.max(1, n))
+    const tenue = new THREE.InstancedMesh(tenueGeo(), mat, Math.max(1, n))
     const c = new THREE.Color()
     for (let i = 0; i < n; i++) {
-      body.setColorAt(i, softColor(c.set(CLOTHES[Math.floor(rand() * CLOTHES.length)]!).multiplyScalar(0.92 + rand() * 0.16)))
-      head.setColorAt(i, c.set(SKINS[Math.floor(rand() * SKINS.length)]!))
-      hair.setColorAt(i, c.set(HAIRS[Math.floor(rand() * HAIRS.length)]!))
+      const set = [
+        softColor(c.set(CLOTHES[Math.floor(rand() * CLOTHES.length)]!).multiplyScalar(0.92 + rand() * 0.16), 0.62).clone(),
+        c.set(SKINS[Math.floor(rand() * SKINS.length)]!).clone(),
+        c.set(HAIRS[Math.floor(rand() * HAIRS.length)]!).clone(),
+        softColor(c.set(TENUES[Math.floor(rand() * TENUES.length)]!), 0.6).multiplyScalar(0.92).clone(),
+      ]
+      this.colors.push(set)
+      body.setColorAt(i, set[0]!)
+      head.setColorAt(i, set[1]!)
+      hair.setColorAt(i, set[2]!)
+      tenue.setColorAt(i, set[3]!)
     }
-    this.meshes = [body, head, hair]
+    this.meshes = [body, head, hair, tenue]
     for (const im of this.meshes) {
       im.count = n
       im.frustumCulled = false
@@ -141,6 +173,10 @@ export class Crowd {
     this.active = loaded
   }
 
+  setVisible(v: ReadonlySet<DistrictId> | null): void {
+    this.shown = v
+  }
+
   count(): number {
     return this.walkers.length
   }
@@ -162,18 +198,14 @@ export class Crowd {
 
   update(dt: number, hours: number): void {
     this.time += dt
-    const [body, head, hair] = this.meshes as [THREE.InstancedMesh, THREE.InstancedMesh, THREE.InstancedMesh]
     const meal = hours >= 7.5 && hours < 8.5
+    let slot = 0
     for (let i = 0; i < this.walkers.length; i++) {
       const w = this.walkers[i]!
       const h = w.to > 24 && hours < w.to - 24 ? hours + 24 : hours
       const out = h >= w.from && h < w.to && !(meal && w.breakfast)
-      if (!out || (this.active && !this.active.has(w.district))) {
-        body.setMatrixAt(i, ZERO)
-        head.setMatrixAt(i, ZERO)
-        hair.setMatrixAt(i, ZERO)
-        continue
-      }
+      if (!out || (this.active && !this.active.has(w.district))) continue
+      const drawn = !this.shown || this.shown.has(w.district)
       let bob = 0
       let lean = 0
       let roll = 0
@@ -211,14 +243,22 @@ export class Crowd {
         else if (pose === 'talk') roll = Math.sin(this.time * 1.3 + w.phase) * 0.05
         bob = pose === 'sit' ? -0.42 : 0
       }
+      if (!drawn) continue
       _e.set(-lean, -w.yaw, roll, 'YXZ')
       _q.setFromEuler(_e)
       _m.compose(_p.set(w.x, w.y + bob, w.z), _q, _s.setScalar(w.scale))
-      body.setMatrixAt(i, _m)
-      head.setMatrixAt(i, _m)
-      hair.setMatrixAt(i, _m)
+      const cs = this.colors[i]!
+      this.meshes.forEach((im, k) => {
+        im.setMatrixAt(slot, _m)
+        im.setColorAt(slot, cs[k]!)
+      })
+      slot++
     }
-    for (const im of this.meshes) im.instanceMatrix.needsUpdate = true
+    for (const im of this.meshes) {
+      im.count = slot
+      im.instanceMatrix.needsUpdate = true
+      if (im.instanceColor) im.instanceColor.needsUpdate = true
+    }
   }
 
   dispose(): void {

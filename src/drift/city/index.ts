@@ -186,6 +186,7 @@ void main() {
   gl_FragColor = vec4(vec3(1.0, 0.96, 0.9), a);
 }`
 
+const INSIDE_ONLY = /^(panneau|trouvailles|eau|bassin|cordes|rai|poussieres|porte|laminaires)/
 const _v = new THREE.Vector3()
 const _q = new THREE.Quaternion()
 const _m = new THREE.Matrix4()
@@ -229,6 +230,8 @@ export class City {
     const glow2 = glowMaterial(mats, { side: THREE.DoubleSide, rim: 0.2 })
     this.insideHullMat = glowMaterial(mats, { rim: 0.6 })
     const emissive = mats.water(new THREE.MeshBasicMaterial({ vertexColors: true }))
+    const skinMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: surfacePatch })
+    const hallDistricts = new Set<GroupKey>(this.build.halls.map((h) => h.district))
     const lineMat = new THREE.LineBasicMaterial({ color: PAL.corde, transparent: true, opacity: 0.85 })
     const R = ctx.physics.rapier
     const q = new THREE.Quaternion().setFromAxisAngle(UP, -pose.heading)
@@ -261,6 +264,7 @@ export class City {
       add(k.b, glow, 'structure', true)
       add(k.cloth, glow2, 'tissus', true)
       add(k.e, emissive, 'lumieres', false)
+      const shell = [add(k.shell, glow, 'enveloppe', true), add(k.skin, skinMat, 'peau', false), add(k.shellE, emissive, 'enveloppe-lum', false)]
       if (k.glass.vertexCount > 0) {
         const gm = new THREE.ShaderMaterial({
           uniforms: { uDay: { value: 1 } }, vertexShader: GLASS_VERT, fragmentShader: GLASS_FRAG,
@@ -269,7 +273,10 @@ export class City {
         this.glassMats.push(gm)
         const mesh = add(k.glass, gm, 'verre', false)
         if (mesh) mesh.renderOrder = 3
+        shell.push(mesh)
       }
+      if (hallDistricts.has(id)) for (const m of shell) if (m) m.userData.shell = true
+      g.userData.hall = hallDistricts.has(id)
       if (k.lines.length > 0) {
         const lg = new THREE.BufferGeometry()
         lg.setAttribute('position', new THREE.Float32BufferAttribute(k.lines, 3))
@@ -399,6 +406,7 @@ export class City {
       pivot.position.set(d.x, d.y, d.z - w / 2)
     }
     pivot.add(leaf)
+    pivot.name = `porte:${d.id}`
     g.add(pivot)
     const open = this.ctx.state.drift.doors[d.id] ?? d.open
     const rt: DoorRt = { spec: d, district, pivot, t: open ? 1 : 0, open, collider: null }
@@ -762,8 +770,17 @@ export class City {
 
   setVisible(v: ReadonlySet<DistrictId> | null, sealed = false): void {
     this.visible = v
-    for (const d of this.districts.values()) d.group.visible = v === null || (d.id === 'liens' ? !sealed : v.has(d.id))
-    this.crowd.group.visible = !sealed
+    const outside = v === null
+    for (const d of this.districts.values()) {
+      d.group.visible = outside || (d.id === 'liens' ? !sealed : v.has(d.id))
+      for (const c of d.group.children) {
+        if (d.group.userData.hall) c.visible = !outside || c.userData.shell === true
+        else c.visible = !outside || !INSIDE_ONLY.test(c.name)
+      }
+    }
+    this.crowd.group.visible = !sealed && !outside
+    this.folk.group.visible = !outside
+    this.crowd.setVisible(v)
   }
 
   update(dt: number, pose: { position: Vec3; heading: number }, jumped: boolean): void {

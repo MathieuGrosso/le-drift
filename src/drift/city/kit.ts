@@ -92,9 +92,12 @@ const _s = new THREE.Vector3()
 export const C = (hex: number, k = 1) => new THREE.Color(hex).multiplyScalar(k)
 
 export class Kit {
-  readonly b = new GeoBuilder()
+  b = new GeoBuilder()
   readonly cloth = new GeoBuilder()
-  readonly e = new GeoBuilder()
+  e = new GeoBuilder()
+  readonly shell = new GeoBuilder()
+  readonly shellE = new GeoBuilder()
+  readonly skin = new GeoBuilder()
   readonly glass = new GeoBuilder()
   readonly lines: number[] = []
   readonly cols: ColSpec[] = []
@@ -128,6 +131,23 @@ export class Kit {
     this.cloth.pat = SURF.fabric
     this.e.jitter = 0
     this.glass.jitter = 0
+    this.shell.jitter = 0.02
+    this.shellE.jitter = 0
+    this.skin.jitter = 0.03
+  }
+
+  // Geometry seen from outside the Drift too (hall envelope); everything else is culled during the sortie.
+  shelled(fn: () => void): void {
+    const b = this.b
+    const e = this.e
+    this.b = this.shell
+    this.e = this.shellE
+    try {
+      fn()
+    } finally {
+      this.b = b
+      this.e = e
+    }
   }
 
   rand(): number {
@@ -203,21 +223,13 @@ export class Kit {
       const n = Math.max(1, Math.round((alongX ? sz : sx) / w))
       const ww = (alongX ? sz : sx) / n
       for (let i = 0; i < n; i++) {
-        const k = 0.88 + this.rand() * 0.22
-        const c = i % 3 === 0 ? C(0xa98262, k) : C(0x986a4b, k * 1.05)
+        const k = 0.88 + this.rand() * 0.2
+        const c = i % 3 === 0 ? C(0x7a6050, k) : C(0x6a5040, k * 1.04)
         if (alongX) this.b.box(cx, y - 0.02, z0 + ww * (i + 0.5), sx, 0.04, ww * 0.94, c)
         else this.b.box(x0 + ww * (i + 0.5), y - 0.02, cz, ww * 0.94, 0.04, sz, c)
       }
     } else if (style === 'pierre') {
-      const s = 2
-      for (let x = x0; x < x1 - 0.01; x += s) {
-        for (let z = z0; z < z1 - 0.01; z += s) {
-          const odd = (Math.round((x - x0) / s) + Math.round((z - z0) / s)) % 2
-          const ex = Math.min(s, x1 - x)
-          const ez = Math.min(s, z1 - z)
-          this.b.box(x + ex / 2, y - 0.02, z + ez / 2, ex * 0.97, 0.04, ez * 0.97, odd ? C(0xb7a184, 1.0) : C(0xc4b090, 1.0))
-        }
-      }
+      this.b.box(cx, y - 0.02, cz, sx, 0.04, sz, C(0x8a7966, 0.96 + this.rand() * 0.06))
     } else if (style === 'tapis') {
       this.b.box(cx, y - 0.02, cz, sx, 0.04, sz, C(PAL.tissu1, 0.85))
       this.b.box(cx, y - 0.01, cz, sx * 0.86, 0.04, sz * 0.86, C(PAL.tissu2, 0.9))
@@ -520,13 +532,18 @@ export class Kit {
   private benchRaw(id: string | null, x: number, y: number, z: number, len: number, alongX: boolean, yaw: number): void {
     const sx = alongX ? len : 0.42
     const sz = alongX ? 0.42 : len
-    this.b.box(x, y + 0.44, z, sx, 0.07, sz, C(PAL.bois, 1.05))
+    for (const s of [-1, 1]) {
+      const o = s * 0.105
+      this.b.rbox(x + (alongX ? 0 : o), y + 0.44, z + (alongX ? o : 0), alongX ? len : 0.2, 0.06, alongX ? 0.2 : len, C(PAL.bois, 0.78 + s * 0.05), 0.02)
+    }
     const legs = Math.max(2, Math.round(len / 1.2))
     for (let i = 0; i <= legs - 1; i++) {
       const t = legs === 1 ? 0.5 : i / (legs - 1)
       const u = -len / 2 + 0.15 + (len - 0.3) * t
-      this.b.box(x + (alongX ? u : 0), y + 0.2, z + (alongX ? 0 : u), alongX ? 0.06 : 0.36, 0.4, alongX ? 0.36 : 0.06, C(PAL.boisOmbre))
+      this.b.rbox(x + (alongX ? u : 0), y + 0.2, z + (alongX ? 0 : u), alongX ? 0.07 : 0.38, 0.4, alongX ? 0.38 : 0.07, C(PAL.boisOmbre), 0.015)
+      this.b.box(x + (alongX ? u : 0), y + 0.08, z + (alongX ? 0 : u), alongX ? 0.09 : 0.44, 0.05, alongX ? 0.44 : 0.09, C(PAL.boisOmbre, 0.9))
     }
+    this.b.box(x, y + 0.14, z, alongX ? len - 0.3 : 0.04, 0.05, alongX ? 0.04 : len - 0.3, C(PAL.boisOmbre))
     this.cols.push({ kind: id ? 'seat' : 'prop', climbable: true, x, y: y + 0.23, z, hx: sx / 2, hy: 0.23, hz: sz / 2, ...(id ? { ownerId: id } : {}) })
     if (id) {
       this.seats.push({ id, x, y: y + 0.46, z, yaw, bed: false })

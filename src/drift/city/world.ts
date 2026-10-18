@@ -55,8 +55,8 @@ export const NEF: HallDef = {
   ],
   noGallery: [{ side: 's', y: 16, u0: -8, u1: 8 }],
   noHull: [{ side: 's', y: 16, u0: -9, u1: 9 }],
-  paints: [PAL.laiton, PAL.teal, 0xe3b95f, PAL.creme, PAL.bleuDoux, PAL.tissu1],
-  wall: 0xb79a7c,
+  paints: [0x9a6a48, PAL.teal, 0xb08440, 0x7a8a84, 0x5a7a8a, 0xa8503e],
+  wall: 0xa48a70,
   floorHole: { x: 0, z: 0, r: 11 },
   air: 1,
   pvs: ['nef', 'machines', 'ecluse', 'hauts'],
@@ -85,8 +85,8 @@ export const MARCHE: HallDef = {
     { side: 'w', y: 6.5, u0: 26.2, u1: 28.6 }, { side: 'w', y: 13, u0: 15.1, u1: 17.5 }, { side: 'w', y: 13, u0: 30.6, u1: 32.6 },
   ],
   noGallery: [], noHull: [],
-  paints: [0xd8644e, PAL.laiton, 0xe3b95f, PAL.creme, PAL.tissu3, 0xb9d98a],
-  wall: 0xc9a27a,
+  paints: [0xb0503e, 0x9a6a48, 0xb08440, 0x8a7a68, 0x5a6f8a, 0x7a8a5a],
+  wall: 0xb08e70,
   air: 0.9,
   pvs: ['marche', 'hauts'],
   spawn: { x: -88, y: 0, z: 30, yaw: 0 },
@@ -110,8 +110,8 @@ export const SERRES: HallDef = {
     { side: 'w', y: 7, u0: 8.5, u1: 11.5 }, { side: 'e', y: 7, u0: 8.5, u1: 11.5 },
   ],
   noGallery: [], noHull: [],
-  paints: [0x8fbf6a, PAL.creme, PAL.laiton, 0xb9d98a, PAL.teal],
-  wall: 0xb7b08a,
+  paints: [0x5f7d4a, 0x8a8a6a, 0x9a7a4a, 0x7a9a5a, PAL.teal],
+  wall: 0xa49e7c,
   air: 0.8,
   pvs: ['serres', 'hauts'],
   spawn: { x: 90, y: 0, z: 30, yaw: 0 },
@@ -136,8 +136,8 @@ export const ATELIERS: HallDef = {
     { side: 'n', y: 6.5, u0: -113.5, u1: -110.5 },
   ],
   noGallery: [], noHull: [],
-  paints: [0x6e8fb0, PAL.teal, PAL.laiton, PAL.creme, PAL.bleuDoux],
-  wall: 0xa8a49a,
+  paints: [0x4f6a88, PAL.teal, 0x9a7a52, 0x7a8288, 0x5a7a8a],
+  wall: 0x98948a,
   air: 0.85,
   pvs: ['ateliers'],
   spawn: { x: -80, y: 0, z: -32, yaw: Math.PI / 2 },
@@ -438,44 +438,98 @@ function bubble(k: Kit): void {
   })
 }
 
+function awning(k: Kit, cx: number, z: number, face: 1 | -1, len: number, cloth: THREE.Color): void {
+  const back = { x: cx - face * 0.85, y: 3.05 }
+  const front = { x: cx + face * 1.12, y: 2.62 }
+  const stripes = 7
+  const sw = len / stripes
+  const segs = 6
+  const cream = C(PAL.creme, 0.92)
+  for (let i = 0; i < stripes; i++) {
+    const z0 = z - len / 2 + i * sw
+    const pos: number[] = []
+    const idx: number[] = []
+    for (let j = 0; j <= segs; j++) {
+      const t = j / segs
+      const x = back.x + (front.x - back.x) * t
+      const y = back.y + (front.y - back.y) * t - Math.sin(t * Math.PI) * 0.12
+      for (const dz of [0, sw]) {
+        const edge = dz === 0 ? 0 : 1
+        pos.push(x, y - Math.sin(t * Math.PI) * 0.05 * (0.5 - Math.abs(edge - 0.5)), z0 + dz)
+      }
+      if (j > 0) {
+        const a0 = (j - 1) * 2
+        idx.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3)
+      }
+    }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    g.setIndex(idx)
+    g.computeVertexNormals()
+    k.cloth.add(g, new THREE.Matrix4(), i % 2 ? cream : cloth)
+    const flap = new THREE.Matrix4().compose(V(front.x + face * 0.005, front.y - 0.01, z0 + sw / 2), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI / 2), V(sw / 2 * 0.98, sw / 2 * 0.98, 1))
+    k.cloth.add(SCALLOP, flap, i % 2 ? cream : cloth)
+  }
+  k.beam(front.x, front.y, z - len / 2 - 0.05, front.x, front.y, z + len / 2 + 0.05, 0.05, C(PAL.boisOmbre, 1.1))
+  k.beam(back.x, back.y, z - len / 2 - 0.05, back.x, back.y, z + len / 2 + 0.05, 0.06, C(PAL.boisOmbre, 1.1))
+}
+
+const SCALLOP = (() => {
+  const g = new THREE.CircleGeometry(1, 8, Math.PI, Math.PI)
+  return g
+})()
+
 const STALL_GOODS = [0x9fb8c8, 0x7fa86a, 0xd8644e, 0xe3b95f, 0xf4f1e6, 0xc79a3b, 0x6e8fb0]
 
-function stall(k: Kit, id: string, x: number, z: number, face: 1 | -1, awning: number): void {
+function stall(k: Kit, id: string, x: number, z: number, face: 1 | -1, awningColor: number): void {
   const cx = x
-  const cloth = softColor(C(awning), 0.72)
-  k.b.with(SURF.planksX, () => k.solid(cx, 0.5, z, 1.0, 1.0, 2.6, C(0x8e6447), 'prop', true, id))
-  for (const dx of [-0.5, 0.5]) for (const dz of [-1.3, 1.3]) k.b.box(cx + dx, 0.53, z + dz, 0.1, 1.06, 0.1, C(PAL.boisOmbre, 1.15))
-  k.b.box(cx, 1.03, z, 1.1, 0.05, 2.7, C(0x6e4c3e))
+  const cloth = softColor(C(awningColor), 0.62).multiplyScalar(0.9)
+  const wood = C(0x7a5644)
+  const dark = C(PAL.boisOmbre, 1.15)
+  k.b.with(SURF.planksX, () => {
+    k.b.rbox(cx, 0.5, z, 0.96, 0.96, 2.56, wood, 0.03)
+    k.cols.push({ kind: 'prop', climbable: true, ownerId: id, x: cx, y: 0.5, z, hx: 0.5, hy: 0.5, hz: 1.3 })
+    k.b.rbox(cx + face * 0.02, 1.02, z, 1.12, 0.06, 2.74, C(0x8a644a), 0.02)
+  })
+  for (let i = 0; i < 5; i++) {
+    const bz = z - 1.0 + i * 0.5
+    k.b.with(SURF.planksZ, () => k.b.rbox(cx + face * 0.49, 0.52, bz, 0.04, 0.84, 0.46, C(0x7a5644, 0.88 + (i % 2) * 0.14), 0.012))
+  }
+  for (const dz of [-1.3, 1.3]) k.b.rbox(cx + face * 0.5, 0.53, z + dz, 0.1, 1.06, 0.1, dark, 0.02)
+  k.b.box(cx + face * 0.52, 0.22, z, 0.03, 0.06, 2.5, dark)
   k.place(id, 'etal', { x: cx + face * 0.9, y: 0, z }, face > 0 ? -Math.PI / 2 : Math.PI / 2)
-  k.cloth.box(cx + face * 0.53, 0.66, z, 0.03, 0.62, 2.45, cloth)
-  k.b.box(cx + face * 0.55, 0.36, z, 0.03, 0.05, 2.45, C(PAL.boisOmbre, 1.2))
+  for (let i = 0; i < 9; i++) {
+    const vz = z - 1.25 + (i + 0.5) * (2.5 / 9)
+    const m = new THREE.Matrix4().compose(V(cx + face * 0.535, 0.99, vz), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI / 2), V(2.5 / 18, 0.14, 1))
+    k.cloth.add(SCALLOP, m, i % 2 ? C(PAL.creme, 0.9) : cloth)
+  }
   for (let bi = 0; bi < 3; bi++) {
     const bz = z - 0.85 + bi * 0.85
-    k.b.with(SURF.fabric, () => k.b.cyl(cx + face * 0.1, 1.12, bz, 0.3, 0.14, C(0xb08a5a)))
-    k.b.cyl(cx + face * 0.1, 1.19, bz, 0.31, 0.03, C(0x8a6448))
+    k.b.with(SURF.fabric, () => k.b.cyl(cx + face * 0.1, 1.12, bz, 0.3, 0.14, C(0x9a7650)))
+    k.b.cyl(cx + face * 0.1, 1.19, bz, 0.31, 0.03, C(0x7a5640))
     const good = k.pick(STALL_GOODS)
     for (let g = 0; g < 5; g++) {
       const a = (g / 5) * Math.PI * 2 + k.rand()
       const r = g === 4 ? 0 : 0.14
-      k.b.sphere(cx + face * 0.1 + Math.cos(a) * r, 1.22 + (g === 4 ? 0.06 : 0), bz + Math.sin(a) * r, 0.1, 0.07, 0.13, softColor(C(good), 0.8))
+      k.b.sphere(cx + face * 0.1 + Math.cos(a) * r, 1.22 + (g === 4 ? 0.06 : 0), bz + Math.sin(a) * r, 0.1, 0.07, 0.13, softColor(C(good), 0.7))
     }
   }
   k.crate(cx - face * 1.3, 0, z + 0.7, 0.6)
   k.barrel(cx - face * 1.3, 0, z - 0.6, 0.3, 0.8)
-  for (const dz of [-1.3, 1.3]) k.b.box(cx - face * 0.7, 1.55, z + dz, 0.08, 3.1, 0.08, C(PAL.boisOmbre))
-  k.b.box(cx - face * 0.64, 1.45, z + 1.3, 0.03, 0.34, 0.46, C(0x3e3a4a))
-  k.b.box(cx - face * 0.625, 1.45, z + 1.3, 0.01, 0.06, 0.3, C(0xe8dfcc))
-  for (let i = 0; i < 6; i++) {
-    const zz = z - 1.45 + i * 0.58
-    k.cloth.box(cx + face * 0.1, 3.0 - 0.1, zz, 1.9, 0.05, 0.58, i % 2 ? cloth : C(PAL.creme, 0.95), 0)
+  if (k.rand() < 0.6) {
+    k.b.with(SURF.fabric, () => k.b.cyl(cx + face * 0.85, 0.16, z + (k.rand() - 0.5) * 1.6, 0.24, 0.32, C(0x9a7650)))
   }
-  for (let i = 0; i < 12; i++) {
-    const zz = z - 1.45 + (i + 0.5) * (2.9 / 12)
-    k.cloth.box(cx + face * 1.05, 2.8, zz, 0.03, 0.18 + (i % 2) * 0.05, 2.9 / 12 - 0.02, i % 2 ? C(PAL.creme, 0.95) : cloth)
-  }
-  k.cols.push({ kind: 'prop', climbable: true, x: cx + face * 0.1, y: 2.95, z, hx: 0.95, hy: 0.05, hz: 1.45 })
-  k.lamp(cx + face * 0.6, 2.6, z, { radius: 6, bake: 0.7, style: 'shade', hang: 0.25, color: k.rand() < 0.5 ? PAL.lampe : PAL.lampeChaude })
+  for (const dz of [-1.3, 1.3]) k.b.rbox(cx - face * 0.7, 1.55, z + dz, 0.09, 3.1, 0.09, dark, 0.02)
+  k.b.rbox(cx + face * 0.62, 1.42, z + 1.18, 0.03, 0.34, 0.42, C(0x34403c), 0.01)
+  k.b.box(cx + face * 0.64, 1.47, z + 1.18, 0.01, 0.03, 0.26, C(0xe8dfcc, 0.9))
+  k.b.box(cx + face * 0.64, 1.39, z + 1.14, 0.01, 0.03, 0.18, C(0xe8dfcc, 0.8))
+  awning(k, cx, z, face, 2.9, cloth)
+  k.cols.push({ kind: 'prop', climbable: true, x: cx + face * 0.1, y: 2.85, z, hx: 0.95, hy: 0.05, hz: 1.45 })
+  k.lamp(cx + face * 0.6, 2.45, z, { radius: 6, bake: 0.7, style: 'shade', hang: 0.3, color: k.rand() < 0.5 ? PAL.lampe : PAL.lampeChaude })
   k.spots.push({ district: k.district, x: cx - face * 0.6, y: 0, z, yaw: face > 0 ? Math.PI / 2 : -Math.PI / 2, pose: 'work' })
+  for (const dz of [-0.7, 0.6]) {
+    if (k.rand() < 0.75) k.spots.push({ district: k.district, x: cx + face * (1.55 + k.rand() * 0.3), y: 0, z: z + dz + (k.rand() - 0.5) * 0.3, yaw: face > 0 ? -Math.PI / 2 + (k.rand() - 0.5) * 0.6 : Math.PI / 2 + (k.rand() - 0.5) * 0.6, pose: 'talk' })
+  }
 }
 
 function marche(k: Kit): void {
@@ -544,8 +598,9 @@ function marche(k: Kit): void {
   booth(k, 'marche', 'nef', PANNEAUX.versNef, -93, 0, -2.8, Math.PI, { x: 0, y: -6, z: -21, yaw: Math.PI }, { act: 2 })
   shrine(k, { id: 'cs-02', num: 2, x: -104.3, y: 0, z: 20, nx: -1, nz: 0, district: 'marche', deck: 'principal', pvs: ['marche'] })
 
-  k.paths.push({ district: 'marche', pts: [{ x: -88, z: 1 }, { x: -88, z: 38 }], y: 0, loop: false, busy: 1, work: false })
-  k.paths.push({ district: 'marche', pts: [{ x: -88, z: 50 }, { x: -88, z: 70 }], y: 0, loop: false, busy: 1, work: false })
+  k.paths.push({ district: 'marche', pts: [{ x: -88, z: 1 }, { x: -88, z: 38 }], y: 0, loop: false, busy: 2.2, work: false })
+  k.paths.push({ district: 'marche', pts: [{ x: -87, z: 3 }, { x: -89.2, z: 37 }], y: 0, loop: false, busy: 1.6, work: false })
+  k.paths.push({ district: 'marche', pts: [{ x: -88, z: 50 }, { x: -88, z: 70 }], y: 0, loop: false, busy: 2, work: false })
   k.paths.push({ district: 'marche', pts: [{ x: -95.5, z: 1 }, { x: -95.5, z: 70 }], y: 0, loop: false, busy: 0.9, work: false })
   k.paths.push({ district: 'marche', pts: [{ x: -80.5, z: 1 }, { x: -80.5, z: 70 }], y: 0, loop: false, busy: 0.9, work: false })
   for (const y of [6.5, 13]) {

@@ -91,11 +91,12 @@ export function buildHall(k: Kit, h: HallDef): HallOut {
     spawn: h.spawn, air: h.air ?? 1, roof: peak, pvs: h.pvs, glass: true,
   })
 
-  buildFloor(k, h)
-
   const sides: Side[] = ['n', 's', 'w', 'e']
-  for (const s of sides) buildWall(k, h, s)
-  buildVault(k, h)
+  k.shelled(() => {
+    buildFloor(k, h)
+    for (const s of sides) buildWall(k, h, s)
+    buildVault(k, h)
+  })
 
   for (const s of sides) {
     const tiers = h.tiers[s] ?? []
@@ -189,22 +190,48 @@ function buildWall(k: Kit, h: HallDef, s: Side): void {
   const T = 2
   const along = s === 'n' || s === 's'
   const wallC = new THREE.Color(h.wall)
-  const skin = new THREE.Color(DISTRICT_BY_ID[h.district].accent).lerp(new THREE.Color(PAL.creme), 0.25)
+  const skin = new THREE.Color(DISTRICT_BY_ID[h.district].accent).multiplyScalar(0.78).lerp(new THREE.Color(PAL.teal), 0.18)
   const keel = new THREE.Color(DISTRICT_BY_ID[h.district].accent).multiplyScalar(0.55).lerp(new THREE.Color(PAL.rouille), 0.25)
   const tiers = [h.floorY, ...h.levels]
   const lit = [0xffd9a0, 0xffc27a, 0xffe2b8]
-  for (let y = h.floorY - 1; y < (gable ? h.spring + h.rise : h.spring) - 0.01; y += T) {
+  let row = 0
+  for (let y = h.floorY - 1; y < (gable ? h.spring + h.rise : h.spring) - 0.01; y += T, row++) {
+    const cy = y + T / 2
+    const low = cy < h.floorY + 2
+    const band = row % 3 === 2
+    const plaster = wallC.clone().multiplyScalar(low ? 0.8 : 0.94 + (row % 2) * 0.03)
+    const sk = (low ? keel : skin).clone().multiplyScalar(0.94 + (row % 2) * 0.05)
     let runStart: number | null = null
     const flush = (u1: number) => {
       if (runStart === null) return
-      const c = wallPoint(h, s, (runStart + u1) / 2, y + T / 2, -0.2)
-      k.cols.push({ kind: 'wall', climbable: true, x: c.x, y: c.y, z: c.z, hx: along ? (u1 - runStart) / 2 : 0.25, hy: T / 2, hz: along ? 0.25 : (u1 - runStart) / 2 })
+      const len = u1 - runStart
+      const um = (runStart + u1) / 2
+      const c = wallPoint(h, s, um, cy, -0.2)
+      k.cols.push({ kind: 'wall', climbable: true, x: c.x, y: c.y, z: c.z, hx: along ? len / 2 : 0.25, hy: T / 2, hz: along ? 0.25 : len / 2 })
+      const hgt = T
+      const ch = cy
+      const ci = wallPoint(h, s, um, ch, -0.2)
+      k.b.with(SURF.plaster, () => {
+        if (along) k.b.box(ci.x, ci.y, ci.z, len, hgt, 0.4, plaster)
+        else k.b.box(ci.x, ci.y, ci.z, 0.4, hgt, len, plaster)
+      })
+      const o = wallPoint(h, s, um, ch, -0.45)
+      k.skin.with(SURF.hull, () => {
+        if (along) k.skin.box(o.x, o.y, o.z, len + 0.02, hgt + 0.02, 0.1, sk)
+        else k.skin.box(o.x, o.y, o.z, 0.1, hgt + 0.02, len + 0.02, sk)
+      })
+      if (band) {
+        const bt = wallPoint(h, s, um, y + hgt - 0.12, -0.52)
+        k.skin.with(SURF.brass, () => {
+          if (along) k.skin.box(bt.x, bt.y, bt.z, len + 0.02, 0.24, 0.06, C(PAL.laiton, 0.7))
+          else k.skin.box(bt.x, bt.y, bt.z, 0.06, 0.24, len + 0.02, C(PAL.laiton, 0.7))
+        })
+      }
       runStart = null
     }
     for (let u = ua; u < ub - 0.01; u += T) {
       const eu = Math.min(T, ub - u)
       const cu = u + eu / 2
-      const cy = y + T / 2
       const top = gable && y + T > h.spring ? THREE.MathUtils.lerp(h.spring, h.spring + h.rise, Math.sin(Math.PI * (cu - ua) / (ub - ua))) : h.spring
       const skip = cy > top || openingHit(h, s, u + 0.05, u + eu - 0.05, y + 0.05, y + T - 0.05) || (oc && Math.hypot(cu - oc.u, cy - oc.y) < oc.r + 0.2)
       if (skip) {
@@ -212,26 +239,19 @@ function buildWall(k: Kit, h: HallDef, s: Side): void {
         continue
       }
       if (runStart === null) runStart = u
-      const shade = 0.9 + k.rand() * 0.14 - (cy < h.floorY + 1 ? 0.12 : 0)
-      const c = wallPoint(h, s, cu, cy, -0.2)
-      const col = wallC.clone().multiplyScalar(shade)
-      k.b.with(SURF.plaster, () => {
-        if (along) k.b.box(c.x, c.y, c.z, eu - 0.05, T - 0.05, 0.4, col)
-        else k.b.box(c.x, c.y, c.z, 0.4, T - 0.05, eu - 0.05, col)
-      })
-      const o = wallPoint(h, s, cu, cy, -0.45)
-      const low = cy < h.floorY + 2
-      const band = Math.round((cy - h.floorY - 1) / T) % 3 === 2
-      const sk = (low ? keel : skin).clone().multiplyScalar(0.92 + k.rand() * 0.1)
-      k.b.with(band ? SURF.brass : SURF.hull, () => {
-        if (along) k.b.box(o.x, o.y, o.z, eu + 0.02, T + 0.02, 0.1, band ? C(PAL.laiton, 0.85) : sk)
-        else k.b.box(o.x, o.y, o.z, 0.1, T + 0.02, eu + 0.02, band ? C(PAL.laiton, 0.85) : sk)
-      })
       if (!band && !low && tiers.some((ty) => Math.abs(cy - (ty + 2.6)) < 1.01) && Math.round(u / T) % 2 === 0) {
         const wpt = wallPoint(h, s, cu, cy, -0.52)
         const on = k.rand() < 0.7
-        if (along) (on ? k.e : k.b).box(wpt.x, wpt.y, wpt.z, 0.7, 0.9, 0.04, on ? C(k.pick(lit), 0.95) : C(PAL.interieurOmbre))
-        else (on ? k.e : k.b).box(wpt.x, wpt.y, wpt.z, 0.04, 0.9, 0.7, on ? C(k.pick(lit), 0.95) : C(PAL.interieurOmbre))
+        const tgt = on ? k.e : k.skin
+        const lc = on ? C(k.pick(lit), 0.95) : C(PAL.interieurOmbre)
+        if (along) tgt.box(wpt.x, wpt.y, wpt.z, 0.7, 0.9, 0.04, lc)
+        else tgt.box(wpt.x, wpt.y, wpt.z, 0.04, 0.9, 0.7, lc)
+        const sill = wallPoint(h, s, cu, cy - 0.5, -0.56)
+        if (along) k.skin.box(sill.x, sill.y, sill.z, 0.9, 0.08, 0.1, C(PAL.laiton, 0.75))
+        else k.skin.box(sill.x, sill.y, sill.z, 0.1, 0.08, 0.9, C(PAL.laiton, 0.75))
+        const hood = wallPoint(h, s, cu, cy + 0.52, -0.6)
+        if (along) k.skin.box(hood.x, hood.y, hood.z, 0.86, 0.06, 0.18, C(PAL.boisOmbre))
+        else k.skin.box(hood.x, hood.y, hood.z, 0.18, 0.06, 0.86, C(PAL.boisOmbre))
       }
     }
     flush(ub)
@@ -256,9 +276,10 @@ function buildWall(k: Kit, h: HallDef, s: Side): void {
       k.beam(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z, 0.24, C(PAL.laiton, 0.75))
       const pc = wallPoint(h, s, u, (a + b) / 2, 0.15)
       k.cols.push({ kind: 'rib', climbable: true, x: pc.x, y: pc.y, z: pc.z, hx: along ? 0.12 : 0.15, hy: (b - a) / 2, hz: along ? 0.15 : 0.12 })
+      if (Math.round((u - ua - 2) / 4) % 2 === 1) continue
       const qa = wallPoint(h, s, u, a, -0.55)
       const qb = wallPoint(h, s, u, b, -0.55)
-      k.beam(qa.x, qa.y, qa.z, qb.x, qb.y, qb.z, 0.28, C(h.wall, 0.7))
+      k.beam(qa.x, qa.y, qa.z, qb.x, qb.y, qb.z, 0.28, C(DISTRICT_BY_ID[h.district].accent, 0.45).lerp(C(PAL.boisOmbre), 0.5), k.skin)
     }
   }
   if (oc) {
@@ -429,7 +450,7 @@ function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number,
       const rr = keel ? 0.3 : 0.26
       const m = new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(along ? 0 : INWARD[s].x, 0, along ? INWARD[s].z : 0)), new THREE.Vector3(rr, rr, 1))
       if (on) k.e.add(DISC_SMALL, m, C(k.pick(lit), 0.95 + k.rand() * 0.2))
-      else k.b.add(DISC_SMALL, m, C(0xc9b48e, 0.72))
+      else k.b.add(DISC_SMALL, m, C(0x5a5466))
       k.b.add(RING_SMALL, m, C(PAL.laiton, 1.0))
       if (ri === 0 && k.rand() < 0.18) {
         const bp = wallPoint(h, s, wu, wy - 0.42, off + 0.15)

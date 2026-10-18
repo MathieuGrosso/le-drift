@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 
 export type ColorFn = (p: THREE.Vector3, n: THREE.Vector3) => THREE.Color
 export type ColorSpec = THREE.ColorRepresentation | ColorFn
@@ -90,6 +91,18 @@ export class GeoBuilder {
     return this.add(UNIT.box, m, color)
   }
 
+  rbox(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, color: ColorSpec, r = 0.025, rotY = 0): this {
+    const rr = Math.min(r, sx * 0.49, sy * 0.49, sz * 0.49)
+    const key = `${sx.toFixed(3)}:${sy.toFixed(3)}:${sz.toFixed(3)}:${rr.toFixed(3)}`
+    let g = ROUNDED.get(key)
+    if (!g) {
+      g = new RoundedBoxGeometry(sx, sy, sz, 1, rr)
+      ROUNDED.set(key, g)
+    }
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(cx, cy, cz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY), new THREE.Vector3(1, 1, 1))
+    return this.add(g, m, color)
+  }
+
   cyl(cx: number, cy: number, cz: number, r: number, h: number, color: ColorSpec, axis: 'x' | 'y' | 'z' = 'y'): this {
     const q = new THREE.Quaternion()
     if (axis === 'x') q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2)
@@ -116,6 +129,8 @@ export class GeoBuilder {
     return g
   }
 }
+
+const ROUNDED = new Map<string, THREE.BufferGeometry>()
 
 export const UNIT = {
   box: new THREE.BoxGeometry(1, 1, 1),

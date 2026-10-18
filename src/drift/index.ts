@@ -14,7 +14,7 @@ import { Npcs } from './npcs'
 import { PAL } from './palette'
 import { registerDriftPoses } from './poses'
 import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from './route'
-import { drawingsTexture } from './textures'
+import { drawingsTexture, menuTexture } from './textures'
 import { Windows } from './windows'
 
 export type DriftAnchor = Anchor | { kind: 'ring'; id: string; at: Vec3 }
@@ -518,6 +518,7 @@ export function createDriftSystem(): System {
         board: board.texture,
         chart: chart.texture,
         drawings: drawingsTexture(),
+        menu: menuTexture(),
       }
 
       quarter = new Quarter(ctx, mats, textures, pose)

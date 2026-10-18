@@ -9,7 +9,7 @@ import { PAL } from '../palette'
 import { SURF, surfacePatch } from '../surface'
 import { blockerShape, createDoor, doorwayContains, openLeafShape, poseLeaf, type DoorRuntime } from './doors'
 import { buildFurniture, emptyFurniture } from './furniture'
-import { PARTS, REBORD, ROOM_NEIGHBOURS, partTop, type PartDef } from './layout'
+import { PARTS, RECT_WINDOWS, REBORD, ROOM_NEIGHBOURS, partTop, type PartDef } from './layout'
 import { buildShell, ceilingAt } from './shell'
 import type { ColliderSpec, DoorDef, PaneDef } from './types'
 
@@ -72,9 +72,11 @@ interface LampRt {
   phase: number
   world: THREE.Vector3
   local: THREE.Vector3
+  hidden: boolean
+  night: boolean
 }
 
-interface PendRt { part: string; pivot: THREE.Vector3; cord: number; scale: number; phase: number }
+interface PendRt { part: string; pivot: THREE.Vector3; cord: number; drop: number; scale: number; phase: number }
 
 interface Timer { left: number; total: number; fast: LockId | null; resolve: (elapsed: number) => void }
 
@@ -123,10 +125,10 @@ void main() {
 }`
 
 const FLOOR_LOOK: Record<Exclude<PartDef['floor'], 'none'>, { pat: number; color: number }> = {
-  bois: { pat: SURF.planksX, color: 0xa47650 },
-  tapis: { pat: SURF.planksZ, color: 0x8c6249 },
-  carrelage: { pat: SURF.tiles, color: 0xa9a094 },
-  metal: { pat: SURF.steel, color: 0x7f8494 },
+  bois: { pat: SURF.planksX, color: 0x7a5c48 },
+  tapis: { pat: SURF.planksZ, color: 0x6c5244 },
+  carrelage: { pat: SURF.tiles, color: 0x8c8479 },
+  metal: { pat: SURF.steel, color: 0x60636f },
 }
 
 const _v = new THREE.Vector3()
@@ -142,6 +144,7 @@ export interface QuarterTextures {
   board: THREE.Texture
   chart: THREE.Texture
   drawings: THREE.Texture
+  menu: THREE.Texture
 }
 
 export class Quarter {
@@ -163,6 +166,7 @@ export class Quarter {
   private readonly steamMats: THREE.ShaderMaterial[] = []
   private readonly waterMats: THREE.ShaderMaterial[] = []
   private readonly mat: THREE.Material
+  private readonly glowMat: THREE.Material
   private visibleRooms = new Set<RoomId>()
   private indoorRoom: RoomId | null = null
   private time = 0
@@ -174,6 +178,7 @@ export class Quarter {
   constructor(private readonly ctx: GameContext, private readonly mats: Mats, tex: QuarterTextures, pose: { position: Vec3; heading: number }) {
     this.root.name = 'drift-quarter'
     this.mat = mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, onShader: surfacePatch })
+    this.glowMat = mats.water(new THREE.MeshBasicMaterial({ vertexColors: true }))
     const R = ctx.physics.rapier
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -pose.heading)
     let seed = 11
@@ -187,6 +192,8 @@ export class Quarter {
       group.matrixAutoUpdate = false
       const b = new GeoBuilder()
       const fade = new GeoBuilder()
+      const glowB = new GeoBuilder()
+      glowB.jitter = 0
       const fy = def.floorY
       b.shade = (p, n) => {
         const low = THREE.MathUtils.smoothstep(p.y, fy, fy + 0.9)
@@ -196,7 +203,7 @@ export class Quarter {
       fade.shade = b.shade
       const shellOut = { colliders: this.colliderSpecs, doors: [] as DoorDef[], panes: this.panes }
       buildShell(def, b, shellOut)
-      buildFurniture(def.id, b, fade, this.furniture, rand)
+      buildFurniture(def.id, b, fade, this.furniture, rand, glowB)
       const staticMesh = new THREE.Mesh(b.build(), this.mat)
       staticMesh.name = `piece:${def.id}:coque`
       group.add(staticMesh)
@@ -206,6 +213,12 @@ export class Quarter {
         fm.userData.fadeable = true
         group.add(fm)
         detail.push(fm)
+      }
+      if (glowB.vertexCount > 0) {
+        const gm = new THREE.Mesh(glowB.build(), this.glowMat)
+        gm.name = `piece:${def.id}:lueur`
+        group.add(gm)
+        detail.push(gm)
       }
       if (def.floor !== 'none') {
         const fb = new GeoBuilder()
@@ -218,7 +231,8 @@ export class Quarter {
         const fz = (def.z0 + def.z1) / 2
         fb.shade = (p) => {
           const e = Math.min(p.x - def.x0, def.x1 - p.x, p.z - def.z0, def.z1 - p.z)
-          return 0.62 + 0.38 * THREE.MathUtils.smoothstep(e, 0.15, 1.3)
+          const n = Math.sin(p.x * 1.7 + p.z * 0.6) * Math.sin(p.z * 2.3 - p.x * 0.4)
+          return (0.5 + 0.5 * THREE.MathUtils.smoothstep(e, 0.15, 1.8)) * (0.94 + 0.06 * n)
         }
         const look = FLOOR_LOOK[def.floor]
         fb.pat = look.pat
@@ -227,6 +241,7 @@ export class Quarter {
         fl.name = `piece:${def.id}:sol`
         fl.matrixAutoUpdate = false
         group.add(fl)
+        detail.push(fl)
       }
       const body = ctx.physics.world.createRigidBody(
         R.RigidBodyDesc.kinematicPositionBased()
@@ -340,6 +355,7 @@ export class Quarter {
         color: new THREE.Color(l.color), baseColor: new THREE.Color(l.color), radius: l.radius,
         ...(l.airlock ? { airlock: l.airlock } : {}),
         phase: Math.random() * 6.28, world: new THREE.Vector3(), local: rest.clone(),
+        hidden: !!l.hidden, night: !!l.night,
       })
     }
     const n = this.lamps.length
@@ -362,24 +378,27 @@ export class Quarter {
 
   private buildPendulums(): void {
     for (const p of this.furniture.pendulums) {
-      this.pends.push({ part: p.part, pivot: new THREE.Vector3(p.x, p.y, p.z), cord: p.cord, scale: p.scale, phase: Math.random() * 6 })
+      this.pends.push({ part: p.part, pivot: new THREE.Vector3(p.x, p.y, p.z), cord: p.cord, drop: p.drop ?? p.cord, scale: p.scale, phase: Math.random() * 6 })
     }
     if (this.pends.length === 0) return
     const b = new GeoBuilder()
     b.jitter = 0
-    b.cyl(0, -0.12, 0, 0.13, 0.22, PAL.metal)
-    b.cyl(0, -0.02, 0, 0.14, 0.03, PAL.laiton)
-    b.cyl(0.0, 0.0, 0, 0.01, 0.0001, PAL.metal)
+    b.pat = SURF.brass
+    b.cyl(0, -0.2, 0, 0.13, 0.18, 0xb8744a)
+    b.cyl(0, -0.11, 0, 0.14, 0.025, 0xd9a06a)
+    b.cyl(0, -0.29, 0, 0.12, 0.02, 0x7a4632)
+    b.add(new THREE.TorusGeometry(0.135, 0.008, 4, 14, Math.PI), new THREE.Matrix4().makeTranslation(0, -0.11, 0), 0x6a5a5a)
+    b.cyl(0.2, -0.17, 0, 0.012, 0.16, 0x5e4a5c, 'x')
     const g = b.build()
-    this.pots = new THREE.InstancedMesh(g, this.mats.cel({ color: 0xffffff, vertexColors: true, indoor: true }), this.pends.length)
+    this.pots = new THREE.InstancedMesh(g, this.mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, onShader: surfacePatch }), this.pends.length)
     this.pots.frustumCulled = false
     this.pots.userData.fadeable = true
     this.root.add(this.pots)
   }
 
   private buildDecals(tex: QuarterTextures): void {
-    const add = (part: string, kind: 'board' | 'chart' | 'drawings', x: number, y: number, z: number, w: number, h: number, normal: THREE.Vector3, up: THREE.Vector3) => {
-      const map = kind === 'board' ? tex.board : kind === 'chart' ? tex.chart : tex.drawings
+    const add = (part: string, kind: 'board' | 'chart' | 'drawings' | 'menu', x: number, y: number, z: number, w: number, h: number, normal: THREE.Vector3, up: THREE.Vector3) => {
+      const map = kind === 'board' ? tex.board : kind === 'chart' ? tex.chart : kind === 'menu' ? tex.menu : tex.drawings
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), this.mats.cel({ color: 0xffffff, map, indoor: true }))
       const right = new THREE.Vector3().crossVectors(up, normal)
       m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, normal))
@@ -702,7 +721,7 @@ export class Quarter {
         const dx = Math.max(p.def.x0 - cameraLocal.x, 0, cameraLocal.x - p.def.x1)
         const dz = Math.max(p.def.z0 - cameraLocal.z, 0, cameraLocal.z - p.def.z1)
         const dy = Math.max(p.def.floorY - cameraLocal.y, 0, cameraLocal.y - partTop(p.def))
-        p.detailVisible = Math.hypot(dx, dy, dz) < 40
+        p.detailVisible = Math.hypot(dx, dy, dz) < 40 && GLAZED.has(p.def.id)
       }
       p.group.visible = p.visible
       for (const o of p.detail) o.visible = p.detailVisible
@@ -713,9 +732,11 @@ export class Quarter {
     const n = this.lamps.length
     const hours = this.ctx.state.time.hours
     const dim = hours >= 21 || hours < 5.5 ? 0.55 : hours >= 19 ? 0.8 : 1
+    const night = hours >= 19 || hours < 5.5
     for (let i = 0; i < n; i++) {
       const l = this.lamps[i]!
       const part = this.parts.get(l.part)!
+      const off = l.night && !night
       if (l.airlock) {
         const a = this.airlocks.get(l.airlock)!
         const idx = this.lamps.filter((o) => o.airlock === l.airlock).indexOf(l)
@@ -732,14 +753,14 @@ export class Quarter {
       l.local.set(0, -l.cord, 0).applyQuaternion(_q).add(l.pivot)
       _m.compose(l.local, IDQ, _s.set(1, 1, 1))
       _m2.multiplyMatrices(part.sway, _m)
-      if (!part.detailVisible) _m2.makeScale(0, 0, 0)
+      if (!part.detailVisible || l.hidden) _m2.makeScale(0, 0, 0)
       this.bulbs.setMatrixAt(i, _m2)
       this.shades.setMatrixAt(i, _m2)
       _m.compose(l.local, _q, _s.set(1, l.cord, 1))
       _m2.multiplyMatrices(part.sway, _m)
       if (!part.detailVisible || l.cord < 0.05) _m2.makeScale(0, 0, 0)
       this.cords.setMatrixAt(i, _m2)
-      this.bulbs.setColorAt(i, _c.copy(l.color).multiplyScalar(0.6 + 0.4 * dim))
+      this.bulbs.setColorAt(i, off ? _c.set(0x6a5a50) : _c.copy(l.color).multiplyScalar(0.6 + 0.4 * dim))
       l.world.copy(l.local).applyMatrix4(part.sway).applyMatrix4(this.root.matrixWorld)
     }
     this.bulbs.instanceMatrix.needsUpdate = true
@@ -753,7 +774,7 @@ export class Quarter {
         const w = Math.sqrt(9.81 / p.cord)
         _e.set(0.06 * Math.sin(this.time * w * 0.3 + p.phase), 0, 0.08 * Math.sin(this.time * w * 0.27 + p.phase * 2))
         _q.setFromEuler(_e)
-        _v.set(0, -p.cord, 0).applyQuaternion(_q).add(p.pivot)
+        _v.set(0, -p.drop, 0).applyQuaternion(_q).add(p.pivot)
         _m.compose(_v, _q, _s.set(p.scale, p.scale, p.scale))
         _m2.multiplyMatrices(part.sway, _m)
         if (!part.detailVisible) _m2.makeScale(0, 0, 0)
@@ -770,7 +791,10 @@ export class Quarter {
     const max = Math.min(slots.length, level === 'high' ? 8 : level === 'medium' ? 6 : 4)
     const ref = this.ctx.state.hero.position
     this.lampOrder.length = 0
-    for (let i = 0; i < n; i++) if (this.parts.get(this.lamps[i]!.part)!.visible) this.lampOrder.push(i)
+    for (let i = 0; i < n; i++) {
+      const l = this.lamps[i]!
+      if (this.parts.get(l.part)!.visible && !(l.night && !night)) this.lampOrder.push(i)
+    }
     this.lampOrder.sort((a, b) => dist2(this.lamps[a]!.world, ref) - dist2(this.lamps[b]!.world, ref))
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i]!
@@ -811,6 +835,7 @@ export class Quarter {
   }
 }
 
+const GLAZED = new Set(RECT_WINDOWS.map((w) => w.part))
 const IDENTITY = new THREE.Matrix4()
 const IDQ = new THREE.Quaternion()
 

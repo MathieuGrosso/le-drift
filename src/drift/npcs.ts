@@ -135,6 +135,8 @@ export class Npcs {
   private readonly overrides = new Map<string, { act: Activity; until: number }>()
   private standAll = 0
   private time = 0
+  private slotNext = 0
+  private readonly tints: Record<PartKey, THREE.Color>[] = []
   private readonly seats: (Spot & { part: string })[]
   private readonly portholeSpots: (Spot & { part: string })[] = []
   readonly group = new THREE.Group()
@@ -155,15 +157,14 @@ export class Npcs {
     }
     const c = new THREE.Color()
     defs.forEach((d, i) => {
-      const skin = c.set(d.skin).clone()
-      this.meshes.torso.setColorAt(i, softColor(c.set(d.clothes)))
-      this.meshes.head.setColorAt(i, skin)
-      this.meshes.hair.setColorAt(i, c.set(d.hair))
-      this.meshes.hat.setColorAt(i, c.set(d.hat === 'bonnet' ? PAL.tissu1 : PAL.blanc))
-      for (let k = 0; k < 2; k++) {
-        this.meshes.arm.setColorAt(i * 2 + k, softColor(c.set(d.kind === 'kid' ? d.skin : d.clothes).multiplyScalar(0.92)))
-        this.meshes.thigh.setColorAt(i * 2 + k, softColor(c.set(d.trousers)))
-        this.meshes.shin.setColorAt(i * 2 + k, softColor(c.set(d.trousers).multiplyScalar(0.85)))
+      this.tints[d.index] = {
+        torso: softColor(c.set(d.clothes), 0.65).clone(),
+        head: c.set(d.skin).clone(),
+        hair: c.set(d.hair).clone(),
+        hat: c.set(d.hat === 'bonnet' ? 0xb8604e : PAL.blanc).clone(),
+        arm: softColor(c.set(d.kind === 'kid' ? d.skin : d.clothes).multiplyScalar(0.92), 0.65).clone(),
+        thigh: softColor(c.set(d.trousers), 0.65).clone(),
+        shin: softColor(c.set(d.trousers).multiplyScalar(0.85), 0.65).clone(),
       }
       this.list.push({
         def: d, scale: d.kind === 'kid' ? 0.62 : d.kind === 'elder' ? 0.95 : 0.98 + ((i * 7) % 5) * 0.02,
@@ -240,6 +241,7 @@ export class Npcs {
       case 'tao':
       case 'pepin': {
         if (night) return this.hidden()
+        if (h >= 7.5 && h < 8.5) return this.at(`rebord-${id}`, 'clap')
         if (meal) return this.seat(40 + kidSeat[id]!, 'eat')
         if (h < 7.5) return this.walk('coursiveKids', 'run', 2.0 + kidSeat[id]! * 0.2)
         if (h >= 8.5 && h < 12) return this.at(`rebord-${id}`, 'clap')
@@ -334,6 +336,7 @@ export class Npcs {
     const q = this.ctx.quality.level
     let seatedBudget = q === 'high' ? 40 : q === 'medium' ? 25 : 12
     let walkBudget = q === 'high' ? 12 : q === 'medium' ? 8 : 4
+    this.slotNext = 0
     for (const n of this.list) {
       const ov = this.overrides.get(n.def.id)
       let act: Activity
@@ -345,7 +348,6 @@ export class Npcs {
       if (!n.act || n.act.key !== act.key) this.enter(n, act)
       n.act = act
       if (act.hidden) {
-        if (!n.hiddenWritten) this.writeZero(n)
         n.visible = false
         continue
       }
@@ -353,23 +355,16 @@ export class Npcs {
       if (act.path) this.advance(n, act, dt)
       const vis = this.quarter.isDetailVisible(n.part)
       n.visible = vis
-      if (!vis) {
-        this.writeZero(n)
-        n.hiddenWritten = false
-        continue
-      }
+      if (!vis) continue
       const moving = act.pose === 'walk' || act.pose === 'run'
-      if (moving) {
-        if (walkBudget <= 0) continue
-        walkBudget--
-      } else {
-        if (seatedBudget <= 0) continue
-        seatedBudget--
-      }
-      n.t += dt
+      const live = moving ? walkBudget-- > 0 : seatedBudget-- > 0
+      if (live) n.t += dt
       this.pose(n, act)
     }
-    for (const im of Object.values(this.meshes)) {
+    this.group.visible = this.slotNext > 0
+    for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
+      const im = this.meshes[key]
+      im.count = this.slotNext * PARTS_PER_NPC[key]
       im.instanceMatrix.needsUpdate = true
       if (im.instanceColor) im.instanceColor.needsUpdate = true
     }
@@ -422,20 +417,6 @@ export class Npcs {
       }
       s -= l
     }
-  }
-
-  private writeZero(n: Npc): void {
-    const i = n.def.index
-    this.meshes.torso.setMatrixAt(i, ZERO)
-    this.meshes.head.setMatrixAt(i, ZERO)
-    this.meshes.hair.setMatrixAt(i, ZERO)
-    this.meshes.hat.setMatrixAt(i, ZERO)
-    for (let k = 0; k < 2; k++) {
-      this.meshes.arm.setMatrixAt(i * 2 + k, ZERO)
-      this.meshes.thigh.setMatrixAt(i * 2 + k, ZERO)
-      this.meshes.shin.setMatrixAt(i * 2 + k, ZERO)
-    }
-    n.hiddenWritten = true
   }
 
   private params(n: Npc, act: Activity): PoseParams {
@@ -568,7 +549,11 @@ export class Npcs {
 
   private pose(n: Npc, act: Activity): void {
     const p = this.params(n, act)
-    const i = n.def.index
+    const i = this.slotNext++
+    const tint = this.tints[n.def.index]!
+    for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
+      for (let k = 0; k < PARTS_PER_NPC[key]; k++) this.meshes[key].setColorAt(i * PARTS_PER_NPC[key] + k, tint[key])
+    }
     const s = n.scale
     _base.copy(this.quarter.swayOf(n.part))
     _m.compose(n.pos, _q.setFromAxisAngle(_v.set(0, 1, 0), -n.yaw), _one)

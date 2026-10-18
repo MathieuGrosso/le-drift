@@ -14,6 +14,7 @@ export const SURF = {
   stone: 8,
   brass: 9,
   hull: 10,
+  hullShell: 11,
 } as const
 
 const VERT_DECL = 'attribute float aPat;\nvarying float vPat;\nvarying vec3 vPatP;\nvarying vec3 vPatN;\n'
@@ -22,8 +23,14 @@ vPat = aPat;
 vPatP = position;
 vPatN = normal;
 #ifdef USE_INSTANCING
-vPatP = (instanceMatrix * vec4(position, 1.0)).xyz;
-vPatN = mat3(instanceMatrix) * normal;
+if (aPat > 10.5) {
+  vec3 iS = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+  vPatP = position * iS;
+  vPatN = normal / iS;
+} else {
+  vPatP = (instanceMatrix * vec4(position, 1.0)).xyz;
+  vPatN = mat3(instanceMatrix) * normal;
+}
 #endif
 `
 
@@ -43,6 +50,30 @@ float sFade(vec2 st) {
   return 1.0 - smoothstep(0.03, 0.12, f);
 }
 vec3 sDesat(vec3 c, float k) { return mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, k); }
+// Painted steel: long strakes lapped horizontally, rivet rows along every seam, rust bleeding only from seams.
+vec3 sPlate(vec3 col, vec2 st, float pw, float ph, float fade, float fadeB) {
+  float rowv = floor(st.y / ph);
+  vec2 g = vec2((st.x + sHash(vec2(rowv, 4.1)) * pw) / pw, st.y / ph);
+  vec2 f = fract(g);
+  float dy = min(f.y, 1.0 - f.y) * ph;
+  float dx = min(f.x, 1.0 - f.x) * pw;
+  col *= 0.95 + 0.06 * (sHash(floor(g) + 2.0) - 0.5) + 0.08 * sFbm(st * vec2(0.35, 0.9) + 3.0);
+  col = mix(col, sDesat(col, 0.6) * 0.92, smoothstep(0.55, 0.85, sFbm(st * vec2(0.6, 2.2) + 9.0)) * 0.35);
+  float lip = smoothstep(0.0, 0.035, f.y * ph) * (1.0 - smoothstep(0.035, 0.09, f.y * ph));
+  col *= 1.0 + lip * 0.12 * fadeB;
+  float rs = 0.2;
+  float rH = 1.0 - smoothstep(0.014, 0.024, length(vec2((fract(st.x / rs) - 0.5) * rs, dy - 0.075)));
+  float rV = 1.0 - smoothstep(0.014, 0.024, length(vec2(dx - 0.075, (fract(st.y / rs) - 0.5) * rs)));
+  float rivet = max(rH, rV);
+  float below = smoothstep(0.75, 1.0, f.y) * smoothstep(0.3, 0.75, sNoise(vec2(st.x * 2.3, rowv * 3.1)));
+  float drip = (1.0 - smoothstep(0.0, 0.5, (1.0 - f.y) * ph)) * smoothstep(0.45, 0.85, sNoise(vec2(st.x * 7.0, rowv + 0.5)));
+  float rust = max(below * 0.45, drip) * smoothstep(0.3, 0.6, sNoise(vec2(st.x * 0.4, rowv * 1.7) + 5.0));
+  col = mix(col, vec3(0.5, 0.27, 0.19) * (0.8 + 0.3 * sNoise(st * 9.0)), rust * 0.55 * fadeB);
+  float seam = max(sLine(g.y, 0.006 / ph * 1.2), sLine(g.x, 0.004 / pw * 2.4) * 0.7);
+  col = mix(col, col * vec3(0.42, 0.37, 0.46), seam * 0.8 * fadeB);
+  col = mix(col, col * 1.22 + vec3(0.025), rivet * 0.75 * fade);
+  return col;
+}
 vec3 sSurface(vec3 col, float pat, vec3 p, vec3 n) {
   vec3 an = abs(n);
   vec2 st = an.y > 0.6 ? p.xz : (an.x > an.z ? vec2(p.z, p.y) : vec2(p.x, p.y));
@@ -76,22 +107,10 @@ vec3 sSurface(vec3 col, float pat, vec3 p, vec3 n) {
     col *= 0.965 + stroke * 0.07;
     float chip = smoothstep(0.82, 0.86, sFbm(st * 3.1 + 11.0)) * step(0.55, sNoise(st * 0.7));
     col = mix(col, vec3(0.62, 0.43, 0.32) * (col.r + col.g) * 0.55, chip * 0.6 * fade);
-  } else if (id == 5.0 || id == 10.0) {
-    float pw = id == 10.0 ? 2.4 : 1.2;
-    float ph = id == 10.0 ? 1.1 : 0.9;
-    float rowv = floor(st.y / ph);
-    vec2 g = vec2((st.x + rowv * pw * 0.5) / pw, st.y / ph);
-    float seam = max(sLine(g.x, 0.008), sLine(g.y, 0.012));
-    vec2 rv = vec2(st.x / 0.16, g.y);
-    float rivet = (1.0 - smoothstep(0.16, 0.26, length(vec2(fract(rv.x) - 0.5, (fract(rv.y + 0.035) - 0.5) * ph / 0.16 * 0.6))))
-      * (1.0 - smoothstep(0.0, 0.07, min(fract(g.y + 0.035), 1.0 - fract(g.y + 0.035)) * ph));
-    float plate = sHash(floor(g) + 2.0) - 0.5;
-    col *= 1.0 + plate * 0.1;
-    float rust = smoothstep(0.62, 0.9, sFbm(vec2(st.x * 4.0, st.y * 1.2) + 3.0)) * smoothstep(0.25, 0.0, fract(g.y + 0.035));
-    float fadeB = id == 10.0 ? sFade(st * 0.7) : fade;
-    col = mix(col, vec3(0.55, 0.3, 0.22) * 0.9, rust * 0.35 * fadeB);
-    col = mix(col, col * vec3(0.45, 0.4, 0.5), seam * 0.7 * fadeB);
-    col = mix(col, col * 1.25 + vec3(0.05), rivet * 0.7 * fade);
+  } else if (id == 5.0 || id == 10.0 || id == 11.0) {
+    vec2 ps = st;
+    if (id == 11.0) ps = vec2(p.z, atan(p.x, -p.y) * max(length(p.xy), 0.5));
+    col = sPlate(col, ps, id == 5.0 ? 1.8 : 5.6, id == 5.0 ? 0.9 : 1.45, fade, sFade(ps * 0.7));
   } else if (id == 6.0) {
     vec2 t = st / 0.15;
     vec2 cell = floor(t);
@@ -123,6 +142,12 @@ vec3 sSurface(vec3 col, float pat, vec3 p, vec3 n) {
   } else if (id == 9.0) {
     float tarnish = smoothstep(0.55, 0.8, sFbm(st * 3.0 + 1.0));
     col = mix(col, vec3(0.5, 0.66, 0.6) * (col.r + col.g) * 0.5, tarnish * 0.35);
+  }
+  if (n.y > 0.6 && id > 0.5 && id < 8.5 && id != 4.0 && id != 7.0) {
+    float worn = smoothstep(0.4, 0.8, sFbm(st * 0.42 + 17.0));
+    float scuff = smoothstep(0.55, 0.9, sFbm(st * vec2(2.5, 0.7) + 3.0));
+    col *= 1.0 - 0.24 * worn - 0.08 * scuff * fade;
+    col = mix(col, sDesat(col, 0.45), worn * 0.45);
   }
   return col;
 }

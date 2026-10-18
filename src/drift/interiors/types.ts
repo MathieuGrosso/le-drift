@@ -19,9 +19,11 @@ export interface LampDef {
   color: number
   radius: number
   airlock?: 'sas' | 'echelle-toit'
+  hidden?: boolean
+  night?: boolean
 }
 
-export interface PendulumDef { part: string; x: number; y: number; z: number; cord: number; scale: number }
+export interface PendulumDef { part: string; x: number; y: number; z: number; cord: number; scale: number; drop?: number }
 
 export interface Spot { x: number; y: number; z: number; yaw: number }
 export interface SeatDef extends Spot { id: string; part: string; lying?: boolean }

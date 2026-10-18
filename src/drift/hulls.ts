@@ -26,15 +26,15 @@ const ROW = 12
 const KEEL_L = [18, 24, 32] as const
 const BARREL_L = [10, 14] as const
 const HULL_PAINT: Record<DistrictId, readonly number[]> = {
-  ecluse: [PAL.laiton, PAL.creme, PAL.teal, PAL.rouille],
-  nef: [PAL.laiton, PAL.creme, PAL.teal],
-  marche: [0xd8644e, PAL.creme, 0xe3b95f],
-  serres: [0x8fbf6a, PAL.creme, 0xb9d98a],
-  machines: [PAL.rouille, 0x8a6e4b, PAL.metal],
-  ateliers: [0x6e8fb0, PAL.creme, PAL.bleuDoux],
-  scellees: [PAL.teal, 0x6f8f9a, PAL.metal],
-  hauts: [0xcfefe3, PAL.creme],
-  proue: [0xefe3c4, PAL.creme],
+  ecluse: [0x8a6a50, 0x4f6d7a, 0xa05a42, 0x6a7c74],
+  nef: [0x7a6650, 0x4f6d7a, 0x8a5a48, 0x9a8466],
+  marche: [0xa8503e, 0x8a6a50, 0xb08440, 0x7a4a40],
+  serres: [0x5f7d4a, 0x7a8a5a, 0x4f6d5a, 0x8a9a6a],
+  machines: [0x8a4a3a, 0x5e5450, 0x52576a],
+  ateliers: [0x4f6a88, 0x6a7a8a, 0x5a6f7c, 0x7a8a9a],
+  scellees: [0x3e5664, 0x52576a, 0x4a5e5a],
+  hauts: [0x8fa8a4, 0x7d8f96, 0x9aa49a],
+  proue: [0xb8a888, 0x8f8a7a, 0xa89a80],
 }
 
 const overlaps = (a: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number }, x: number, y: number, z: number, hw: number, hh: number, hl: number) =>
@@ -116,19 +116,20 @@ export function generateHulls(rng: () => number, reserved: Partial<Record<Distri
 function keelGeometry(): THREE.BufferGeometry {
   const b = new GeoBuilder()
   b.jitter = 0
-  b.pat = SURF.hull
-  const cap = new THREE.CapsuleGeometry(0.5, 1, 3, 10)
+  b.pat = SURF.hullShell
+  const cap = new THREE.CapsuleGeometry(0.5, 1, 4, 14)
   cap.rotateX(Math.PI / 2)
   const paint = (p: THREE.Vector3) => {
-    if (p.y < -0.2) return new THREE.Color(0.62, 0.55, 0.6)
-    if (Math.abs(p.y - 0.12) < 0.05) return new THREE.Color(1.25, 1.15, 0.9)
-    if (p.y > 0.3) return new THREE.Color(1.1, 1.06, 1.0)
+    if (p.y < -0.24) return new THREE.Color(0.66, 0.42, 0.4)
+    if (p.y < -0.2) return new THREE.Color(0.5, 0.42, 0.46)
+    if (Math.abs(p.y - 0.12) < 0.035) return new THREE.Color(1.2, 1.02, 0.72)
+    if (p.y > 0.32) return new THREE.Color(1.06, 1.04, 1.0)
     return new THREE.Color(1, 1, 1)
   }
   b.add(cap, new THREE.Matrix4(), paint)
   b.box(0, -0.55, 0, 0.06, 0.25, 1.5, new THREE.Color(0.5, 0.45, 0.5))
-  b.box(0, 0.58, -0.1, 0.45, 0.28, 0.42, new THREE.Color(1.15, 1.1, 1.0))
-  b.box(0, 0.73, -0.1, 0.5, 0.04, 0.47, new THREE.Color(0.7, 0.65, 0.7))
+  b.box(0, 0.58, -0.1, 0.45, 0.28, 0.42, new THREE.Color(0.86, 0.84, 0.82))
+  b.box(0, 0.73, -0.1, 0.5, 0.04, 0.47, new THREE.Color(0.55, 0.5, 0.56))
   b.cyl(0.12, 0.85, -0.2, 0.04, 0.35, new THREE.Color(0.55, 0.52, 0.6))
   return b.build()
 }
@@ -136,8 +137,8 @@ function keelGeometry(): THREE.BufferGeometry {
 function barrelGeometry(): THREE.BufferGeometry {
   const b = new GeoBuilder()
   b.jitter = 0
-  b.pat = SURF.hull
-  const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1.3, 12, 1, true)
+  b.pat = SURF.hullShell
+  const cyl = new THREE.CylinderGeometry(0.5, 0.5, 1.3, 14, 1, true)
   cyl.rotateX(Math.PI / 2)
   b.add(cyl, new THREE.Matrix4(), (p) => new THREE.Color().setScalar(p.y < -0.25 ? 0.7 : 1))
   for (const s of [-1, 1]) {
@@ -148,7 +149,7 @@ function barrelGeometry(): THREE.BufferGeometry {
     const m = new THREE.Matrix4().compose(new THREE.Vector3(0, 0, z), new THREE.Quaternion(), new THREE.Vector3(0.505, 0.505, 0.505))
     b.add(new THREE.TorusGeometry(1, 0.035, 3, 12), m, new THREE.Color(1.3, 1.15, 0.85))
   }
-  b.box(0, 0.5, 0, 0.3, 0.12, 0.5, new THREE.Color(1.1, 1.05, 1.0))
+  b.box(0, 0.5, 0, 0.3, 0.12, 0.5, new THREE.Color(0.86, 0.84, 0.82))
   return b.build()
 }
 
@@ -177,7 +178,7 @@ void main() {
   vec2 c = vUv - 0.5;
   float r = length(c) * 2.0;
   if (r > 1.0) discard;
-  float lit = step(0.18, fract(vSeed * 7.31));
+  float lit = step(0.2, fract(vSeed * 7.31));
   vec3 col = uWarm * (0.75 + 0.25 * sin(uTime * 0.7 + vSeed * 40.0)) * mix(0.35, 1.0, lit);
   float sil = 0.0;
   for (int i = 0; i < 2; i++) {
@@ -253,7 +254,7 @@ export class Hulls {
           tmpQ.setFromAxisAngle(UP, -h.yaw)
           tmpM.compose(new THREE.Vector3(h.x, h.y, h.z), tmpQ, new THREE.Vector3(h.w, h.h, h.l / 2))
           im.setMatrixAt(i, tmpM)
-          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.12).offsetHSL(0, -0.05, (((i * 37) % 11) / 11 - 0.5) * 0.06 + 0.04))
+          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.2).offsetHSL(0, -0.1, (((i * 37) % 11) / 11 - 0.5) * 0.08 - 0.08))
           const g = glowOf(h)
           glow.set(g.glow, i * 3)
           sky[i] = g.sky
@@ -272,7 +273,7 @@ export class Hulls {
           tmpQ.setFromAxisAngle(UP, -h.yaw)
           tmpM.compose(new THREE.Vector3(h.x, h.y, h.z), tmpQ, new THREE.Vector3(h.w, h.h, h.l / 2))
           im.setMatrixAt(i, tmpM)
-          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.25).offsetHSL(0, 0, (((i * 37) % 11) / 11 - 0.5) * 0.08))
+          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.2).offsetHSL(0, 0.06, (((i * 37) % 11) / 11 - 0.5) * 0.08 - 0.05))
         })
         im.computeBoundingSphere()
         im.name = `coques-${d.id}-${kind}`
@@ -281,15 +282,15 @@ export class Hulls {
       const cards: THREE.Matrix4[] = []
       const seeds: number[] = []
       list.forEach((h, hi) => {
-        const n = Math.max(2, Math.floor(h.l / 3.2))
+        const n = Math.max(2, Math.floor((h.l * 0.62) / 2.2))
         const q = new THREE.Quaternion().setFromAxisAngle(UP, -h.yaw)
         for (const side of [-1, 1]) {
           const faceQ = q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, (side * Math.PI) / 2))
           for (let i = 0; i < n; i++) {
-            const zz = (i / (n - 1) - 0.5) * h.l * 0.5
+            const zz = (i / (n - 1) - 0.5) * h.l * 0.62
             const yy = h.kind === 'keel' ? h.h * 0.08 : 0
             const local = new THREE.Vector3(side * (h.w / 2 + 0.04), yy, zz).applyQuaternion(q).add(new THREE.Vector3(h.x, h.y, h.z))
-            const sc = h.kind === 'keel' ? 0.85 : 0.75
+            const sc = h.kind === 'keel' ? 0.62 : 0.56
             cards.push(new THREE.Matrix4().compose(local, faceQ, new THREE.Vector3(sc, sc, 1)))
             seeds.push(((hi * 13 + (side > 0 ? 3 : 0)) * 0.61803 + i * 0.001) % 1)
           }
