@@ -25,7 +25,7 @@ export interface FurnitureOut {
   spots: Record<string, Spot & { part: string }>
   benchSeats: (Spot & { part: string })[]
   decals: Decal[]
-  steam: { part: string; x: number; y: number; z: number }[]
+  steam: { part: string; x: number; y: number; z: number; big?: boolean }[]
 }
 
 export function emptyFurniture(): FurnitureOut {
@@ -130,31 +130,76 @@ function bunk(c: Ctx, x: number, z: number, sx: number, sz: number, blanket: num
     c.b.sphere(px, h + 0.02, pz, 0.045, 0.04, 0.045, PAL.laiton)
   }
   box(0, 0.26, 0, L - 0.08, 0.04, W - 0.08, PAL.boisOmbre)
+  c.b.with(SURF.fabric, () => box(0, 0.36, 0, L - 0.14, 0.15, W - 0.1, soft(PAL.toile, 0.7, 0.92), 0.06))
+  const quilt = [soft(blanket, 0.6, 0.9), soft(PAL.creme, 0.6, 0.86), soft(0xd9a05a, 0.55, 0.85), soft(blanket, 0.6, 0.72), soft(0x8fa8a0, 0.5, 0.82), soft(0xe0b08c, 0.55, 0.88)]
+  const qL = L * 0.7
+  const q0 = -L / 2 + 0.06
+  const nu = 6
+  const nv = 3
   c.b.with(SURF.fabric, () => {
-    box(0, 0.36, 0, L - 0.14, 0.15, W - 0.1, soft(PAL.toile, 0.7, 0.92), 0.06)
-    box(-L * 0.12, 0.445, 0, L * 0.68, 0.045, W + 0.02, soft(blanket, 0.62, 0.86), 0.022)
-    box(-L * 0.12, 0.33, 0, L * 0.6, 0.2, W + 0.035, soft(blanket, 0.62, 0.74), 0.015)
-    box(L * 0.2, 0.455, 0, 0.16, 0.06, W, soft(PAL.creme, 0.7, 0.9), 0.025)
-    box(-L / 2 + 0.3, 0.5, 0, 0.32, 0.07, W * 0.8, soft(PAL.tissu3, 0.55, 0.8), 0.03)
+    for (let i = 0; i < nu; i++) for (let j = 0; j < nv; j++) {
+      const u = q0 + (i + 0.5) * (qL / nu)
+      const v = -W / 2 + (j + 0.5) * (W / nv)
+      box(u, 0.452 + ((i + j) % 2) * 0.006, v * 1.02, qL / nu + 0.004, 0.05, W / nv + 0.004, quilt[(i * 2 + j * 3 + (i > 2 ? 1 : 0)) % quilt.length]!, 0.02)
+    }
+    for (const sv of [-1, 1]) for (let i = 0; i < nu; i++) {
+      const u = q0 + (i + 0.5) * (qL / nu)
+      box(u, 0.33, sv * (W / 2 + 0.01), qL / nu + 0.004, 0.22, 0.035, quilt[(i * 2 + (sv > 0 ? 2 : 0)) % quilt.length]!.clone().multiplyScalar(0.86), 0.015)
+    }
+    box(q0 + qL + 0.05, 0.47, 0, 0.14, 0.07, W + 0.03, soft(PAL.creme, 0.6, 0.9), 0.03)
   })
   const [px, pz] = at(L / 2 - 0.3, 0)
-  c.b.with(SURF.fabric, () => c.b.rbox(px, 0.5, pz, alongZ ? W * 0.62 : 0.34, 0.12, alongZ ? 0.34 : W * 0.62, soft(PAL.blanc, 0.6, 0.9), 0.055, 0.08))
+  c.b.with(SURF.fabric, () => {
+    c.b.add(sphereLow, new THREE.Matrix4().compose(new THREE.Vector3(px, 0.52, pz), new THREE.Quaternion(), new THREE.Vector3(alongZ ? W * 0.36 : 0.2, 0.085, alongZ ? 0.2 : W * 0.36)), soft(PAL.blanc, 0.5, 0.94))
+    const [qx, qz] = at(L / 2 - 0.48, W * 0.12)
+    c.b.add(sphereLow, new THREE.Matrix4().compose(new THREE.Vector3(qx, 0.55, qz), new THREE.Quaternion().setFromAxisAngle(UPV, 0.4), new THREE.Vector3(0.13, 0.08, 0.15)), soft(0x8fa8a0, 0.6, 0.86))
+  })
 }
 
 function rug(c: Ctx, x: number, z: number, sx: number, sz: number, color: number, stripe: number): void {
-  const base = soft(color, 0.55, 0.74)
-  const band = soft(stripe, 0.5, 0.62)
-  const w = Math.min(sx, sz) * 0.06
-  c.b.with(SURF.fabric, () => {
-    c.b.box(x, 0.012, z, sx, 0.016, sz, base)
-    for (const s of [-1, 1]) {
-      c.b.box(x, 0.0245, z + s * (sz / 2 - w * 2), sx - w * 3, 0.004, w, band)
-      c.b.box(x + s * (sx / 2 - w * 2), 0.0245, z, w, 0.004, sz - w * 3 - 0.01, band)
+  const tones = [soft(color, 0.5, 0.78), soft(stripe, 0.5, 0.8), soft(PAL.toile, 0.5, 0.78), soft(color, 0.5, 0.64), soft(0xb08a5a, 0.5, 0.8)]
+  const half = Math.min(sx, sz) / 2
+  const rings = Math.min(9, Math.floor((half - 0.05) / 0.055))
+  const tube = 0.03
+  for (let k = 0; k < rings; k++) {
+    const inset = 0.035 + k * 0.055
+    const hx = sx / 2 - inset
+    const hz = sz / 2 - inset
+    const per = 2 * (hx + hz) * 2
+    const n = Math.min(180, Math.max(24, Math.ceil(per / 0.09)))
+    const pts: THREE.Vector3[] = []
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2
+      const cx = Math.cos(a)
+      const cz = Math.sin(a)
+      const px = Math.sign(cx) * Math.pow(Math.abs(cx), 0.4) * hx
+      const pz = Math.sign(cz) * Math.pow(Math.abs(cz), 0.4) * hz
+      pts.push(new THREE.Vector3(px, 0, pz))
     }
-  })
-  const fr = soft(PAL.toile, 0.7, 0.85)
-  if (sx < sz) for (const s of [-1, 1]) c.b.box(x, 0.006, z + s * (sz / 2 + 0.035), sx - 0.06, 0.008, 0.07, fr)
-  else for (const s of [-1, 1]) c.b.box(x + s * (sx / 2 + 0.035), 0.006, z, 0.07, 0.008, sz - 0.06, fr)
+    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), n, tube, 4, true)
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0.014, z), new THREE.Quaternion(), new THREE.Vector3(1, 0.42, 1))
+    c.b.with(SURF.fabric, () => c.b.add(g, m, tones[(k + (k > 2 ? 1 : 0)) % tones.length]!))
+  }
+  const inner = 0.035 + rings * 0.055
+  if (sx / 2 - inner > 0.05 && sz / 2 - inner > 0.05) {
+    c.b.with(SURF.fabric, () => c.b.rbox(x, 0.012, z, (sx - inner * 2) * 0.9 + 0.04, 0.018, (sz - inner * 2) * 0.9 + 0.04, tones[0]!, 0.008))
+  }
+}
+
+function tallPlant(c: Ctx, x: number, z: number, s: number): void {
+  c.b.with(SURF.fabric, () => c.b.cyl(x, 0.22 * s, z, 0.24 * s, 0.44 * s, soft(0x9a6a50, 0.6, 0.85)))
+  c.b.cyl(x, 0.45 * s, z, 0.26 * s, 0.05 * s, soft(0x7a5040, 0.6, 0.8))
+  const greens = [0x4f6f45, 0x5e7f4a, 0x6f8f4e, 0x45604a]
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + c.rand() * 0.5
+    const tilt = 0.35 + c.rand() * 0.45
+    const len = (0.7 + c.rand() * 0.6) * s
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(a) * tilt, 0, -Math.cos(a) * tilt))
+    const base = new THREE.Vector3(x, 0.48 * s, z)
+    const tip = new THREE.Vector3(0, len, 0).applyQuaternion(q).add(base)
+    c.b.add(UNIT_CYL, new THREE.Matrix4().compose(base.clone().lerp(tip, 0.5), q, new THREE.Vector3(0.012, len, 0.012)), 0x4a5a3a)
+    c.b.add(sphereLow, new THREE.Matrix4().compose(base.clone().lerp(tip, 0.72), q, new THREE.Vector3(0.11 * s, len * 0.36, 0.035 * s)), greens[i % greens.length]!)
+  }
 }
 
 function plantPot(c: Ctx, x: number, y: number, z: number, s = 1): void {
@@ -405,6 +450,52 @@ const sphereLow = new THREE.SphereGeometry(1, 9, 6)
 const UNIT_CYL = new THREE.CylinderGeometry(1, 1, 1, 8)
 const tailGeo = new THREE.TorusGeometry(0.75, 0.12, 5, 12, Math.PI * 1.1)
 
+function breadOven(c: Ctx, x: number, z: number): void {
+  const brick = new THREE.Color(0x9a5a48)
+  c.b.with(SURF.stone, () => {
+    c.b.rbox(x, 0.45, z, 0.95, 0.9, 0.85, brick.clone().multiplyScalar(0.8), 0.04)
+    c.b.add(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.Matrix4().compose(new THREE.Vector3(x, 0.9, z), new THREE.Quaternion(), new THREE.Vector3(0.47, 0.5, 0.42)), brick)
+  })
+  const toCam = new THREE.Vector3(-0.5, 0, 0.86).normalize()
+  const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), toCam)
+  const mouth = new THREE.Vector3(x, 0.92, z).addScaledVector(toCam, 0.43)
+  c.e.add(new THREE.CircleGeometry(0.2, 14, 0, Math.PI), new THREE.Matrix4().compose(mouth, q, new THREE.Vector3(1, 1.1, 1)), new THREE.Color(1.0, 0.62, 0.37))
+  c.e.add(new THREE.CircleGeometry(0.12, 12, 0, Math.PI), new THREE.Matrix4().compose(mouth.clone().addScaledVector(toCam, 0.005), q, new THREE.Vector3(1, 0.8, 1)), new THREE.Color(1.0, 0.85, 0.55))
+  c.b.add(new THREE.TorusGeometry(0.22, 0.035, 5, 14, Math.PI), new THREE.Matrix4().compose(mouth.clone().addScaledVector(toCam, -0.01), q, new THREE.Vector3(1, 1.1, 1)), new THREE.Color(0x4a3a3e))
+  c.b.cyl(x + 0.1, 1.6, z - 0.1, 0.07, 0.6, PAL.metalSombre)
+  c.b.rbox(x + 0.35, 0.94, z + 0.45, 0.5, 0.03, 0.22, PAL.boisOmbre, 0.01, -0.5)
+  for (let i = 0; i < 2; i++) c.b.sphere(x + 0.3 + i * 0.15, 0.99, z + 0.45 - i * 0.08, 0.09, 0.05, 0.07, soft(PAL.pain, 0.7, 0.95))
+  lamp(c, mouth.x + toCam.x * 0.3, 0.95, mouth.z + toCam.z * 0.3, 0, 0xff9e5e, 3.2, undefined, { hidden: true })
+  col(c, 'prop', x, 0.6, z, 0.48, 0.6, 0.43)
+}
+
+function boots(c: Ctx, x: number, z: number, yaw: number): void {
+  const leather = new THREE.Color(0x6a4636)
+  const wet = new THREE.Color(0x4a3236)
+  for (const s of [-1, 1]) {
+    const ox = x + Math.cos(yaw) * s * 0.09
+    const oz = z - Math.sin(yaw) * s * 0.09
+    c.b.add(UNIT_CYL, new THREE.Matrix4().compose(new THREE.Vector3(ox, 0.17, oz), new THREE.Quaternion().setFromEuler(new THREE.Euler(s * 0.06, 0, 0)), new THREE.Vector3(0.055, 0.26, 0.06)), s > 0 ? wet : leather)
+    c.b.add(sphereLow, new THREE.Matrix4().compose(new THREE.Vector3(ox - Math.sin(yaw) * 0.06, 0.045, oz - Math.cos(yaw) * 0.06), new THREE.Quaternion().setFromAxisAngle(UPV, yaw), new THREE.Vector3(0.06, 0.045, 0.12)), s > 0 ? wet : leather)
+    c.b.add(UNIT_CYL, new THREE.Matrix4().compose(new THREE.Vector3(ox, 0.29, oz), new THREE.Quaternion(), new THREE.Vector3(0.064, 0.035, 0.068)), new THREE.Color(0x8a6448))
+  }
+}
+
+function calendar(c: Ctx, x: number, y: number, z: number): void {
+  c.b.cyl(x - 0.01, y + 0.24, z, 0.008, 0.03, PAL.laiton, 'x')
+  c.b.box(x - 0.012, y, z, 0.012, 0.44, 0.32, soft(PAL.creme, 0.6, 0.95))
+  c.b.box(x - 0.02, y + 0.17, z, 0.006, 0.09, 0.32, soft(PAL.tissu1, 0.6, 0.8))
+  for (let i = 0; i < 20; i++) {
+    const r = Math.floor(i / 5)
+    const k = i % 5
+    const py = y + 0.08 - r * 0.075
+    const pz = z - 0.12 + k * 0.06
+    const crossed = i < 13
+    if (!crossed) c.b.box(x - 0.02, py, pz, 0.004, 0.008, 0.03, PAL.interieurOmbre)
+    else for (const a of [0.75, -0.75]) c.b.add(boxGeo, new THREE.Matrix4().compose(new THREE.Vector3(x - 0.02, py, pz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), a), new THREE.Vector3(0.004, 0.045, 0.007)), soft(PAL.tissu1, 0.7, 0.85))
+  }
+}
+
 function scrubber(c: Ctx, x: number, y: number, z: number): void {
   c.b.cyl(x, y, z, 0.02, 1.0, PAL.bois)
   c.b.cyl(x, y + 0.55, z, 0.11, 0.08, PAL.laiton)
@@ -502,24 +593,32 @@ function cabine(c: Ctx): void {
   c.b.cyl(-8.35, 0.84, 64.6, 0.04, 0.09, PAL.tissu3)
   c.b.box(-8.75, 1.6, 65.6, 0.25, 0.04, 1.4, PAL.bois)
   trouvailles(c, -8.72, 1.62, 65.6, 5, 1.2, true)
-  scrubber(c, -8.7, 0.6, 66.8)
+  scrubber(c, -7.95, 0.62, 67.05)
+  c.b.cyl(-7.95, 1.3, 67.12, 0.012, 0.1, PAL.laiton, 'z')
   c.b.sphere(-8.5, 0.82, 64.7, 0.07, 0.05, 0.07, PAL.laiton)
   rug(c, -7.2, 65.4, 1.6, 2.2, PAL.tissu3, PAL.tissu2)
   c.fade.box(-5.24, 1.4, 67.0, 0.04, 0.7, 0.18, PAL.echarpe)
-  for (const dx of [-0.13, 0.13]) {
-    c.b.box(-7.95 + dx, 0.14, 63.65, 0.11, 0.28, 0.16, 0x4a3a40)
-    c.b.box(-7.95 + dx, 0.04, 63.58, 0.11, 0.08, 0.3, 0x4a3a40)
-  }
+  boots(c, -6.35, 64.15, 0.3)
+  c.b.add(sphereLow, new THREE.Matrix4().compose(new THREE.Vector3(-6.3, 0.004, 64.2), new THREE.Quaternion(), new THREE.Vector3(0.32, 0.002, 0.24)), new THREE.Color(0x5f8f94))
+  calendar(c, -5.235, 1.55, 63.85)
+  stool(c, -6.3, 66.75, 0.45, 0x8a6a50)
+  c.b.cyl(-6.3, 0.5, 66.7, 0.04, 0.09, soft(PAL.creme, 0.6, 0.95))
+  c.b.add(torusGeo, new THREE.Matrix4().compose(new THREE.Vector3(-6.255, 0.5, 66.7), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(0.025, 0.025, 0.03)), soft(PAL.creme, 0.6, 0.9))
+  c.b.cyl(-6.3, 0.548, 66.7, 0.034, 0.004, new THREE.Color(0x6a4a3a))
+  c.b.rbox(-6.36, 0.475, 66.86, 0.16, 0.04, 0.12, soft(PAL.tissu3, 0.5, 0.8), 0.008, 0.3)
   c.b.add(torusGeo, new THREE.Matrix4().compose(new THREE.Vector3(-8.4, 0.06, 66.7), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(0.16, 0.16, 0.2)), PAL.corde)
   c.b.add(torusGeo, new THREE.Matrix4().compose(new THREE.Vector3(-8.4, 0.13, 66.7), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(0.12, 0.12, 0.2)), PAL.corde)
   c.b.box(-8.79, 1.45, 64.15, 0.02, 0.4, 0.3, PAL.creme)
   for (let i = 0; i < 9; i++) c.b.box(-8.775, 1.52 - Math.floor(i / 3) * 0.08, 64.07 + (i % 3) * 0.08, 0.01, 0.012, 0.05, PAL.tissu1)
-  c.fade.cyl(-7.4, 2.75, 66.0, 0.005, 0.7, PAL.corde)
-  c.fade.cyl(-7.4, 2.4, 66.0, 0.006, 0.5, PAL.boisOmbre, 'x')
+  c.fade.cyl(-6.9, 2.95, 64.6, 0.005, 0.4, PAL.corde)
+  c.fade.cyl(-6.9, 2.75, 64.6, 0.006, 0.5, PAL.boisOmbre, 'x')
   for (let i = 0; i < 3; i++) {
-    const fx = -7.6 + i * 0.2
-    c.fade.cyl(fx, 2.3, 66.0, 0.004, 0.18, PAL.corde)
-    c.fade.sphere(fx, 2.17, 66.0, 0.07, 0.04, 0.025, [PAL.tissu1, PAL.clair, PAL.tissu2][i]!)
+    const fx = -7.1 + i * 0.2
+    const drop = 0.12 + (i % 2) * 0.1
+    c.fade.cyl(fx, 2.75 - drop / 2, 64.6, 0.004, drop, PAL.corde)
+    const fy = 2.72 - drop
+    c.fade.sphere(fx, fy, 64.6, 0.075, 0.042, 0.022, [PAL.tissu1, PAL.clair, PAL.tissu2][i]!)
+    c.fade.add(coneGeo, new THREE.Matrix4().compose(new THREE.Vector3(fx + 0.085, fy, 64.6), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2), new THREE.Vector3(0.035, 0.05, 0.012)), [PAL.tissu1, PAL.clair, PAL.tissu2][i]!)
   }
   c.b.cyl(-8.7, 1.71, 65.1, 0.05, 0.14, PAL.clair)
   for (let i = 0; i < 5; i++) c.b.sphere(-8.7 + (i % 2) * 0.02, 1.66 + i * 0.02, 65.1, 0.02, 0.015, 0.02, [PAL.clair, PAL.vertDoux, PAL.blanc][i % 3]!)
@@ -584,9 +683,21 @@ function refectoire(c: Ctx): void {
   c.b.box((R.x0 + R.x1) / 2, 0.15, (R.z0 + R.stepZ) / 2, R.x1 - R.x0 - 1.6, 0.3, R.stepZ - R.z0, PAL.bois)
   col(c, 'interior', (R.x0 + R.x1) / 2, R.top / 2, (R.stepZ + 71.8) / 2, (R.x1 - R.x0) / 2, R.top / 2, (71.8 - R.stepZ) / 2)
   col(c, 'stair', (R.x0 + R.x1) / 2, 0.15, (R.z0 + R.stepZ) / 2, (R.x1 - R.x0 - 1.6) / 2, 0.15, (R.stepZ - R.z0) / 2)
-  for (const [x, color] of [[14.6, PAL.tissu1], [16.4, PAL.tissu2], [19.8, PAL.tissu3], [21.6, PAL.tissu1]] as const) {
-    c.b.box(x, R.top + 0.05, 70.9, 1.0, 0.1, 0.7, color)
+  c.b.with(SURF.fabric, () => {
+    for (const [x, color] of [[14.6, PAL.tissu1], [16.4, PAL.tissu2], [19.8, PAL.tissu3], [21.6, PAL.tissu1]] as const) {
+      c.b.rbox(x, R.top + 0.06, 70.9, 1.0, 0.12, 0.7, soft(color, 0.65, 0.92), 0.05)
+      c.b.rbox(x + 0.25, R.top + 0.17, 71.35, 0.42, 0.16, 0.18, soft(PAL.creme, 0.6, 0.9), 0.06, 0.15)
+    }
+  })
+  c.b.with(SURF.brass, () => c.b.box((R.x0 + R.x1) / 2, R.top - 0.02, R.stepZ + 0.01, R.x1 - R.x0, 0.04, 0.04, PAL.laiton))
+  for (let i = 0; i < 9; i++) {
+    const x = R.x0 + 0.7 + i * ((R.x1 - R.x0 - 1.4) / 8)
+    c.b.cyl(x, R.top + 0.03, R.stepZ + 0.12, 0.05, 0.05, PAL.laiton)
+    c.e.sphere(x, R.top + 0.1, R.stepZ + 0.12, 0.045, 0.06, 0.045, new THREE.Color(1.0, 0.72, 0.4))
+    c.b.cyl(x, R.top + 0.17, R.stepZ + 0.12, 0.03, 0.025, PAL.laiton)
   }
+  lamp(c, 18, 3.4, 70.2, 0.9, PAL.lampe, 5.5)
+  lamp(c, 18, 1.0, 69.6, 0, PAL.lampeChaude, 3.2, undefined, { hidden: true })
   c.out.seats.push({ id: 'banc-rebord', part: c.part, x: 18, y: R.top + 0.05, z: 70.9, yaw: YAW_S })
   for (const x of [R.x0 + 0.4, R.x1 - 0.4]) {
     c.b.box(x, 1.6, 70.6, 0.7, 2.0, 0.08, PAL.bois)
@@ -612,6 +723,20 @@ function refectoire(c: Ctx): void {
   c.out.decals.push({ kind: 'menu', part: c.part, x: 19.5, y: 1.75, z: 56.27, w: 0.74, h: 0.98, normal: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0) })
   plantPot(c, 11.0, 0, 70.9, 1.2)
   plantPot(c, 25.0, 0, 70.9, 1.25)
+  tallPlant(c, 12.2, 71.2, 1.0)
+  tallPlant(c, 23.9, 71.3, 1.15)
+  plantPot(c, 12.9, R.top, 71.5, 0.8)
+  plantPot(c, 23.1, R.top, 71.5, 0.75)
+  c.b.with(SURF.planksX, () => c.b.rbox(11.15, 1.95, 71.93, 1.1, 1.38, 0.06, PAL.boisOmbre, 0.025))
+  c.out.decals.push({ kind: 'menu', part: c.part, x: 11.15, y: 1.95, z: 71.89, w: 0.94, h: 1.22, normal: new THREE.Vector3(0, 0, -1), up: new THREE.Vector3(0, 1, 0) })
+  c.b.box(11.15, 1.24, 71.86, 0.9, 0.03, 0.08, PAL.boisOmbre)
+  for (let i = 0; i < 3; i++) c.b.box(10.9 + i * 0.12, 1.27, 71.85, 0.07, 0.018, 0.018, PAL.blanc)
+  lamp(c, 11.2, 2.95, 71.3, 0.3, PAL.lampe, 3.0)
+  for (const [y, w] of [[1.3, 1.0], [1.85, 1.0]] as const) {
+    c.b.with(SURF.planksX, () => c.b.rbox(24.85, y, 71.75, w, 0.04, 0.32, PAL.bois, 0.01))
+    jarRow(c, 24.45, 25.25, y + 0.02, 71.75)
+  }
+  lamp(c, 24.8, 2.95, 71.2, 0.3, PAL.lampe, 3.0)
   plantPot(c, 24.9, 0, 64.0, 0.9)
   bunting(c, 10.4, 25.6, 6.6, 60.5, 0.6)
   bunting(c, 10.4, 25.6, 6.4, 66.5, 0.5)
@@ -652,7 +777,16 @@ function cuisine(c: Ctx): void {
   c.e.box(16.6, 0.962, 49.0, 0.5, 0.006, 0.5, new THREE.Color(0.9, 0.38, 0.16))
   c.b.cyl(17.3, 2.6, 48.7, 0.12, 3.4, iron)
   for (const y of [1.4, 2.4, 3.4]) c.b.cyl(17.3, y, 48.7, 0.14, 0.05, PAL.laiton)
-  c.b.sphere(16.8, 2.3, 48.21, 0.95, 0.75, 0.01, new THREE.Color(0x8a7470))
+  for (const [y, sx, sy, k] of [[2.2, 1.25, 0.95, 0.62], [2.55, 0.95, 0.85, 0.5], [2.9, 0.62, 0.7, 0.4], [3.25, 0.4, 0.55, 0.32]] as const) {
+    c.b.sphere(17.0 + (y - 2.2) * 0.25, y, 48.2 + (y - 2.2) * 0.012, sx, sy, 0.01, new THREE.Color(0x8a7470).multiplyScalar(k * 1.25))
+  }
+  c.b.rbox(15.58, 0.45, 49.0, 0.04, 0.5, 0.7, iron2, 0.015)
+  c.e.box(15.555, 0.43, 49.0, 0.01, 0.34, 0.52, new THREE.Color(1.0, 0.62, 0.37))
+  c.e.box(15.55, 0.36, 49.0, 0.01, 0.12, 0.44, new THREE.Color(1.0, 0.82, 0.5))
+  for (let i = 0; i < 5; i++) c.b.box(15.54, 0.43, 48.8 + i * 0.1, 0.012, 0.36, 0.02, iron)
+  c.b.add(new THREE.BoxGeometry(1, 1, 1), new THREE.Matrix4().compose(new THREE.Vector3(15.33, 0.45, 48.55), new THREE.Quaternion().setFromAxisAngle(UPV, -1.1), new THREE.Vector3(0.04, 0.48, 0.62)), iron2)
+  c.e.sphere(15.1, 0.006, 49.0, 0.55, 0.002, 0.4, new THREE.Color(0.55, 0.26, 0.12))
+  for (let i = 0; i < 4; i++) c.e.sphere(15.62 + c.rand() * 0.04, 0.24 + c.rand() * 0.1, 48.82 + c.rand() * 0.35, 0.012, 0.012, 0.012, new THREE.Color(1, 0.8, 0.4))
   col(c, 'prop', 16.6, 0.45, 49.0, 1.0, 0.45, 0.6)
   copperPot(c, c.b, 16.3, 0.95, 49.0, 0.34, 0.42)
   c.b.cyl(16.3, 1.39, 49.0, 0.3, 0.03, new THREE.Color(0xa86a42))
@@ -660,9 +794,12 @@ function cuisine(c: Ctx): void {
   copperPot(c, c.b, 17.15, 0.95, 49.15, 0.16, 0.22)
   c.b.cyl(17.15, 1.2, 49.32, 0.015, 0.2, PAL.laiton, 'z')
   col(c, 'prop', 16.3, 1.18, 49.0, 0.36, 0.25, 0.36, 'marmite-drift')
-  c.out.steam.push({ part: c.part, x: 16.3, y: 1.45, z: 49.0 })
-  c.out.steam.push({ part: c.part, x: 17.2, y: 1.2, z: 49.4 })
+  for (const [x, y, z] of [[16.3, 1.45, 49.0], [17.15, 1.2, 49.2], [16.1, 1.5, 48.85], [16.5, 1.5, 49.15], [15.9, 1.0, 49.4], [17.4, 1.0, 48.8], [16.8, 1.0, 49.45], [15.7, 0.75, 49.0]] as const) {
+    c.out.steam.push({ part: c.part, x, y, z, big: true })
+  }
   lamp(c, 16.6, 0.42, 49.95, 0, PAL.lampeChaude, 4.2, undefined, { hidden: true })
+  lamp(c, 15.3, 0.45, 49.1, 0, 0xff9e5e, 3.6, undefined, { hidden: true })
+  breadOven(c, 14.95, 48.62)
 
   table(c, 13.5, 52.0, 3.0, 1.2, 0.85)
   col(c, 'prop', 13.5, 0.43, 52.0, 1.5, 0.43, 0.6)

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { DistrictId, Vec3 } from '../../core/types'
 import type { Mats } from '../materials'
 import { PAL } from '../palette'
-import { armGeo, hairGeo, headGeo, legGeo, softColor, torsoGeo, whiten } from '../figure'
+import { F, RIG, figureMaterial, instanceLooks, lookFor, mask, rigGeometry, ROLE_FEATS, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
 
 type Pose = 'stand' | 'walk' | 'work' | 'sit' | 'sleep' | 'look'
 interface Stop { from: number; to: number; pose: Pose; at?: Vec3 & { yaw: number }; path?: { pts: Vec3[]; loop: boolean; speed: number } }
@@ -12,6 +12,8 @@ interface FolkDef {
   clothes: number; trousers: number; skin: number; hair: number
   hat: { color: number; brim: number; crown: number } | null
   height: number
+  role: Role
+  feat?: number
   day: Stop[]
 }
 
@@ -22,7 +24,7 @@ const L = (pts: [number, number, number][], loop: boolean, speed: number) => ({ 
 const ROSTER: readonly FolkDef[] = [
   {
     id: 'bastien', district: 'machines', clothes: 0x6e5a4a, trousers: 0x3f4a66, skin: PAL.peau2, hair: PAL.cheveux1,
-    hat: { color: PAL.rouille, brim: 0.17, crown: 0.09 }, height: 1.02,
+    hat: { color: PAL.rouille, brim: 0.17, crown: 0.09 }, height: 1.02, role: 'engineer', feat: mask(F.bib, F.cap, F.hairShort),
     day: [
       { from: 6, to: 12, pose: 'work', at: P(4.8, -22, -3.6, 2.2) },
       { from: 12, to: 13.5, pose: 'walk', path: L([[9.8, -14, 0], [0, -14, 9.8], [-9.8, -14, 0], [0, -14, -9.8]], true, 0.9) },
@@ -32,7 +34,7 @@ const ROSTER: readonly FolkDef[] = [
   },
   {
     id: 'nour', district: 'serres', clothes: 0x8fbf6a, trousers: 0x5e4a5c, skin: PAL.peau4, hair: PAL.cheveux2,
-    hat: { color: 0xe3c98f, brim: 0.32, crown: 0.08 }, height: 0.97,
+    hat: { color: 0xe3c98f, brim: 0.32, crown: 0.08 }, height: 0.97, role: 'gardener', feat: mask(F.smock, F.straw, F.hairBun),
     day: [
       { from: 6.5, to: 12, pose: 'work', at: P(92.3, 0, 31, -Math.PI / 2) },
       { from: 12, to: 13, pose: 'sit', at: P(77, 0.46, 30, Math.PI / 2) },
@@ -42,7 +44,7 @@ const ROSTER: readonly FolkDef[] = [
   },
   {
     id: 'mme-cassis', district: 'marche', clothes: 0xb0405a, trousers: 0x3e3a5a, skin: PAL.peau3, hair: PAL.cheveux3,
-    hat: { color: PAL.tissu2, brim: 0.13, crown: 0.12 }, height: 0.95,
+    hat: { color: PAL.tissu2, brim: 0.13, crown: 0.12 }, height: 0.95, role: 'vendor', feat: mask(F.vest, F.kerchief),
     day: [
       { from: 6.5, to: 12, pose: 'stand', at: P(-92.25, 0, 2, Math.PI / 2) },
       { from: 12, to: 13, pose: 'walk', path: L([[-95.5, 0, 2], [-95.5, 0, 38], [-88, 0, 52], [-88, 0, 68]], false, 0.7) },
@@ -51,7 +53,7 @@ const ROSTER: readonly FolkDef[] = [
   },
   {
     id: 'maitre-noeud', district: 'ateliers', clothes: 0x6e8fb0, trousers: 0x52576a, skin: PAL.peau1, hair: PAL.cheveux4,
-    hat: null, height: 1.0,
+    hat: null, height: 0.92, role: 'elder', feat: mask(F.shawl, F.elder, F.moustache, F.glasses),
     day: [
       { from: 7, to: 12, pose: 'walk', path: L([[-106, 0, -37.75], [-64, 0, -37.75]], false, 0.35) },
       { from: 12, to: 13, pose: 'sit', at: P(-58, 0.46, -40.5, Math.PI) },
@@ -61,7 +63,7 @@ const ROSTER: readonly FolkDef[] = [
   },
   {
     id: 'veilleuse-ida', district: 'scellees', clothes: 0x4f6d7a, trousers: 0x3e3a5a, skin: PAL.peau3, hair: PAL.cheveux1,
-    hat: { color: 0x7a8a6a, brim: 0.16, crown: 0.16 }, height: 0.93,
+    hat: { color: 0x7a8a6a, brim: 0.16, crown: 0.16 }, height: 0.93, role: 'engineer', feat: mask(F.bib, F.beanie, F.hairBob),
     day: [
       { from: 6, to: 14, pose: 'sit', at: P(110.6, 0.46, -24.2, Math.PI / 2) },
       { from: 14, to: 16.5, pose: 'walk', path: L([[60, 0, -30], [118, 0, -30]], false, 0.5) },
@@ -71,7 +73,7 @@ const ROSTER: readonly FolkDef[] = [
   },
   {
     id: 'gardien-proue', district: 'proue', clothes: PAL.creme, trousers: 0x3f4a66, skin: PAL.peau2, hair: PAL.cheveux3,
-    hat: { color: 0x2f4e7a, brim: 0.15, crown: 0.2 }, height: 1.04,
+    hat: { color: 0x2f4e7a, brim: 0.15, crown: 0.2 }, height: 1.04, role: 'engineer', feat: mask(F.bib, F.cap, F.hairShort, F.scarf),
     day: [
       { from: 6, to: 12, pose: 'stand', at: P(6.4, 16, -52.6, Math.PI / 2) },
       { from: 12, to: 13.5, pose: 'sit', at: P(0, 16.46, -69.3, 0) },
@@ -81,88 +83,45 @@ const ROSTER: readonly FolkDef[] = [
   },
 ]
 
-type PartKey = 'torso' | 'head' | 'hair' | 'hat' | 'armL' | 'armR' | 'legL' | 'legR' | 'apron'
-
-function geos(): Record<PartKey, THREE.BufferGeometry> {
-  const brim = new THREE.CylinderGeometry(1, 1, 0.03, 16)
-  const crown = new THREE.CylinderGeometry(0.62, 0.7, 1, 14)
-  crown.translate(0, 0.5, 0)
-  const hat = whiten(mergeTwo(brim, crown))
-  const arm = armGeo(0.055, 0.46, -0.27)
-  const leg = legGeo(0.085, 0.66, -0.41, 0.2)
-  const apron = whiten(new THREE.BoxGeometry(0.34, 0.5, 0.03))
-  return {
-    torso: torsoGeo(0.21, 0.84, -0.42, 0.75), head: headGeo(0.145), hair: hairGeo(0.145, 0.015), hat,
-    armL: arm, armR: arm.clone(), legL: leg, legR: leg.clone(), apron,
-  }
-}
-
-function mergeTwo(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
-  const pos: number[] = []
-  const nor: number[] = []
-  const idx: number[] = []
-  let base = 0
-  for (const g of [a, b]) {
-    const p = g.getAttribute('position') as THREE.BufferAttribute
-    const n = g.getAttribute('normal') as THREE.BufferAttribute
-    for (let i = 0; i < p.count; i++) {
-      pos.push(p.getX(i), p.getY(i), p.getZ(i))
-      nor.push(n.getX(i), n.getY(i), n.getZ(i))
-    }
-    const ix = g.index!
-    for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base)
-    base += p.count
-  }
-  const out = new THREE.BufferGeometry()
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
-  out.setIndex(idx)
-  return out
-}
-
 interface Rt { def: FolkDef; stop: Stop | null; s: number; dir: number; pos: THREE.Vector3; yaw: number; t: number; phase: number; visible: boolean }
 
-const _root = new THREE.Matrix4()
 const _m = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const _v = new THREE.Vector3()
 const _s = new THREE.Vector3()
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
 
 export class Folk {
   readonly group = new THREE.Group()
   private readonly rts: Rt[]
-  private readonly meshes: Record<PartKey, THREE.InstancedMesh>
+  private readonly looks: Look[]
+  private readonly meshes = new Map<Role, THREE.InstancedMesh>()
   private active: ReadonlySet<DistrictId> | null = null
   private time = 0
 
   constructor(mats: Mats) {
     this.group.name = 'drift-habitants'
-    const mat = mats.cel({ color: 0xffffff, indoor: true, vertexColors: true, rim: 0.7, shadowColor: 0x6a5a7a })
-    const g = geos()
-    const n = ROSTER.length
-    this.meshes = {} as Record<PartKey, THREE.InstancedMesh>
-    for (const key of Object.keys(g) as PartKey[]) {
-      const im = new THREE.InstancedMesh(g[key], mat, n)
+    const mat = figureMaterial(mats, true)
+    let st = 977
+    const rand = () => {
+      st = (st * 16807) % 2147483647
+      return st / 2147483647
+    }
+    this.looks = ROSTER.map((d) => ({
+      ...lookFor(d.role, rand), cloth: d.clothes, legs: d.trousers, skin: d.skin, hair: d.hair, accent: d.hat?.color ?? d.clothes,
+      height: d.height * 0.98, ...(d.feat ? { feat: d.feat } : {}),
+    }))
+    for (const role of new Set(ROSTER.map((d) => d.role))) {
+      const n = ROSTER.filter((d) => d.role === role).length
+      const geo = rigGeometry(ROLE_FEATS[role])
+      instanceLooks(geo, n, true)
+      const im = new THREE.InstancedMesh(geo, mat, n)
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       im.frustumCulled = false
-      im.name = `habitants:${key}`
-      this.meshes[key] = im
+      im.name = `habitants:${role}`
+      this.meshes.set(role, im)
       this.group.add(im)
     }
-    const c = new THREE.Color()
-    ROSTER.forEach((d, i) => {
-      this.meshes.torso.setColorAt(i, softColor(c.set(d.clothes)))
-      this.meshes.apron.setColorAt(i, c.set(d.id === 'nour' || d.id === 'mme-cassis' ? PAL.toile : d.clothes).multiplyScalar(0.85))
-      this.meshes.armL.setColorAt(i, softColor(c.set(d.clothes).multiplyScalar(0.92)))
-      this.meshes.armR.setColorAt(i, softColor(c.set(d.clothes).multiplyScalar(0.92)))
-      this.meshes.legL.setColorAt(i, c.set(d.trousers))
-      this.meshes.legR.setColorAt(i, c.set(d.trousers))
-      this.meshes.head.setColorAt(i, c.set(d.skin))
-      this.meshes.hair.setColorAt(i, c.set(d.hair))
-      this.meshes.hat.setColorAt(i, c.set(d.hat?.color ?? d.hair))
-    })
     this.rts = ROSTER.map((def, i) => ({ def, stop: null, s: 0, dir: 1, pos: new THREE.Vector3(), yaw: 0, t: 0, phase: i * 1.7, visible: false }))
   }
 
@@ -181,6 +140,7 @@ export class Folk {
 
   update(dt: number, hours: number): void {
     this.time += dt
+    const slots = new Map<Role, number>()
     this.rts.forEach((r, i) => {
       const stop = r.def.day.find((s) => (s.from <= s.to ? hours >= s.from && hours < s.to : hours >= s.from || hours < s.to)) ?? null
       if (stop !== r.stop) {
@@ -194,16 +154,19 @@ export class Folk {
       }
       r.t += dt
       const shown = !!stop && (!this.active || this.active.has(r.def.district))
-      if (!shown) {
-        for (const im of Object.values(this.meshes)) im.setMatrixAt(i, ZERO)
-        return
-      }
+      if (!shown) return
       if (stop!.path) this.walk(r, stop!.path, dt)
-      this.pose(r, i, stop!.pose)
+      const im = this.meshes.get(r.def.role)!
+      const slot = slots.get(r.def.role) ?? 0
+      slots.set(r.def.role, slot + 1)
+      this.pose(r, im, slot, this.looks[i]!, stop!.pose)
     })
-    for (const im of Object.values(this.meshes)) {
+    for (const [role, im] of this.meshes) {
+      im.count = slots.get(role) ?? 0
+      im.visible = im.count > 0
       im.instanceMatrix.needsUpdate = true
-      if (im.instanceColor) im.instanceColor.needsUpdate = true
+      touchLooks(im.geometry)
+      ;(im.geometry.getAttribute('iPose') as THREE.InstancedBufferAttribute).needsUpdate = true
     }
   }
 
@@ -231,87 +194,36 @@ export class Folk {
     }
   }
 
-  private pose(r: Rt, i: number, pose: Pose): void {
+  private pose(r: Rt, im: THREE.InstancedMesh, slot: number, look: Look, pose: Pose): void {
     const t = this.time + r.phase
-    const h = r.def.height
-    let hip = 0.9
-    let lean = 0
-    let legL = 0
-    let legR = 0
-    let armL = 0.08
-    let armR = -0.08
-    const armOut = 0.12
-    let headPitch = 0
-    let bob = 0
+    let lean = Math.sin(t * 0.7) * 0.03
+    let swing = 0
+    let bend = 0
+    let y = r.pos.y
     let lying = false
-    switch (pose) {
-      case 'walk': {
-        const k = Math.sin(t * 5.2)
-        legL = k * 0.5
-        legR = -k * 0.5
-        armL = -k * 0.45
-        armR = k * 0.45
-        bob = Math.abs(Math.cos(t * 5.2)) * 0.04
-        lean = 0.06
-        break
-      }
-      case 'work':
-        lean = 0.32 + Math.sin(t * 1.8) * 0.06
-        armL = 0.9 + Math.sin(t * 3.1) * 0.35
-        armR = 0.9 - Math.sin(t * 3.1) * 0.35
-        headPitch = 0.35
-        break
-      case 'sit':
-        hip = 0.46
-        legL = 1.45
-        legR = 1.4
-        armL = 0.35
-        armR = 0.3
-        lean = 0.1 + Math.sin(t * 0.6) * 0.03
-        break
-      case 'look':
-        headPitch = -0.18 + Math.sin(t * 0.4) * 0.05
-        armL = 0.25
-        armR = 0.25
-        break
-      case 'sleep':
-        lying = true
-        break
-      default:
-        lean = Math.sin(t * 0.7) * 0.03
-        armL = 0.05 + Math.sin(t * 0.9) * 0.05
-        armR = -0.05 - Math.sin(t * 0.9) * 0.05
-    }
-    _e.set(lying ? Math.PI / 2 : 0, -r.yaw, 0, 'YXZ')
+    const speed = pose === 'walk' ? (r.stop?.path?.speed ?? 0.6) : 0
+    if (pose === 'walk') {
+      swing = 0.45
+      lean = 0.06
+      y += Math.abs(Math.sin(t * 5.2)) * 0.03
+    } else if (pose === 'work') lean = 0.32 + Math.sin(t * 1.8) * 0.06
+    else if (pose === 'sit') {
+      bend = 1.45
+      y -= RIG.hip * look.height
+      lean = 0.1
+    } else if (pose === 'look') lean = -0.05
+    else if (pose === 'sleep') lying = true
+    _e.set(lying ? -Math.PI / 2 : -lean, -r.yaw, 0, 'YXZ')
     _q.setFromEuler(_e)
-    const baseY = lying ? r.pos.y + 0.12 : r.pos.y - (pose === 'sit' ? 0.46 : 0)
-    _root.compose(_v.set(r.pos.x, baseY + bob, r.pos.z), _q, _s.setScalar(h))
-    if (lying) _root.multiply(_m.makeTranslation(0, -0.9, 0))
-    const part = (key: PartKey, x: number, y: number, z: number, rx: number, ry: number, rz: number, sx = 1, sy = 1, sz = 1) => {
-      _e.set(rx, ry, rz, 'XYZ')
-      _q.setFromEuler(_e)
-      _m.compose(_v.set(x, y, z), _q, _s.set(sx, sy, sz))
-      this.meshes[key].setMatrixAt(i, _m.premultiply(_root))
-    }
-    const tq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -lean)
-    const torsoC = new THREE.Vector3(0, 0.36, 0).applyQuaternion(tq).add(new THREE.Vector3(0, hip, 0))
-    const shoulder = new THREE.Vector3(0, 0.55, 0).applyQuaternion(tq).add(new THREE.Vector3(0, hip, 0))
-    const neck = new THREE.Vector3(0, 0.78, 0).applyQuaternion(tq).add(new THREE.Vector3(0, hip, 0))
-    part('torso', torsoC.x, torsoC.y, torsoC.z, -lean, 0, 0)
-    part('apron', 0, torsoC.y - 0.12, torsoC.z - 0.17, -lean, 0, 0)
-    part('head', neck.x, neck.y, neck.z, -headPitch - lean * 0.5, 0, 0)
-    part('hair', neck.x, neck.y, neck.z, -headPitch - lean * 0.5, 0, 0)
-    const hat = r.def.hat
-    if (hat) part('hat', neck.x, neck.y + 0.11, neck.z, -headPitch - lean * 0.5, 0, 0, hat.brim, hat.crown + 0.04, hat.brim)
-    else this.meshes.hat.setMatrixAt(i, ZERO)
-    part('armL', -0.26, shoulder.y, shoulder.z, armL, 0, armOut)
-    part('armR', 0.26, shoulder.y, shoulder.z, armR, 0, -armOut)
-    part('legL', -0.1, hip, 0, legL, 0, 0.02)
-    part('legR', 0.1, hip, 0, legR, 0, -0.02)
+    _m.compose(_v.set(r.pos.x, lying ? y + 0.15 : y, r.pos.z), _q, _s.setScalar(look.height))
+    if (lying) _m.multiply(new THREE.Matrix4().makeTranslation(0, -0.9, 0))
+    im.setMatrixAt(slot, _m)
+    writeLook(im.geometry, slot, look)
+    writePose(im.geometry, slot, 5.2 * Math.max(0.6, speed * 1.4), r.phase, swing, bend)
   }
 
   dispose(): void {
-    for (const im of Object.values(this.meshes)) im.geometry.dispose()
+    for (const im of this.meshes.values()) im.geometry.dispose()
     this.group.removeFromParent()
   }
 }

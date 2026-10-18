@@ -107,21 +107,32 @@ void main() {
 const STEAM_VERT = /* glsl */ `
 attribute float aSeed;
 uniform float uTime;
+uniform float uBig;
 varying float vA;
+varying float vT;
 void main() {
-  float t = fract(uTime * 0.22 + aSeed);
-  vec3 p = position + vec3(sin(aSeed * 40.0 + uTime) * 0.12 * t, t * 1.3, cos(aSeed * 23.0 + uTime * 0.7) * 0.12 * t);
+  float t = fract(uTime * (0.22 - uBig * 0.06) + aSeed);
+  float spread = 0.12 + uBig * 0.22;
+  vec3 p = position + vec3(sin(aSeed * 40.0 + uTime) * spread * t, t * (1.3 + uBig * 0.9), cos(aSeed * 23.0 + uTime * 0.7) * spread * t);
   vA = smoothstep(0.0, 0.15, t) * (1.0 - t);
+  vT = t;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_PointSize = (90.0 + 160.0 * t) / max(-mv.z, 0.5);
+  gl_PointSize = (90.0 + 160.0 * t) * (1.0 + uBig * 0.9) / max(-mv.z, 0.5);
   gl_Position = projectionMatrix * mv;
 }`
 const STEAM_FRAG = /* glsl */ `
+uniform float uBig;
 varying float vA;
+varying float vT;
 void main() {
-  float d = length(gl_PointCoord - 0.5);
-  float a = smoothstep(0.5, 0.0, d) * vA * 0.35;
-  gl_FragColor = vec4(vec3(1.0, 0.97, 0.92), a);
+  vec2 q = gl_PointCoord - 0.5;
+  float d = length(q);
+  float a = smoothstep(0.5, 0.0, d) * vA * (0.35 + uBig * 0.12);
+  vec3 lit = mix(vec3(1.0, 0.72, 0.45), vec3(0.965, 0.906, 0.816), smoothstep(0.0, 0.55, vT));
+  lit = mix(lit, vec3(0.72, 0.65, 0.72), smoothstep(0.55, 1.0, vT) * 0.6);
+  float under = smoothstep(-0.5, 0.4, q.y);
+  vec3 col = mix(vec3(1.0, 0.97, 0.92), lit * mix(0.85, 1.12, under), uBig);
+  gl_FragColor = vec4(col, a);
 }`
 
 const FLOOR_LOOK: Record<Exclude<PartDef['floor'], 'none'>, { pat: number; color: number }> = {
@@ -417,7 +428,7 @@ export class Quarter {
 
   private buildSteam(): void {
     for (const s of this.furniture.steam) {
-      const n = 18
+      const n = s.big ? 14 : 18
       const pos = new Float32Array(n * 3)
       const seeds = new Float32Array(n)
       for (let i = 0; i < n; i++) {
@@ -430,7 +441,7 @@ export class Quarter {
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
       g.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1))
       const m = new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 } },
+        uniforms: { uTime: { value: 0 }, uBig: { value: s.big ? 1 : 0 } },
         vertexShader: STEAM_VERT,
         fragmentShader: STEAM_FRAG,
         transparent: true,

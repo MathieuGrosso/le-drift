@@ -376,6 +376,33 @@ function buildGallery(k: Kit, h: HallDef, s: Side, y: number, D: number): void {
     const d1 = p0 + (along ? n.z : n.x) * D
     if (along) k.slab(a, b, Math.min(d0, d1), Math.max(d0, d1), y, 'bois', 0.36)
     else k.slab(Math.min(d0, d1), Math.max(d0, d1), a, b, y, 'bois', 0.36)
+    {
+      const fa = wallPoint(h, s, a, y - 0.26, D + 0.03)
+      const fb = wallPoint(h, s, b, y - 0.26, D + 0.03)
+      const mid = fa.clone().add(fb).multiplyScalar(0.5)
+      const L = b - a
+      const paint = C(h.paints[Math.floor(Math.abs(a + y) * 7) % h.paints.length]!, 0.82)
+      const sc = (len: number, hgt: number, t: number) => new THREE.Vector3(along ? len : t, hgt, along ? t : len)
+      k.b.with(SURF.planksX, () => k.b.add(FASCIA, new THREE.Matrix4().compose(mid, new THREE.Quaternion(), sc(L, 0.46, 0.08)), paint))
+      k.b.add(FASCIA, new THREE.Matrix4().compose(mid.clone().setY(y - 0.07), new THREE.Quaternion(), sc(L, 0.05, 0.1)), C(PAL.creme, 0.85))
+      k.b.add(FASCIA, new THREE.Matrix4().compose(mid.clone().setY(y - 0.47), new THREE.Quaternion(), sc(L, 0.04, 0.1)), C(PAL.laiton, 0.85))
+      const nIn = new THREE.Vector3(along ? 0 : INWARD[s].x, 0, along ? INWARD[s].z : 0)
+      const qf = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), nIn)
+      const flap = [C(PAL.creme, 0.9), paint.clone().multiplyScalar(1.12)]
+      let i = 0
+      for (let u = a + 0.3; u < b - 0.2; u += 0.62) {
+        const p = wallPoint(h, s, u, y - 0.5, D + 0.075)
+        k.cloth.add(SCALLOP, new THREE.Matrix4().compose(p, qf, new THREE.Vector3(0.3, 0.2, 1)), flap[i++ % 2]!)
+      }
+      for (let u = a + 2.2; u < b - 1.5; u += 6.5) {
+        const p = wallPoint(h, s, u, y + 1.0, D + 0.18)
+        k.b.box(p.x, p.y, p.z, along ? 1.0 : 0.26, 0.2, along ? 0.26 : 1.0, C(PAL.bois, 0.85))
+        for (let f = 0; f < 4; f++) {
+          const o = (f - 1.5) * 0.24
+          k.b.sphere(p.x + (along ? o : 0), p.y + 0.18, p.z + (along ? 0 : o), 0.14, 0.16, 0.14, C(k.pick([0x7fa86a, 0x5e8f5a, PAL.tissu1, PAL.tissu2, 0x8fbf6a])))
+        }
+      }
+    }
     for (let u = a + 1; u < b; u += 2.2) {
       const pa = wallPoint(h, s, u, y - 0.45, 0.2)
       const pb = wallPoint(h, s, u, y - 0.45, D - 0.1)
@@ -464,4 +491,6 @@ function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number,
 }
 
 const DISC_SMALL = new THREE.CircleGeometry(1, 14)
+const FASCIA = new THREE.BoxGeometry(1, 1, 1)
+const SCALLOP = new THREE.CircleGeometry(1, 7, Math.PI, Math.PI)
 const RING_SMALL = new THREE.TorusGeometry(1.08, 0.12, 4, 14)

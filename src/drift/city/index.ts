@@ -69,8 +69,8 @@ void main() {
   vec3 V = normalize(cameraPosition - vW);
   float f = pow(1.0 - abs(dot(V, normalize(vN))), 2.2);
   float streak = smoothstep(0.93, 1.0, sin((vW.x + vW.y * 0.7 + vW.z * 0.4) * 0.45)) * 0.35;
-  vec3 c = mix(vC, vec3(1.0), f * 0.55 + streak);
-  gl_FragColor = vec4(c * (0.75 + 0.25 * uDay), 0.06 + f * 0.42 + streak * 0.25);
+  vec3 c = mix(vC, vec3(0.93, 0.97, 0.94), f * 0.35 + streak);
+  gl_FragColor = vec4(c * (0.75 + 0.25 * uDay), 0.3 + f * 0.36 + streak * 0.2);
 }`
 
 const WATER_VERT = /* glsl */ `

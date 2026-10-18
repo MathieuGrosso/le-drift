@@ -1,8 +1,7 @@
 import * as THREE from 'three'
-import { softColor } from '../figure'
 import type { DistrictId, QualityLevel } from '../../core/types'
 import type { Mats } from '../materials'
-import { PAL } from '../palette'
+import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, ROLES, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
 import type { PathSpec, SpotSpec } from './kit'
 
 interface Walker {
@@ -19,80 +18,19 @@ interface Walker {
   x: number; y: number; z: number; yaw: number
   from: number; to: number
   breakfast: boolean
+  look: Look
 }
 
-const CLOTHES = [PAL.tissu1, PAL.tissu2, PAL.tissu3, PAL.teal, PAL.vertDoux, PAL.rouille, PAL.bleuDoux, PAL.laiton, PAL.creme, 0x8fbf6a, 0xb0405a]
-const SKINS = [PAL.peau1, PAL.peau2, PAL.peau3, PAL.peau4]
-const HAIRS = [PAL.cheveux1, PAL.cheveux2, PAL.cheveux3, PAL.cheveux4, PAL.cheveux1, PAL.tissu2, PAL.toile]
-const TENUES = [PAL.creme, PAL.toile, PAL.tissu2, PAL.vertDoux, PAL.teal, PAL.tissu1, PAL.bleuDoux, PAL.boisClair]
 const MAX: Record<QualityLevel, number> = { high: 600, medium: 300, low: 120 }
 
-function bodyGeo(): THREE.BufferGeometry {
-  const torso = new THREE.CapsuleGeometry(0.2, 0.5, 3, 8)
-  torso.scale(1, 1, 0.78)
-  torso.translate(0, 1.08, 0)
-  const skirt = new THREE.CylinderGeometry(0.2, 0.27, 0.78, 10)
-  skirt.translate(0, 0.42, 0)
-  const arms = [-1, 1].map((s) => {
-    const a = new THREE.CapsuleGeometry(0.055, 0.4, 2, 6)
-    a.rotateZ(s * 0.12)
-    a.translate(s * 0.255, 1.08, 0.01)
-    return a
-  })
-  return merge([torso, skirt, ...arms])
+const BY_DISTRICT: Partial<Record<DistrictId, Role[]>> = {
+  marche: ['vendor', 'vendor', 'engineer', 'gardener', 'elder', 'kid', 'vendor', 'elder'],
+  serres: ['gardener', 'gardener', 'gardener', 'elder', 'kid', 'engineer'],
+  machines: ['engineer', 'engineer', 'engineer', 'engineer', 'elder'],
+  ateliers: ['engineer', 'engineer', 'vendor', 'elder', 'kid'],
+  nef: ['engineer', 'gardener', 'vendor', 'elder', 'kid', 'kid', 'cook'],
 }
-
-function headGeo(): THREE.BufferGeometry {
-  const head = new THREE.SphereGeometry(0.15, 10, 8)
-  head.translate(0, 1.6, 0)
-  const nose = new THREE.SphereGeometry(0.03, 5, 4)
-  nose.translate(0, 1.58, -0.15)
-  const hands = [-1, 1].map((s) => new THREE.SphereGeometry(0.058, 6, 5).translate(s * 0.29, 0.79, 0.0))
-  return merge([head, nose, ...hands])
-}
-
-function tenueGeo(): THREE.BufferGeometry {
-  const scarf = new THREE.TorusGeometry(0.15, 0.055, 5, 12)
-  scarf.rotateX(Math.PI / 2)
-  scarf.scale(1, 1, 0.85)
-  scarf.translate(0, 1.42, 0)
-  const apron = new THREE.BoxGeometry(0.3, 0.6, 0.03)
-  apron.translate(0, 0.74, -0.215)
-  const belt = new THREE.CylinderGeometry(0.205, 0.205, 0.06, 10)
-  belt.translate(0, 0.98, 0)
-  return merge([scarf, apron, belt])
-}
-
-function hairGeo(): THREE.BufferGeometry {
-  const cap = new THREE.SphereGeometry(0.163, 10, 4, 0, Math.PI * 2, 0, Math.PI * 0.55)
-  cap.translate(0, 1.615, 0.015)
-  const knot = new THREE.SphereGeometry(0.07, 6, 5)
-  knot.translate(0, 1.7, 0.12)
-  return merge([cap, knot])
-}
-
-function merge(list: THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const pos: number[] = []
-  const nor: number[] = []
-  const idx: number[] = []
-  let base = 0
-  for (const g of list) {
-    const p = g.getAttribute('position') as THREE.BufferAttribute
-    const n = g.getAttribute('normal') as THREE.BufferAttribute
-    for (let i = 0; i < p.count; i++) {
-      pos.push(p.getX(i), p.getY(i), p.getZ(i))
-      nor.push(n.getX(i), n.getY(i), n.getZ(i))
-    }
-    if (g.index) for (let i = 0; i < g.index.count; i++) idx.push(g.index.getX(i) + base)
-    else for (let i = 0; i < p.count; i++) idx.push(i + base)
-    base += p.count
-  }
-  const out = new THREE.BufferGeometry()
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3))
-  out.setIndex(idx)
-  return out
-}
+const ANY: Role[] = ['engineer', 'gardener', 'vendor', 'elder', 'kid']
 
 const _m = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
@@ -104,11 +42,10 @@ const _s = new THREE.Vector3()
 export class Crowd {
   readonly group = new THREE.Group()
   private readonly walkers: Walker[] = []
-  private readonly meshes: THREE.InstancedMesh[]
+  private readonly meshes = new Map<Role, THREE.InstancedMesh>()
   private time = 0
   private active: ReadonlySet<DistrictId> | null = null
   private shown: ReadonlySet<DistrictId> | null = null
-  private readonly colors: THREE.Color[][] = []
 
   constructor(mats: Mats, paths: readonly PathSpec[], spots: readonly SpotSpec[], quality: QualityLevel, seed = 4242) {
     this.group.name = 'drift-foule'
@@ -125,43 +62,32 @@ export class Crowd {
     for (const s of spots) if (rand() < 0.9) this.walkers.push(this.make(s.district, null, s, rand, 0))
     const max = MAX[quality]
     while (this.walkers.length > max) this.walkers.splice(Math.floor(rand() * this.walkers.length), 1)
-    const n = this.walkers.length
-    const mat = mats.cel({ color: 0xffffff, indoor: true, rim: 0.5, shadowColor: 0x6a5a7a })
-    const body = new THREE.InstancedMesh(bodyGeo(), mat, Math.max(1, n))
-    const head = new THREE.InstancedMesh(headGeo(), mat, Math.max(1, n))
-    const hair = new THREE.InstancedMesh(hairGeo(), mat, Math.max(1, n))
-    const tenue = new THREE.InstancedMesh(tenueGeo(), mat, Math.max(1, n))
-    const c = new THREE.Color()
-    for (let i = 0; i < n; i++) {
-      const set = [
-        softColor(c.set(CLOTHES[Math.floor(rand() * CLOTHES.length)]!).multiplyScalar(0.92 + rand() * 0.16), 0.62).clone(),
-        c.set(SKINS[Math.floor(rand() * SKINS.length)]!).clone(),
-        c.set(HAIRS[Math.floor(rand() * HAIRS.length)]!).clone(),
-        softColor(c.set(TENUES[Math.floor(rand() * TENUES.length)]!), 0.6).multiplyScalar(0.92).clone(),
-      ]
-      this.colors.push(set)
-      body.setColorAt(i, set[0]!)
-      head.setColorAt(i, set[1]!)
-      hair.setColorAt(i, set[2]!)
-      tenue.setColorAt(i, set[3]!)
-    }
-    this.meshes = [body, head, hair, tenue]
-    for (const im of this.meshes) {
-      im.count = n
+    const mat = figureMaterial(mats, true)
+    for (const role of ROLES) {
+      const n = Math.max(1, this.walkers.filter((w) => w.look.role === role).length)
+      const geo = rigGeometry(ROLE_FEATS[role])
+      instanceLooks(geo, n, true)
+      const im = new THREE.InstancedMesh(geo, mat, n)
+      im.count = 0
       im.frustumCulled = false
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      im.name = 'foule'
+      im.name = `foule:${role}`
+      this.meshes.set(role, im)
       this.group.add(im)
     }
   }
 
   private make(district: DistrictId, path: PathSpec | null, spot: SpotSpec | null, rand: () => number, t: number): Walker {
-    const kid = rand() < 0.16
+    const pool = BY_DISTRICT[district] ?? ANY
+    const role: Role = spot && district === 'marche' && spot.pose !== 'sit' ? 'vendor' : pool[Math.floor(rand() * pool.length)]!
+    const look = lookFor(role, rand)
+    const kid = role === 'kid'
     const early = rand() < 0.5
     const len = path ? pathLen(path) : 0
     return {
+      look,
       district, path, len, spot, s: t * len, dir: rand() < 0.5 ? 1 : -1, kid,
-      speed: kid ? 1.4 + rand() * 0.5 : 0.75 + rand() * 0.55, phase: rand() * 10, scale: kid ? 0.66 : 0.9 + rand() * 0.18,
+      speed: kid ? 1.4 + rand() * 0.5 : 0.75 + rand() * 0.55, phase: rand() * 10, scale: look.height,
       x: spot?.x ?? 0, y: spot?.y ?? 0, z: spot?.z ?? 0, yaw: spot?.yaw ?? 0,
       from: path?.work || spot?.pose === 'work' ? 6 + rand() : early ? 5.8 + rand() * 1.6 : 7 + rand() * 3,
       to: district === 'machines' ? 24.5 : 19 + rand() * 3.5,
@@ -199,7 +125,8 @@ export class Crowd {
   update(dt: number, hours: number): void {
     this.time += dt
     const meal = hours >= 7.5 && hours < 8.5
-    let slot = 0
+    const slots = new Map<Role, number>()
+    for (const r of ROLES) slots.set(r, 0)
     for (let i = 0; i < this.walkers.length; i++) {
       const w = this.walkers[i]!
       const h = w.to > 24 && hours < w.to - 24 ? hours + 24 : hours
@@ -209,6 +136,8 @@ export class Crowd {
       let bob = 0
       let lean = 0
       let roll = 0
+      let swing = 0
+      let bend = 0
       if (w.path) {
         const len = w.len
         w.s += w.speed * w.dir * dt
@@ -233,36 +162,42 @@ export class Crowd {
           w.yaw += d * Math.min(1, dt * 7)
         }
         const step = (this.time + w.phase) * w.speed * 5.5
-        bob = Math.abs(Math.sin(step)) * (w.kid ? 0.07 : 0.045)
-        roll = Math.sin(step) * 0.04
+        bob = Math.abs(Math.sin(step)) * (w.kid ? 0.05 : 0.03)
+        roll = Math.sin(step) * 0.03
         lean = 0.05
+        swing = w.kid ? 0.6 : 0.45
       } else if (w.spot) {
         const pose = w.spot.pose
         if (pose === 'work') lean = 0.2 + Math.sin(this.time * 2 + w.phase) * 0.08
         else if (pose === 'lean') lean = 0.1 + Math.sin(this.time * 0.5 + w.phase) * 0.03
         else if (pose === 'talk') roll = Math.sin(this.time * 1.3 + w.phase) * 0.05
-        bob = pose === 'sit' ? -0.42 : 0
+        if (pose === 'sit') {
+          bend = 1.45
+          bob = 0.46 - 0.8 * w.scale
+        }
       }
       if (!drawn) continue
+      const im = this.meshes.get(w.look.role)!
+      const slot = slots.get(w.look.role)!
+      slots.set(w.look.role, slot + 1)
       _e.set(-lean, -w.yaw, roll, 'YXZ')
       _q.setFromEuler(_e)
       _m.compose(_p.set(w.x, w.y + bob, w.z), _q, _s.setScalar(w.scale))
-      const cs = this.colors[i]!
-      this.meshes.forEach((im, k) => {
-        im.setMatrixAt(slot, _m)
-        im.setColorAt(slot, cs[k]!)
-      })
-      slot++
+      im.setMatrixAt(slot, _m)
+      writeLook(im.geometry, slot, w.look)
+      writePose(im.geometry, slot, w.speed * 5.5, w.phase * w.speed * 5.5, swing, bend)
     }
-    for (const im of this.meshes) {
-      im.count = slot
+    for (const [role, im] of this.meshes) {
+      im.count = slots.get(role)!
+      im.visible = im.count > 0
       im.instanceMatrix.needsUpdate = true
-      if (im.instanceColor) im.instanceColor.needsUpdate = true
+      touchLooks(im.geometry)
+      ;(im.geometry.getAttribute('iPose') as THREE.InstancedBufferAttribute).needsUpdate = true
     }
   }
 
   dispose(): void {
-    for (const im of this.meshes) im.geometry.dispose()
+    for (const im of this.meshes.values()) im.geometry.dispose()
     this.group.removeFromParent()
   }
 }

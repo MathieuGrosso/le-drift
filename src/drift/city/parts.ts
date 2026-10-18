@@ -302,9 +302,15 @@ export function booth(k: Kit, station: string, dest: string, label: string, x: n
   k.lamps.push({ x: x + fx * 1.2, y: y + 2.4, z: z + fz * 1.2, color: 0x8fe0a0, radius: 3.5, live: false, bake: 0.35 })
 }
 
+const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
+
 export function zipline(k: Kit, id: string, from: THREE.Vector3, to: THREE.Vector3, lock?: LockRule): void {
-  k.line(from.x, from.y + 0.1, from.z, to.x, to.y + 0.1, to.z)
-  k.line(from.x + 0.02, from.y + 0.12, from.z, to.x + 0.02, to.y + 0.12, to.z)
+  k.beam(from.x, from.y + 0.1, from.z, to.x, to.y + 0.1, to.z, 0.035, C(0x3e3440), k.b, true)
+  const tr = from.clone().lerp(to, 0.18)
+  const run = to.clone().sub(from).normalize()
+  k.b.add(new THREE.TorusGeometry(0.11, 0.035, 6, 14), new THREE.Matrix4().compose(V3(tr.x, tr.y + 0.06, tr.z), new THREE.Quaternion().setFromUnitVectors(V3(0, 0, 1), V3(-run.z, 0, run.x).normalize()), V3(1, 1, 1)), C(PAL.laiton, 1.05))
+  k.beam(tr.x, tr.y + 0.02, tr.z, tr.x, tr.y - 0.55, tr.z, 0.03, C(PAL.metal))
+  k.beam(tr.x - run.z * 0.25, tr.y - 0.55, tr.z + run.x * 0.25, tr.x + run.z * 0.25, tr.y - 0.55, tr.z - run.x * 0.25, 0.05, C(PAL.rouille, 1.1), k.b, true)
   for (const p of [from, to]) {
     k.b.cyl(p.x, p.y + 0.1, p.z, 0.16, 0.3, C(PAL.laiton, 1.05))
     k.b.cyl(p.x, p.y - 1.1, p.z, 0.08, 2.4, C(PAL.metalSombre))

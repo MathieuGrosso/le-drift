@@ -340,6 +340,17 @@ function nef(k: Kit): void {
     [V(-22, 14.5, -29), V(18, 14.5, 29), 1.4], [V(-29, 6.5, 6), V(-6, 5.5, 29), 0.8], [V(29, 6.2, -6), V(10, 6.5, -29), 0.8],
   ] as const) k.bulbString(a, b, s)
   for (const [a, b] of [[V(-29, 12, -24), V(-20, 12.2, -29)], [V(29, 4, 24), V(24, 4, 29)], [V(-29, 20, -10), V(-29, 20, 4)]] as const) k.laundry(a, b, 0.5)
+  for (const [a, b, s] of [[V(-29, 17.6, 12), V(-20.6, 17.3, 21.8), 0.5], [V(-29, 9.6, -16), V(-14, 9.4, -29), 0.6], [V(6, 25, -29), V(29, 25.2, -8), 0.7]] as const) k.laundry(a, b, s)
+  paperFish(k, V(-29, 25.5, -2), V(-4, 24.5, -29), 5)
+  paperFish(k, V(-29, 13.5, 10), V(-10, 14, -29), 4)
+  paperFish(k, V(-20.3, 21.5, 16), V(4, 21, -8), 5)
+  for (const [x, y, z, yaw, pose] of [[9, 16, 1.25, Math.PI, 'lean'], [13.5, 16, -1.25, 0, 'talk'], [14.4, 16, -1.2, Math.PI, 'talk'], [1.2, 8, -10, -Math.PI / 2, 'lean'], [-1.2, 8, -17, Math.PI / 2, 'talk'], [-1.1, 8, -18, -Math.PI / 2, 'talk'], [18, 0, 1.2, Math.PI, 'lean'], [-10, 0, -1.2, 0, 'lean']] as const) {
+    k.spots.push({ district: 'nef', x, y, z, yaw, pose })
+  }
+  k.paths.push({ district: 'nef', pts: [{ x: 6, z: 0.4 }, { x: 28, z: 0.4 }], y: 16, loop: false, busy: 1.2, work: false })
+  k.paths.push({ district: 'nef', pts: [{ x: 0.3, z: -6 }, { x: 0.3, z: -28 }], y: 8, loop: false, busy: 1.2, work: false })
+  k.paths.push({ district: 'nef', pts: [{ x: 6, z: -0.4 }, { x: 28, z: -0.4 }], y: 0, loop: false, busy: 1, work: false })
+  k.paths.push({ district: 'nef', pts: [{ x: -28, z: 0.5 }, { x: -6, z: 0.5 }], y: 16, loop: false, busy: 0.8, work: false })
   for (const [x, z] of [[-14, -14], [12, 10], [-8, 16], [16, -6]] as const) k.shafts.push({ x, z, top: 30, bottom: -6, r: 2.6 + (Math.abs(x) % 3) * 0.4, tint: 0x9fd6d0 })
 
   k.paths.push({ district: 'nef', pts: [{ x: -26, z: -26 }, { x: 26, z: -26 }, { x: 26, z: 26 }, { x: -26, z: 26 }], y: -6, loop: true, busy: 1, work: false })
@@ -360,6 +371,28 @@ function nef(k: Kit): void {
   }
   benches.forEach(([x, z, a]) => k.spots.push({ district: 'nef', x: x * 0.98, y: -6, z: z * 0.98, yaw: Math.atan2(Math.cos(a), -Math.sin(a)), pose: 'sit' }))
   k.spots.push({ district: 'nef', x: -1.2, y: 27, z: -2.6, yaw: Math.PI, pose: 'lean' })
+}
+
+function paperFish(k: Kit, a: THREE.Vector3, b: THREE.Vector3, n: number): void {
+  k.beam(a.x, a.y, a.z, b.x, b.y, b.z, 0.025, C(PAL.corde), k.b, true)
+  const tints = [PAL.tissu1, PAL.tissu2, PAL.teal, PAL.creme, 0xd8644e]
+  const dir = b.clone().sub(a)
+  const yaw = Math.atan2(dir.x, dir.z) + Math.PI / 2
+  for (let i = 1; i <= n; i++) {
+    const p = a.clone().lerp(b, i / (n + 1))
+    p.y -= Math.sin((i / (n + 1)) * Math.PI) * 0.8 + 0.9
+    const s = 0.7 + ((i * 7) % 3) * 0.18
+    const col = C(k.pick(tints), 0.85)
+    const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, -0.25))
+    k.cloth.add(new THREE.SphereGeometry(1, 10, 6), new THREE.Matrix4().compose(p, rot, V(0.9 * s, 0.32 * s, 0.3 * s)), col)
+    const tail = V(-0.95 * s, 0, 0).applyQuaternion(rot).add(p)
+    k.cloth.add(new THREE.ConeGeometry(0.32 * s, 0.6 * s, 4), new THREE.Matrix4().compose(tail, rot.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -Math.PI / 2)), V(1, 1, 0.25)), col.clone().multiplyScalar(0.85))
+    for (const sz of [-1, 1]) {
+      const e = V(0.62 * s, 0.06 * s, sz * 0.2 * s).applyQuaternion(rot).add(p)
+      k.b.sphere(e.x, e.y, e.z, 0.08 * s, 0.08 * s, 0.03 * s, C(PAL.creme))
+    }
+    k.beam(p.x, p.y + 0.3 * s, p.z, p.x, p.y + 0.9, p.z, 0.015, C(PAL.corde))
+  }
 }
 
 function puits(k: Kit): void {
@@ -532,6 +565,27 @@ function stall(k: Kit, id: string, x: number, z: number, face: 1 | -1, awningCol
   }
 }
 
+function clockFace(k: Kit, x: number, y: number, z: number, r: number, facing: number): void {
+  const q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), V(0, 0, facing))
+  const at = (dx: number, dy: number, dz = 0) => V(x + (facing < 0 ? -dx : dx), y + dy, z + facing * dz)
+  k.e.add(new THREE.CircleGeometry(r, 32), new THREE.Matrix4().compose(at(0, 0), q, V(1, 1, 1)), C(0xfff0d0, 1.3))
+  k.b.add(new THREE.TorusGeometry(r * 1.04, r * 0.07, 6, 32), new THREE.Matrix4().compose(at(0, 0, 0.02), q, V(1, 1, 1)), C(PAL.laiton, 1.1))
+  k.b.add(new THREE.CircleGeometry(r * 1.25, 32), new THREE.Matrix4().compose(at(0, 0, -0.04), q, V(1, 1, 1)), C(0x4a3a4e))
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2
+    const big = i % 3 === 0
+    const p = at(Math.sin(a) * r * 0.82, Math.cos(a) * r * 0.82, 0.03)
+    k.b.add(new THREE.BoxGeometry(1, 1, 1), new THREE.Matrix4().compose(p, q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -a * (facing < 0 ? -1 : 1))), V(big ? r * 0.07 : r * 0.04, big ? r * 0.2 : r * 0.12, 0.02)), C(0x3e3a5a))
+  }
+  for (const [ang, len, w] of [[-0.9, 0.5, 0.07], [2.05, 0.75, 0.045]] as const) {
+    const a = ang * (facing < 0 ? -1 : 1)
+    const c = at(Math.sin(ang) * r * len * 0.5, Math.cos(ang) * r * len * 0.5, 0.05)
+    k.b.add(new THREE.BoxGeometry(1, 1, 1), new THREE.Matrix4().compose(c, q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(V(0, 0, 1), -a)), V(r * w, r * len, 0.02)), C(0x2e2a44))
+  }
+  k.b.add(new THREE.CylinderGeometry(r * 0.07, r * 0.07, 0.08, 10), new THREE.Matrix4().compose(at(0, 0, 0.06), new THREE.Quaternion().setFromAxisAngle(V(1, 0, 0), Math.PI / 2), V(1, 1, 1)), C(PAL.laiton, 1.1))
+  k.lamps.push({ x: x, y: y, z: z + facing * 1.2, color: PAL.lampe, radius: 9, live: false, bake: 1.1 })
+}
+
 function marche(k: Kit): void {
   const awnings = [PAL.tissu1, PAL.tissu2, PAL.tissu3, 0x8fbf6a, 0xd8644e]
   let n = 1
@@ -548,7 +602,10 @@ function marche(k: Kit): void {
     k.beam(f.x + s * 0.05, f.y, f.z, f.x + s * 0.05, f.y + 0.75, f.z + 0.2, 0.07, C(PAL.boisOmbre))
     k.beam(f.x + s * 0.05, f.y, f.z, f.x + s * 0.05, f.y - 0.2, f.z + 0.55, 0.06, C(PAL.boisOmbre))
   }
-  k.b.box(-88, 16.5, 44, 3.8, 3.2, 3.6, C(PAL.tissu1, 0.85))
+  k.b.with(SURF.planksX, () => k.b.box(-88, 16.5, 44, 3.8, 3.2, 3.6, C(PAL.boisOmbre, 1.25)))
+  k.b.box(-88, 18.2, 44, 4.2, 0.25, 4.0, C(PAL.laiton, 0.75))
+  k.b.add(new THREE.ConeGeometry(3.0, 1.6, 4), new THREE.Matrix4().compose(V(-88, 19.1, 44), new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI / 4), V(1, 1, 1)), C(0x6a4a52))
+  for (const [cy, r, sz] of [[16.5, 1.25, -1], [16.5, 1.25, 1], [9.75, 1.55, -1]] as const) clockFace(k, -88, cy, sz < 0 ? (cy > 12 ? 42.15 : 41.55) : 45.85, r, sz)
   k.lamps.push({ x: -88, y: 16.5, z: 44, color: PAL.lampe, radius: 10, live: false, bake: 0.9 })
   k.slab(-97.25, -90.8, 42.5, 45.5, 13, 'bois')
   k.slab(-85.2, -78.75, 42.5, 45.5, 13, 'bois')

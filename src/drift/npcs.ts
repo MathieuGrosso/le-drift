@@ -5,7 +5,7 @@ import type { Quarter } from './interiors/quarter'
 import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
-import { armGeo, hairGeo, headGeo, legGeo, softColor, torsoGeo, whiten } from './figure'
+import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, touchLooks, writeLook, type Look, type Role as Fig } from './people'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
 
@@ -33,6 +33,7 @@ interface NpcDef {
   hat: 'toque' | 'bonnet' | null
   role?: Role
   index: number
+  look: Look
 }
 
 interface Npc {
@@ -60,53 +61,43 @@ const PATHS = {
   service: { part: 'refectoire', pts: [{ x: 15.5, z: 56.6 }, { x: 17.0, z: 58.5 }, { x: 18.0, z: 58.6 }, { x: 18.0, z: 66.3 }], loop: false },
 } as const
 
-const CLOTHES = [PAL.tissu1, PAL.tissu2, PAL.tissu3, PAL.teal, PAL.vertDoux, PAL.rouille, PAL.bleuDoux, PAL.laiton, PAL.creme]
-const SKINS = [PAL.peau1, PAL.peau2, PAL.peau3, PAL.peau4]
-const HAIRS = [PAL.cheveux1, PAL.cheveux2, PAL.cheveux3, PAL.cheveux4, PAL.cheveux1, PAL.cheveux2]
 
 function roster(rand: () => number): NpcDef[] {
+  const base = (role: Fig, over: Partial<Look> = {}) => ({ ...lookFor(role, rand), ...over })
   const named: NpcDef[] = [
-    { id: 'grand-pere', kind: 'elder', clothes: PAL.tissu3, skin: PAL.peau1, hair: PAL.blanc, trousers: PAL.boisOmbre, hat: null, index: 0 },
-    { id: 'cuistot', kind: 'adult', clothes: 0xd9c9a6, skin: PAL.peau2, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: 'toque', index: 1 },
-    { id: 'mme-rouille', kind: 'adult', clothes: PAL.rouille, skin: PAL.peau3, hair: PAL.cheveux4, trousers: PAL.boisOmbre, hat: 'bonnet', index: 2 },
-    { id: 'mila', kind: 'kid', clothes: PAL.tissu2, skin: PAL.peau1, hair: PAL.cheveux2, trousers: PAL.tissu3, hat: null, index: 3 },
-    { id: 'tao', kind: 'kid', clothes: PAL.teal, skin: PAL.peau4, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: null, index: 4 },
-    { id: 'pepin', kind: 'kid', clothes: PAL.tissu1, skin: PAL.peau3, hair: PAL.cheveux2, trousers: PAL.pantalon, hat: null, index: 5 },
+    { id: 'grand-pere', kind: 'elder', clothes: PAL.tissu3, skin: PAL.peau1, hair: PAL.blanc, trousers: PAL.boisOmbre, hat: null, index: 0,
+      look: base('elder', { cloth: 0x5e6e8a, accent: 0xc9a98a, hair: 0xeeeae2, legs: 0x4a4250, hand: 0x9a8e86, feat: mask(F.shawl, F.elder, F.beard, F.glasses), width: 1.02, height: 0.92 }) },
+    { id: 'cuistot', kind: 'adult', clothes: 0xd9c9a6, skin: PAL.peau2, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: 'toque', index: 1,
+      look: base('cook', { skin: PAL.peau2, hand: PAL.peau2, accent: 0xc9644e, legs: 0x8a7a8e, width: 1.42, height: 1.06, feat: mask(F.apron, F.scarf, F.hairShort, F.toque, F.moustache) }) },
+    { id: 'mme-rouille', kind: 'adult', clothes: PAL.rouille, skin: PAL.peau3, hair: PAL.cheveux4, trousers: PAL.boisOmbre, hat: 'bonnet', index: 2,
+      look: base('vendor', { accent: 0xb8664e, skin: PAL.peau3, hand: PAL.peau3, feat: mask(F.vest, F.kerchief), width: 1.3 }) },
+    { id: 'mila', kind: 'kid', clothes: PAL.tissu2, skin: PAL.peau1, hair: PAL.cheveux2, trousers: PAL.tissu3, hat: null, index: 3,
+      look: base('kid', { cloth: 0xe3b95f, accent: 0xd8644e, skin: PAL.peau1, hair: PAL.cheveux2, hand: 0xd8644e, feat: mask(F.scarf, F.pigtails), height: 0.76 }) },
+    { id: 'tao', kind: 'kid', clothes: PAL.teal, skin: PAL.peau4, hair: PAL.cheveux1, trousers: PAL.pantalon, hat: null, index: 4,
+      look: base('kid', { cloth: 0x6e8fb0, accent: 0xf1e4c8, skin: PAL.peau4, hair: PAL.cheveux1, hand: 0xe3b95f, feat: mask(F.sailor, F.hairShort, F.beanie), height: 0.72 }) },
+    { id: 'pepin', kind: 'kid', clothes: PAL.tissu1, skin: PAL.peau3, hair: PAL.cheveux2, trousers: PAL.pantalon, hat: null, index: 5,
+      look: base('kid', { cloth: 0xd8644e, accent: 0x3e4a6a, skin: PAL.peau3, hair: 0x8a5a3a, hand: 0x9bb7c4, feat: mask(F.sailor, F.hairBob), height: 0.68 }) },
   ]
   const stallIds = ['marchand-poissons', 'marchande-algues', 'collectionneuse', 'brocanteur']
   const roles: Role[] = []
   for (let i = 0; i < 34; i++) {
     roles.push(i < 4 ? 'stall' : i < 10 ? 'shopper' : i < 13 ? 'walker' : i < 15 ? 'voisin' : i < 21 ? 'diner' : 'ailleurs')
   }
+  const mix: Fig[] = ['engineer', 'gardener', 'vendor', 'elder', 'engineer', 'gardener', 'kid', 'elder']
   roles.forEach((role, i) => {
-    const pick = <T>(a: readonly T[]) => a[Math.floor(rand() * a.length)]!
-    const elder = rand() < 0.18
+    const fig: Fig = role === 'stall' ? 'vendor' : role === 'walker' ? (i % 2 ? 'engineer' : 'gardener') : mix[(i * 5 + 3) % mix.length]!
+    const look = base(fig)
     named.push({
       id: i < 4 ? stallIds[i]! : `habitant-${String(i + 1).padStart(2, '0')}`,
-      kind: elder ? 'elder' : 'adult',
-      clothes: pick(CLOTHES), skin: pick(SKINS), hair: elder ? pick([PAL.cheveux3, PAL.cheveux4]) : pick(HAIRS),
-      trousers: pick([PAL.pantalon, PAL.boisOmbre, PAL.teal, PAL.metalSombre]), hat: null, role, index: named.length,
+      kind: fig === 'elder' ? 'elder' : fig === 'kid' ? 'kid' : 'adult',
+      clothes: look.cloth, skin: look.skin, hair: look.hair, trousers: look.legs, hat: null, role, index: named.length, look,
     })
   })
   return named
 }
 
-const PARTS_PER_NPC = { torso: 1, head: 1, hair: 1, hat: 1, arm: 2, thigh: 2, shin: 2 } as const
+const PARTS_PER_NPC = { torso: 1, head: 1, arm: 2, thigh: 2, shin: 2 } as const
 type PartKey = keyof typeof PARTS_PER_NPC
-
-function geometries(): Record<PartKey, THREE.BufferGeometry> {
-  const hat = new THREE.CylinderGeometry(0.12, 0.1, 0.2, 12)
-  hat.translate(0, 0.17, 0)
-  return {
-    torso: torsoGeo(0.19, 0.8, 0.0, 0.72),
-    head: headGeo(0.135),
-    hair: hairGeo(0.135, 0.012),
-    hat: whiten(hat),
-    arm: armGeo(0.05, 0.46, -0.26),
-    thigh: whiten(new THREE.CapsuleGeometry(0.075, 0.36, 2, 6).translate(0, -0.24, 0)),
-    shin: legGeo(0.062, 0.38, -0.235, 0.16),
-  }
-}
 
 interface PoseParams {
   hipY: number; lean: number; headYaw: number; headPitch: number
@@ -125,9 +116,6 @@ const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const _v = new THREE.Vector3()
 const _one = new THREE.Vector3(1, 1, 1)
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0)
-const HAT_BONNET = new THREE.Matrix4().makeTranslation(0, 0.08, 0).multiply(new THREE.Matrix4().makeScale(1.12, 0.45, 1.12))
-const HAT_TOQUE = new THREE.Matrix4().makeTranslation(0, 0.08, 0).multiply(new THREE.Matrix4().makeScale(1.1, 1.0, 1.1))
 
 export class Npcs {
   private readonly list: Npc[] = []
@@ -136,18 +124,18 @@ export class Npcs {
   private standAll = 0
   private time = 0
   private slotNext = 0
-  private readonly tints: Record<PartKey, THREE.Color>[] = []
   private readonly seats: (Spot & { part: string })[]
   private readonly portholeSpots: (Spot & { part: string })[] = []
   readonly group = new THREE.Group()
 
   constructor(private readonly ctx: GameContext, mats: Mats, private readonly quarter: Quarter) {
     this.group.name = 'drift-habitants'
-    const geo = geometries()
-    const mat = mats.cel({ color: 0xffffff, indoor: true, vertexColors: true, rim: 0.7, shadowColor: 0x6a5a7a })
+    const geo = figureParts()
+    const mat = figureMaterial(mats, false)
     const defs = roster(ctx.rng('drift-habitants'))
     const n = defs.length
     for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
+      instanceLooks(geo[key], n * PARTS_PER_NPC[key], false)
       const im = new THREE.InstancedMesh(geo[key], mat, n * PARTS_PER_NPC[key])
       im.frustumCulled = false
       im.userData.fadeable = true
@@ -155,19 +143,9 @@ export class Npcs {
       this.meshes[key] = im
       this.group.add(im)
     }
-    const c = new THREE.Color()
     defs.forEach((d, i) => {
-      this.tints[d.index] = {
-        torso: softColor(c.set(d.clothes), 0.65).clone(),
-        head: c.set(d.skin).clone(),
-        hair: c.set(d.hair).clone(),
-        hat: c.set(d.hat === 'bonnet' ? 0xb8604e : PAL.blanc).clone(),
-        arm: softColor(c.set(d.kind === 'kid' ? d.skin : d.clothes).multiplyScalar(0.92), 0.65).clone(),
-        thigh: softColor(c.set(d.trousers), 0.65).clone(),
-        shin: softColor(c.set(d.trousers).multiplyScalar(0.85), 0.65).clone(),
-      }
       this.list.push({
-        def: d, scale: d.kind === 'kid' ? 0.62 : d.kind === 'elder' ? 0.95 : 0.98 + ((i * 7) % 5) * 0.02,
+        def: d, scale: d.look.height,
         act: null, pos: new THREE.Vector3(), yaw: 0, part: 'refectoire', s: 0, dir: 1, t: 0, phase: i * 1.37,
         hiddenWritten: false, visible: false,
       })
@@ -230,7 +208,7 @@ export class Npcs {
         return this.at('grand-pere-table', night ? 'lean' : 'write')
       case 'cuistot':
         if (night && !(h >= 5.5 && h < 6)) return this.hidden()
-        if (meal) return this.walk('service', 'walk', 0.9)
+        if (meal) return h < 7.95 || (h >= 19 && h < 19.4) ? this.at('cuistot-comptoir', 'cook') : this.walk('service', 'walk', 0.9)
         return Math.floor(h * 3) % 2 === 0 ? this.at('cuistot-fourneau', 'cook') : this.at('cuistot-table', 'cook')
       case 'mme-rouille':
         if (h >= 21 || h < 5.5) return this.hidden()
@@ -366,7 +344,7 @@ export class Npcs {
       const im = this.meshes[key]
       im.count = this.slotNext * PARTS_PER_NPC[key]
       im.instanceMatrix.needsUpdate = true
-      if (im.instanceColor) im.instanceColor.needsUpdate = true
+      touchLooks(im.geometry)
     }
   }
 
@@ -423,13 +401,13 @@ export class Npcs {
     const t = n.t + n.phase
     const breathe = Math.sin(t * 1.6) * 0.012
     const p: PoseParams = {
-      hipY: 0.95 + breathe * 0.3, lean: 0.03 + breathe, headYaw: Math.sin(t * 0.31) * 0.25, headPitch: Math.sin(t * 0.23) * 0.06,
+      hipY: RIG.hip + breathe * 0.3, lean: 0.03 + breathe, headYaw: Math.sin(t * 0.31) * 0.25, headPitch: Math.sin(t * 0.23) * 0.06,
       armL: [0.06, 0.1], armR: [0.06, -0.1], thighL: 0, kneeL: 0, thighR: 0, kneeR: 0, lying: false, cheer: false,
     }
     let pose = act.pose
     if (this.standAll > this.time && (n.part === 'refectoire' || n.part === 'cuisine')) pose = 'cheer'
     const sitBase = () => {
-      p.hipY = 0.05
+      p.hipY = 0.1
       p.thighL = p.thighR = 1.5
       p.kneeL = p.kneeR = -1.5
       p.armL = [0.45, 0.12]
@@ -458,7 +436,7 @@ export class Npcs {
         p.kneeR = -Math.max(0, -Math.cos(ph)) * (run ? 1.1 : 0.6)
         p.armL = [-a * 0.9 * Math.sin(ph), 0.1]
         p.armR = [a * 0.9 * Math.sin(ph), -0.1]
-        p.hipY = 0.95 - 0.02 + Math.abs(Math.sin(ph)) * 0.04
+        p.hipY = RIG.hip - 0.02 + Math.abs(Math.sin(ph)) * 0.04
         p.lean = run ? 0.18 : 0.06
         p.headYaw = 0
         break
@@ -482,7 +460,7 @@ export class Npcs {
         p.armR = [0.7 + Math.sin(t * 2.3) * 0.25, -0.25]
         break
       case 'clap': {
-        p.hipY = 0.54
+        p.hipY = RIG.thigh + 0.07
         p.thighL = p.thighR = 0
         p.kneeL = p.kneeR = -1.55
         const beat = Math.sin(t * Math.PI * 2 * 1.6)
@@ -550,11 +528,12 @@ export class Npcs {
   private pose(n: Npc, act: Activity): void {
     const p = this.params(n, act)
     const i = this.slotNext++
-    const tint = this.tints[n.def.index]!
+    const look = n.def.look
     for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
-      for (let k = 0; k < PARTS_PER_NPC[key]; k++) this.meshes[key].setColorAt(i * PARTS_PER_NPC[key] + k, tint[key])
+      for (let k = 0; k < PARTS_PER_NPC[key]; k++) writeLook(this.meshes[key].geometry, i * PARTS_PER_NPC[key] + k, look)
     }
     const s = n.scale
+    const w = look.width
     _base.copy(this.quarter.swayOf(n.part))
     _m.compose(n.pos, _q.setFromAxisAngle(_v.set(0, 1, 0), -n.yaw), _one)
     _base.multiply(_m)
@@ -569,29 +548,22 @@ export class Npcs {
       _hip.copy(_base).multiply(_m.makeTranslation(0, p.hipY + seatY / s, 0))
     }
     const torso = _m2.copy(_hip).multiply(_r.makeRotationX(-p.lean))
-    this.meshes.torso.setMatrixAt(i, torso)
-    const headM = _m.copy(torso).multiply(_r.makeTranslation(0, 0.94, 0))
+    this.meshes.torso.setMatrixAt(i, _m.copy(torso).multiply(_r.makeScale(w, 1, 1 + (w - 1) * 0.55)))
+    const headM = _m.copy(torso).multiply(_r.makeTranslation(0, RIG.headY + (look.head - 1) * RIG.headR, 0))
     _e.set(p.headPitch, p.headYaw, 0, 'YXZ')
-    headM.multiply(_r.makeRotationFromEuler(_e))
+    headM.multiply(_r.makeRotationFromEuler(_e)).multiply(_r.makeScale(look.head, look.head, look.head))
     this.meshes.head.setMatrixAt(i, headM)
-    this.meshes.hair.setMatrixAt(i, headM)
-    if (n.def.hat) {
-      const hat = _r.copy(headM).multiply(n.def.hat === 'bonnet' ? HAT_BONNET : HAT_TOQUE)
-      this.meshes.hat.setMatrixAt(i, hat)
-    } else {
-      this.meshes.hat.setMatrixAt(i, ZERO)
-    }
     for (let k = 0; k < 2; k++) {
       const side = k === 0 ? -1 : 1
       const [pitch, roll] = k === 0 ? p.armL : p.armR
-      const arm = _m.copy(torso).multiply(_r.makeTranslation(side * 0.235, 0.66, 0))
-      _e.set(pitch, 0, roll + side * 0.04, 'XYZ')
+      const arm = _m.copy(torso).multiply(_r.makeTranslation(side * RIG.shX * w, RIG.shY, 0))
+      _e.set(pitch, 0, roll + side * 0.07, 'XYZ')
       arm.multiply(_r.makeRotationFromEuler(_e))
       this.meshes.arm.setMatrixAt(i * 2 + k, arm)
-      const thigh = _m.copy(_hip).multiply(_r.makeTranslation(side * 0.1, 0, 0))
+      const thigh = _m.copy(_hip).multiply(_r.makeTranslation(side * (RIG.legX + (w - 1) * 0.06), 0, 0))
       thigh.multiply(_r.makeRotationX(k === 0 ? p.thighL : p.thighR))
       this.meshes.thigh.setMatrixAt(i * 2 + k, thigh)
-      const shin = thigh.multiply(_r.makeTranslation(0, -0.47, 0)).multiply(_r.makeRotationX(k === 0 ? p.kneeL : p.kneeR))
+      const shin = thigh.multiply(_r.makeTranslation(0, -RIG.thigh, 0)).multiply(_r.makeRotationX(k === 0 ? p.kneeL : p.kneeR))
       this.meshes.shin.setMatrixAt(i * 2 + k, shin)
     }
   }
