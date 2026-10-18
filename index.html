@@ -81,7 +81,14 @@
         border: 1px solid rgba(246, 242, 232, 0.5);
         animation: breathe 2.4s ease-in-out infinite;
       }
-      #loading.ready { background: linear-gradient(rgba(14, 59, 82, 0.15), rgba(14, 59, 82, 0.45)); cursor: pointer; }
+      #loading.ready {
+        justify-content: flex-start;
+        padding-top: 9vh;
+        box-sizing: border-box;
+        background: linear-gradient(rgba(207, 239, 227, 0.28), rgba(207, 239, 227, 0) 38%, rgba(14, 59, 82, 0) 70%, rgba(14, 59, 82, 0.3));
+        cursor: pointer;
+      }
+      #loading.ready #loading-start { margin-top: auto; margin-bottom: 9vh; }
       #loading.ready .track { display: none; }
       #loading.ready #loading-start { display: block; }
       #loading.gone { opacity: 0; pointer-events: none; }

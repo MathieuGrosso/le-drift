@@ -198,34 +198,48 @@ const CLIPS: Record<ClipId, Clip> = {
   },
   swim(o, s) {
     const p = s.phase * TAU
-    o.buf.pitch = -1.3 + s.pitch
-    o.buf.twist = s.bank * 0.6
-    o.buf.lift = sin(p * 2) * 0.03
+    const go = THREE.MathUtils.smoothstep(s.speed, 0.5, 1.6)
+    const t = s.t
+    o.buf.pitch = -1.12 - go * 0.2 + s.pitch
+    o.buf.twist = s.bank * 0.6 + (1 - go) * 0.28
+    o.buf.roll = (1 - go) * sin(t * 0.8) * 0.04
+    o.buf.lift = sin(p * 2) * 0.03 * go + sin(t * 1.1) * 0.02 * (1 - go)
     const c = (s.phase % 1)
     let ux: number, uz: number, fx: number
     if (c < 0.35) {
       const k = c / 0.35
-      ux = 2.9 - k * 1.1
-      uz = 0.15 + k * 1.0
-      fx = 0.1 + k * 0.3
+      ux = 2.8 - k * 1.0
+      uz = 0.2 + k * 0.9
+      fx = 0.3 + k * 0.4
     } else if (c < 0.6) {
       const k = (c - 0.35) / 0.25
-      ux = 1.8 - k * 1.2
-      uz = 1.15 - k * 0.7
-      fx = 0.4 + k * 1.4
+      ux = 1.8 - k * 1.1
+      uz = 1.1 - k * 0.6
+      fx = 0.7 + k * 1.2
     } else {
       const k = (c - 0.6) / 0.4
-      ux = 0.6 + k * 2.3
-      uz = 0.45 - k * 0.3
-      fx = 1.8 - k * 1.7
+      const e = k * k * (3 - 2 * k)
+      ux = 0.7 + e * 2.1
+      uz = 0.5 - e * 0.3
+      fx = 1.9 - e * 1.6
     }
-    arms(o, ux, uz, fx)
-    const f = sin(p * 2) * 0.32
-    legs(o, -0.05 + f, -0.25 - max(0, f) * 0.6, -0.05 - f, -0.25 - max(0, -f) * 0.6, 0.08)
-    o.r('footL', -0.9)
-    o.r('footR', -0.9)
-    o.r('head', 0.75)
-    o.r('chest', 0.05, 0, s.bank * 0.3)
+    const lerp = THREE.MathUtils.lerp
+    const scull = sin(t * 2.3)
+    const reach = sin(t * 0.7) * 0.08
+    o.r('upperArmL', lerp(2.35 + reach, ux, go), lerp(-0.25, 0, go), -lerp(0.62 - reach, uz, go))
+    o.r('foreArmL', lerp(0.42, fx, go))
+    o.r('handL', lerp(-0.55, 0, go), lerp(0.35, 0, go), 0)
+    o.r('upperArmR', lerp(0.75 + scull * 0.2, ux, go), 0, lerp(0.55 + scull * 0.15, uz, go))
+    o.r('foreArmR', lerp(1.15 - scull * 0.15, fx, go))
+    o.r('handR', 0, -scull * 0.4 * (1 - go), 0)
+    const f = sin(p * 2) * 0.32 * go + sin(t * 1.9) * 0.12 * (1 - go)
+    const bendL = lerp(0.95, 0.25, go)
+    legs(o, lerp(0.42, -0.05, go) + f, -bendL - max(0, f) * 0.6, -0.08 - f, -lerp(0.3, 0.25, go) - max(0, -f) * 0.6, 0.1)
+    o.r('footL', -0.85)
+    o.r('footR', -0.95)
+    o.r('spine', -0.1 * (1 - go), 0.12 * (1 - go), 0)
+    o.r('chest', 0.05, lerp(0.18, 0, go), s.bank * 0.3)
+    o.r('head', lerp(0.62, 0.75, go), lerp(0.32, 0, go), 0)
   },
   'swim-sprint'(o, s) {
     const p = s.phase * TAU

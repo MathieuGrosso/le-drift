@@ -60,9 +60,10 @@ export class Scarf {
   private acc = new THREE.Vector3()
   private back = new THREE.Vector3()
   private root = new THREE.Vector3()
-  private rel = new THREE.Vector3()
   private lastAnchor = new THREE.Vector3()
   private anchorVel = new THREE.Vector3()
+  private bodyVel = new THREE.Vector3()
+  private wind = new THREE.Vector3()
   private settle = true
   private hasRight = false
 
@@ -153,11 +154,15 @@ export class Scarf {
     if (this.lastAnchor.distanceToSquared(s.anchor) > 25) this.reset(s.anchor)
     this.anchorVel.subVectors(s.anchor, this.lastAnchor).divideScalar(dt)
     this.lastAnchor.copy(s.anchor)
+    this.tmp.set(this.anchorVel.x, 0, this.anchorVel.z)
+    if (this.tmp.lengthSq() > 64) this.tmp.setLength(8)
+    this.bodyVel.lerp(this.tmp, 1 - Math.exp(-dt * 6))
     this.back.set(-s.right.z, 0, s.right.x)
     this.hasRight = true
     if (this.settle) {
       this.settle = false
       this.anchorVel.set(0, 0, 0)
+      this.bodyVel.set(0, 0, 0)
       for (let st = 0; st < 150; st++) for (const tail of this.tails) this.stepTail(tail, s, 1 / 90, 1)
     }
     const steps = 3
@@ -186,28 +191,36 @@ export class Scarf {
       const vy = (p.y - q.y) / h
       const vz = (p.z - q.z) / h
       const along = i / (n - 1)
+      const speed = this.bodyVel.length()
+      if (speed > 0.05) this.wind.copy(this.bodyVel).divideScalar(speed)
+      else this.wind.copy(this.back).negate()
+      this.side.crossVectors(this.wind, THREE.Object3D.DEFAULT_UP)
       if (s.inWater) {
         const drag = 2.4
-        const wave = Math.sin(s.t * 2.6 - i * 0.42 + phase)
-        const flutter = wave * (0.15 + along * 0.55)
-        const trail = 0.9 * along
+        const wave = Math.sin(s.t * (2.6 + speed * 1.4) - i * 0.5 + phase)
+        const flutter = wave * (0.25 + along * 0.9) * (1 + speed * 0.6)
+        const trail = (1.6 + speed * 0.8) * along ** 0.7
         this.acc.set(
-          (s.flow.x - vx) * drag + s.right.x * flutter + this.back.x * trail,
-          (s.flow.y - vy) * drag + 0.35 + Math.cos(s.t * 2.1 - i * 0.5 + phase) * (0.3 + along * 0.9),
-          (s.flow.z - vz) * drag + s.right.z * flutter + this.back.z * trail,
+          (s.flow.x - vx) * drag + this.side.x * flutter + this.back.x * trail,
+          (s.flow.y - vy) * drag + 0.12 + Math.cos(s.t * 2.1 - i * 0.5 + phase) * (0.25 + along * 0.7),
+          (s.flow.z - vz) * drag + this.side.z * flutter + this.back.z * trail,
         )
       } else {
-        const drag = 0.55 + heavy * 0.9
-        this.acc.set(s.gravity.x - vx * drag, s.gravity.y - vy * drag, s.gravity.z - vz * drag)
-        this.rel.set(vx, vy, vz)
-        const sp = this.rel.length()
-        if (sp > 1.4 && heavy < 0.9) {
-          this.side.crossVectors(this.rel, THREE.Object3D.DEFAULT_UP)
-          if (this.side.lengthSq() < 1e-6) this.side.copy(s.right)
-          this.side.normalize()
-          const flap = Math.sin(s.t * (11 + i * 0.6) - i * 0.9 + phase) * Math.min(sp - 1.4, 6) ** 1.15 * 0.9 * along * (1 - heavy)
+        const light = 1 - heavy * 0.75
+        const drag = (1.5 + 3.6 * along) * light + 0.4
+        const idle = (0.35 + 0.5 * along * along) * light
+        const sway = Math.sin(s.t * 0.9 + phase + i * 0.12) + 0.45 * Math.sin(s.t * 2.3 + phase * 2 - i * 0.35)
+        this.acc.set(
+          s.gravity.x - vx * drag + s.right.x * sway * idle + this.back.x * idle * 0.6,
+          s.gravity.y - vy * drag,
+          s.gravity.z - vz * drag + s.right.z * sway * idle + this.back.z * idle * 0.6,
+        )
+        if (speed > 0.25) {
+          const w = Math.min(speed, 6)
+          const freq = 5.5 + w * 1.6
+          const flap = Math.sin(s.t * freq - i * 0.75 + phase) * w * (0.6 + w * 0.25) * along * along * light * 2.2
           this.acc.addScaledVector(this.side, flap)
-          this.acc.y += Math.cos(s.t * 9.3 - i * 0.7 + phase) * flap * 0.4
+          this.acc.y += Math.cos(s.t * freq * 0.8 - i * 0.6 + phase) * Math.abs(flap) * 0.35
         }
       }
       const damp = s.inWater ? 0.985 : 0.993 - heavy * 0.012
@@ -235,7 +248,7 @@ export class Scarf {
           b.addScaledVector(this.tmp, -diff * 0.5)
         }
       }
-      const bendMin = seg * 1.55
+      const bendMin = seg * 1.32
       for (let i = 2; i < n; i++) {
         const a = tail.p[i - 2]!
         const b = tail.p[i]!

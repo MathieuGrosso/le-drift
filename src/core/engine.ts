@@ -484,7 +484,33 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     bus.emit('game:ready', {})
     readyResolve()
 
+    const title = poseParam || roomParam || placeParam ? null : poses.resolve('vista', ctx)
+    let leaveTitle = () => undefined as void
+    if (title) {
+      const hero = structuredClone(state.hero)
+      const time = { ...state.time }
+      state.time.scale = 0
+      applyPose(title)
+      bus.emit('debug:pose', { name: 'vista' })
+      leaveTitle = () => {
+        state.time.hours = time.hours
+        state.time.scale = time.scale
+        state.debug.cameraLocked = false
+        lockedPose = null
+        if (hero.medium === 'air' && hero.room) {
+          api.enterRoom(hero.room)
+          const drift = ctx.services.drift
+          if (drift && hero.localPosition && ctx.services.hero) {
+            state.hero.localPosition = hero.localPosition
+            ctx.services.hero.teleport(drift.toWorld(hero.localPosition), hero.yaw)
+          }
+        } else if (hero.medium === 'air') api.enterRoom('cabine')
+        else api.teleport(hero.position.x, hero.position.y, hero.position.z)
+      }
+    }
+
     ui.ready(() => {
+      leaveTitle()
       inputRt.setEnabled(true)
       inputRt.requestPointerLock()
       ctx.services.audio?.unlock().catch(() => undefined)

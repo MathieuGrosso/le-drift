@@ -261,7 +261,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   add(taper(cap(0.13, 0.12, 12), 0.92, 1.0), PALETTE.combi, 'hips', [0, 0.02, 0], { scale: [1.15, 1, 0.85] })
   add(lathe([[0.14, -0.13], [0.147, -0.04], [0.152, 0.05], [0.148, 0.11], [0.132, 0.155], [0.1, 0.18], [0.055, 0.195], [0.001, 0.2]], 20), PALETTE.tunique, 'chest', [0, 0, 0], { scale: [1.13, 1, 0.8], to: 'spine', split: (y) => THREE.MathUtils.clamp((world.chest.y - y) / 0.2, 0, 0.5) })
   for (const sx of [-1, 1]) {
-    add(new THREE.SphereGeometry(1, 12, 8), PALETTE.tunique, 'chest', [sx * 0.118, 0.135, 0.004], { scale: [0.075, 0.05, 0.085], rot: [0, 0, sx * 0.35] })
+    add(new THREE.SphereGeometry(1, 14, 10), PALETTE.tunique, 'chest', [sx * 0.122, 0.128, 0.004], { scale: [0.07, 0.038, 0.078], rot: [0, 0, sx * 0.5] })
   }
   add(skirt(0.168, 0.272, 0.36, 0, Math.PI * 2, 9, 0.085, 0.3), PALETTE.tunique, 'spine', [0, -0.11, 0], { scale: [1, 1, 0.84], to: 'hips', split: (y) => THREE.MathUtils.clamp((world.spine.y - y) / 0.3, 0, 0.6) })
   add(new THREE.BoxGeometry(0.065, 0.06, 0.012), PALETTE.cuir, 'chest', [0.06, -0.06, -0.118], { rot: [0.05, -0.35, 0.08] })
@@ -290,21 +290,29 @@ export function buildHero(mats: HeroMaterials): HeroModel {
     let z = sp.getZ(i)
     const front = THREE.MathUtils.clamp((0.25 - z) / 1.1, 0, 1)
     if (y < 0) {
-      x *= 1 - (0.1 + 0.2 * front) * y * y
-      z *= 1 - 0.05 * y * y
       const lo = THREE.MathUtils.smoothstep(-y, 0.2, 1)
-      y -= 0.15 * front * lo
-      z -= 0.06 * front * lo
+      const jaw = THREE.MathUtils.smoothstep(-y, 0.35, 0.95)
+      x *= 1 - (0.08 + 0.16 * front) * y * y - 0.2 * jaw * front
+      z *= 1 - 0.05 * y * y
+      y -= 0.13 * front * lo
+      z -= 0.05 * front * lo
       if (y < -0.15) {
         const lim = 0.97 + 0.62 * (y + 0.15)
         const ax = Math.abs(x)
         if (ax > lim) x = Math.sign(x) * (lim + (ax - lim) * 0.25)
       }
+      if (y < -0.55 && front < 0.55) y = -0.55 + (y + 0.55) * (0.35 + 0.65 * front / 0.55)
+      const chin = Math.exp(-(x * x) / 0.05 - ((y + 0.9) ** 2) / 0.025) * front
+      z -= 0.07 * chin
+      y -= 0.03 * chin
     }
-    const cx = Math.abs(x) - 0.55
-    const cy = y + 0.26
-    const ch = 1 + 0.04 * Math.exp(-(cx * cx + cy * cy) / 0.05) * front
-    sp.setXYZ(i, x * ch, y, z * ch)
+    const cx = Math.abs(x) - 0.6
+    const cy = y + 0.22
+    const ch = 1 + 0.075 * Math.exp(-(cx * cx) / 0.04 - (cy * cy) / 0.03) * front
+    const tx = Math.abs(x) - 0.72
+    const ty = y - 0.12
+    const temple = 1 - 0.035 * Math.exp(-(tx * tx + ty * ty) / 0.03) * front
+    sp.setXYZ(i, x * ch * temple, y, z * (1 + (ch - 1) * 0.4))
   }
   const skullW = mergeVertices(skull, 1e-4)
   skullW.computeVertexNormals()
@@ -377,10 +385,41 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   clump(0, -2, 0.09, 0.06)
   clump(32, -4, 0.08, 0.052, 0.2)
   clump(-32, -4, 0.08, 0.052, -0.2)
+  clump(124, -2, 0.12, 0.045, -0.25, 0.36)
+  clump(-124, -2, 0.12, 0.045, 0.25, 0.36)
+  clump(60, -6, 0.14, 0.055, -0.15, 0.4)
+  clump(-60, -6, 0.14, 0.055, 0.15, 0.4)
+  clump(16, -14, 0.11, 0.05, 0.25, 0.4)
+  clump(-16, -14, 0.11, 0.05, -0.25, 0.4)
+  clump(108, 10, 0.12, 0.055, 0.1)
+  clump(-108, 10, 0.12, 0.055, -0.1)
   add(new THREE.SphereGeometry(0.062, 12, 9), hair, 'head', [0, hy + 0.165, 0.085], { scale: [1, 0.9, 1] })
   add(new THREE.TorusGeometry(0.04, 0.012, 5, 12), PALETTE.echarpe, 'head', [0, hy + 0.13, 0.1], { rot: [1.1, 0, 0] })
 
-  add(new THREE.TorusGeometry(0.15, 0.011, 5, 28), PALETTE.cuir, 'head', [0, HC.y + 0.098, 0.016], { rot: [Math.PI / 2 + 0.36, 0, 0], scale: [1.08, 1.0, 1] })
+  const strapPts: THREE.Vector3[] = []
+  for (let i = 0; i < 32; i++) {
+    const az = (i / 32) * Math.PI * 2
+    const toFront = (1 - Math.cos(az)) / 2
+    const el = THREE.MathUtils.lerp(0.32, 0.86, toFront ** 1.4)
+    const sink = THREE.MathUtils.lerp(1.015, 1.06, toFront)
+    strapPts.push(new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).multiply(HR).multiplyScalar(sink).add(HC))
+  }
+  const strapCurve = new THREE.CatmullRomCurve3(strapPts, true)
+  const strap = new THREE.TubeGeometry(strapCurve, 64, 0.011, 6, true)
+  const stp = strap.getAttribute('position')
+  const suv = strap.getAttribute('uv')
+  for (let i = 0; i < stp.count; i++) {
+    const k = Math.round(suv.getX(i) * 64) % 64
+    const c = strapCurve.getPointAt(k / 64)
+    const d = new THREE.Vector3(stp.getX(i) - c.x, stp.getY(i) - c.y, stp.getZ(i) - c.z)
+    const out = c.clone().sub(HC).normalize()
+    const radial = d.dot(out)
+    d.addScaledVector(out, -radial * 0.6)
+    stp.setXYZ(i, c.x + d.x, c.y + d.y, c.z + d.z)
+  }
+  strap.deleteAttribute('normal')
+  strap.computeVertexNormals()
+  add(strap, PALETTE.cuir, 'head', [0, 0, 0])
   for (const sx of [-1, 1]) {
     const az = Math.PI + sx * 0.5
     const el = 0.86
@@ -402,7 +441,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
     const ua = `upperArm${s}` as BoneName
     const fa = `foreArm${s}` as BoneName
     const ha = `hand${s}` as BoneName
-    add(folds(lathe([[0.072, -0.13], [0.045, -0.122], [0.066, -0.118], [0.061, -0.08], [0.066, -0.035], [0.068, 0.0], [0.058, 0.035], [0.035, 0.055], [0.001, 0.062]], 16), 6, 0.08, sx), PALETTE.tunique, ua, [sx * 0.004, 0, 0], { rot: [0, 0, sx * 0.08] })
+    add(folds(lathe([[0.064, -0.15], [0.043, -0.142], [0.06, -0.138], [0.057, -0.1], [0.055, -0.05], [0.055, -0.01], [0.05, 0.025], [0.036, 0.048], [0.001, 0.058]], 18), 5, 0.11, sx), PALETTE.tunique, ua, [sx * 0.004, 0, 0], { rot: [0, 0, sx * 0.08] })
     add(lathe([[0.001, -0.3], [0.027, -0.294], [0.03, -0.27], [0.032, -0.22], [0.035, -0.16], [0.038, -0.1], [0.038, -0.04], [0.001, 0.0]], 16), PALETTE.peau, ua, [0, 0, 0], { to: fa, split: limbSplit(ua, 0.27), rot: [0, 0, sx * 0.03] })
     add(lathe([[0.001, -0.25], [0.021, -0.246], [0.023, -0.225], [0.028, -0.18], [0.036, -0.12], [0.042, -0.06], [0.04, -0.02], [0.033, 0.0], [0.001, 0.025]], 16), PALETTE.combi, fa, [0, 0, 0.002], { to: ha, split: limbSplit(fa, 0.24), scale: [0.92, 1, 1.05] })
     add(folds(lathe([[0.027, -0.236], [0.031, -0.226], [0.032, -0.2], [0.029, -0.19]], 14), 4, 0.06, sx), PALETTE.cuir, fa, [0, 0, 0.002])

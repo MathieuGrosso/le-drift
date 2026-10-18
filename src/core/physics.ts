@@ -14,7 +14,17 @@ export interface PhysicsRuntime {
 }
 
 export async function createPhysics(): Promise<PhysicsRuntime> {
-  await RAPIER.init()
+  // rapier3d-compat passes its inlined wasm positionally and wasm-bindgen warns about it; nothing to fix on our side.
+  const warn = console.warn
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('deprecated parameters')) return
+    warn(...args)
+  }
+  try {
+    await RAPIER.init()
+  } finally {
+    console.warn = warn
+  }
   const world = new RAPIER.World({ x: 0, y: 0, z: 0 })
   world.timestep = PHYSICS.step
   const tags = new Map<number, ColliderTag>()

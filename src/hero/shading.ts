@@ -78,7 +78,9 @@ void main() {
   float skin = vMat.x;
   float sw = mix(0.04, 0.3, skin);
   float se = -0.12 * skin;
+  float wool = step(0.5, vMat.y);
   vec3 albedoSh = mix(albedo, albedo * vec3(0.70, 0.60, 1.11), skin);
+  albedoSh = mix(albedoSh, albedo * vec3(0.72, 0.66, 0.80), wool);
 
   float ndl = dot(n, normalize(uSunDir));
   float lit = 0.55 * bandW(ndl, se, sw) + 0.45 * bandW(ndl, 0.45, sw);
@@ -100,19 +102,19 @@ void main() {
     float att = clamp(1.0 - dist / l.w, 0.0, 1.0);
     float nl = dot(n, dl / max(dist, 1e-3));
     float step1 = 0.5 * bandW(nl, se, sw) + 0.5 * bandW(nl, 0.5, sw);
-    lamp += mix(vec3(1.0), uLampColors[i], 0.4) * att * att * (mix(0.35, 0.18, skin) + mix(0.65, 0.82, skin) * step1);
+    lamp += mix(vec3(1.0), uLampColors[i], 0.4 - 0.25 * wool) * att * att * (mix(0.35, 0.18, skin) + mix(0.65, 0.82, skin) * step1) * (1.0 - 0.18 * wool);
     sss += att * att * exp(-nl * nl * 14.0);
     lampDir += dl / max(dist, 1e-3) * att * att;
   }
   vec3 amb = mix(vec3(0.24, 0.23, 0.35), vec3(0.95, 0.9, 0.8), 0.35);
   float warmth = vColor.r - vColor.b;
-  amb = mix(amb, amb * vec3(1.12, 0.92, 0.9), clamp(warmth * 2.0, 0.0, 1.0));
+  amb = mix(amb, amb * vec3(1.12, 0.92, 0.9), clamp(warmth * 2.0, 0.0, 1.0) * (1.0 - wool));
   vec3 inside = mix(albedoSh, albedo, 0.25) * amb + albedo * lamp;
   float kl = dot(n, uKey.xyz);
   inside += albedo * uKeyColor * uKey.w * (0.5 * bandW(kl, se, sw) + 0.5 * bandW(kl, 0.4, sw));
   sss += uKey.w * exp(-kl * kl * 14.0);
   float fw = clamp(dot(n, uFill.xyz) * 0.5 + 0.5, 0.0, 1.0);
-  inside += albedo * vec3(1.0, 0.74, 0.5) * uFill.w * mix(fw * 0.6 + 0.4, fw * fw * 1.4, skin);
+  inside += albedo * mix(vec3(1.0, 0.74, 0.5), vec3(1.0, 0.86, 0.74), wool) * uFill.w * mix(fw * 0.6 + 0.4, fw * fw * 1.4, skin);
   inside += albedo * vec3(0.32, 0.06, 0.03) * min(sss, 1.5) * skin;
   float fres = pow(1.0 - max(dot(n, v), 0.0), 2.6);
   float lampSide = length(lampDir) > 1e-3 ? dot(n, normalize(lampDir)) * 0.5 + 0.5 : 0.5;
@@ -122,6 +124,8 @@ void main() {
   inside += coolRim * smoothstep(mix(0.55, 0.3, uKey.w), 0.8, fres) * coolSide * (0.35 + uKey.w * 0.5);
 
   vec3 col = mix(outside, inside, uIndoor);
+  float lum = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(col, mix(vec3(lum), col, 0.84), wool * uIndoor);
   float sea = 1.0 - uIndoor;
   if (sea > 0.001) {
     float d = length(cameraPosition - vWorldPos);
