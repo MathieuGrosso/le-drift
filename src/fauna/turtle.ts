@@ -63,7 +63,8 @@ transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
     return this.t >= 0
   }
 
-  start(): void {
+  /** `middle`: already in front of the glass (a debug pose frozen on the shot). */
+  start(middle = false): void {
     const st = this.stage
     const f = this.frame
     const side = this.rng() < 0.5 ? 1 : -1
@@ -85,13 +86,18 @@ transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
     this.headL.subVectors(this.mL, this.aL).normalize()
     f.toWorld(this.local, this.p)
     this.t = 0
+    if (middle) {
+      this.t = IN
+      this.local.copy(this.mL)
+    }
     this.group.visible = true
   }
 
   update(dt: number): void {
     if (this.t < 0) return
     const f = this.frame
-    this.t += dt
+    const hold = this.ctx.state.debug.cameraLocked && this.t >= IN && this.t < IN + LOOK * 0.5
+    this.t += hold ? 0 : dt
     let rate = 1.6
     let lookW = 0
     this.prev.copy(this.local)

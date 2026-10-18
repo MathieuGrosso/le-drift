@@ -74,7 +74,7 @@ transformed.z += cos(uFaunaTime * 1.1 + aPhase * 4.0 + jd * 2.1) * 0.1 * jd;`,
     const ctx = this.ctx
     const env = ctx.state.env
     const night = this.stage.night
-    let n = night ? 3 + env.jellyfish * 70 : 1 + env.jellyfish * 9
+    let n = night ? 3 + env.jellyfish * 70 : 0
     if (night && this.stage.kind !== 'sortie') n += 6
     if (ctx.state.act === 1) n = Math.min(n, 16)
     return Math.min(MAX, Math.round(n))
@@ -150,7 +150,7 @@ transformed.z += cos(uFaunaTime * 1.1 + aPhase * 4.0 + jd * 2.1) * 0.1 * jd;`,
       const depth = st.kind === 'sortie' ? 10 : st.depth(this.tmp)
       const d = this.tmp.distanceTo(st.pos)
       const unpress = this.pressed[i] && !st.night
-      if (d > RANGE || depth < -1 || unpress || (surplus > 0 && d > 30)) {
+      if (d > RANGE || depth < -1 || unpress || (surplus > 0 && (d > 30 || target === 0))) {
         if (surplus > 0) {
           this.alive[i] = 0
           surplus--

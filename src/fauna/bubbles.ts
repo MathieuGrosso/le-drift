@@ -5,6 +5,35 @@ import { hideInstance, patchVertex } from './shared'
 
 const BUBBLES = 600
 const RINGS = 720
+const MAX_SIZE = 0.06
+
+// Wind Waker bubbles: a camera-facing ring with one small glint, never brighter than a lit window.
+const BUBBLE_VS = /* glsl */ `
+varying vec2 vBubUv;
+varying float vBubFade;
+void main() {
+  vec4 c = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  float s = length(instanceMatrix[0].xyz);
+  c.xy += position.xy * s;
+  vBubUv = position.xy;
+  vBubFade = 1.0 - smoothstep(10.0, 34.0, -c.z);
+  gl_Position = projectionMatrix * c;
+}
+`
+const BUBBLE_FS = /* glsl */ `
+uniform vec3 uBubColor;
+varying vec2 vBubUv;
+varying float vBubFade;
+void main() {
+  float r = length(vBubUv);
+  if (r > 1.0 || vBubFade <= 0.0) discard;
+  float aa = fwidth(r) * 1.5;
+  float ring = smoothstep(0.68 - aa, 0.68, r) * (1.0 - smoothstep(0.95 - aa, 0.95, r));
+  float glint = 1.0 - smoothstep(0.12, 0.2 + aa, length(vBubUv - vec2(-0.3, 0.32)));
+  float a = (ring * 0.55 + glint * 0.5 + 0.06) * vBubFade;
+  gl_FragColor = vec4(uBubColor * (0.85 + 0.15 * glint), a);
+}
+`
 
 /** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws. */
 export class Bubbles {
@@ -27,29 +56,14 @@ export class Bubbles {
 
   constructor(ctx: GameContext) {
     this.rng = ctx.rng('fauna:bubbles')
-    const bMat = new THREE.MeshBasicMaterial({ color: 0xeafff8, transparent: true, opacity: 0.55, depthWrite: false })
-    ctx.services.render?.patchWater(bMat)
-    patchVertex(bMat, {
-      key: 'bubble',
-      header: 'varying vec3 vBubN;',
-      vertex: `#ifdef USE_INSTANCING
-vBubN = mat3(modelViewMatrix) * mat3(instanceMatrix) * position;
-#else
-vBubN = mat3(modelViewMatrix) * position;
-#endif`,
-      fragmentHeader: 'varying vec3 vBubN;',
-      fragment: {
-        after: '#include <opaque_fragment>',
-        code: `{
-  vec3 bn = normalize(vBubN);
-  float bEdge = smoothstep(0.5, 0.92, 1.0 - abs(bn.z));
-  float bHi = 1.0 - smoothstep(0.12, 0.24, length(bn.xy - vec2(-0.36, 0.42)));
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.96, 1.0, 0.98), bHi * 0.8);
-  gl_FragColor.a *= min(1.6, 0.18 + bEdge * 1.3 + bHi * 1.5);
-}`,
-      },
+    const bMat = new THREE.ShaderMaterial({
+      vertexShader: BUBBLE_VS,
+      fragmentShader: BUBBLE_FS,
+      transparent: true,
+      depthWrite: false,
+      uniforms: { uBubColor: { value: new THREE.Color(0xb8e2d8) } },
     })
-    this.bubbleMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), bMat, BUBBLES)
+    this.bubbleMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), bMat, BUBBLES)
     this.bubbleMesh.frustumCulled = false
     this.bubbleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     const bArr = this.bubbleMesh.instanceMatrix.array as Float32Array
@@ -88,7 +102,7 @@ vBubN = mat3(modelViewMatrix) * position;
       this.bv[i * 3 + 1] = upSpeed * (0.6 + r() * 0.8)
       this.bv[i * 3 + 2] = (r() - 0.5) * 0.8
       this.bLife[i] = 4 + r() * 6
-      this.bSize[i] = size * (0.4 + r() * 1.2)
+      this.bSize[i] = Math.min(size, MAX_SIZE) * (0.5 + r() * 0.9)
     }
   }
 
@@ -141,13 +155,13 @@ vBubN = mat3(modelViewMatrix) * position;
       const y = this.bp[k + 1]
       if (this.bLife[i] <= 0 || y > CEILING_Y - 0.15) {
         this.bLife[i] = 0
-        if (y > CEILING_Y - 0.15 && this.bSize[i] > 0.12 && this.rng() < 0.2) this.ring(this.bp[k], this.bp[k + 2], 1.2, 1.4)
+        if (y > CEILING_Y - 0.15 && this.bSize[i] > MAX_SIZE * 0.8 && this.rng() < 0.2) this.ring(this.bp[k], this.bp[k + 2], 1.2, 1.4)
         hideInstance(bArr, o)
         continue
       }
       const s = this.bSize[i] * Math.min(1, this.bLife[i] * 2)
       bArr.fill(0, o, o + 16)
-      bArr[o] = s; bArr[o + 5] = s * 0.85; bArr[o + 10] = s
+      bArr[o] = s; bArr[o + 5] = s; bArr[o + 10] = s
       bArr[o + 12] = this.bp[k]; bArr[o + 13] = y; bArr[o + 14] = this.bp[k + 2]; bArr[o + 15] = 1
     }
     this.bubbleMesh.instanceMatrix.needsUpdate = true

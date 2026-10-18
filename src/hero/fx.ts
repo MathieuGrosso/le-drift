@@ -108,7 +108,8 @@ void main() {
   vLife = aLife;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = aSize * (300.0 / max(-mv.z, 0.1));
+  gl_PointSize = min(aSize * (300.0 / max(-mv.z, 0.1)), 9.0);
+  vLife *= smoothstep(0.6, 1.6, -mv.z);
 }
 `
 const DROP_FRAG = /* glsl */ `
@@ -121,7 +122,7 @@ void main() {
   if (r > 1.0 || vLife <= 0.0) discard;
   float body = mix(smoothstep(1.0, 0.6, r), smoothstep(1.0, 0.8, r) - smoothstep(0.7, 0.4, r) * 0.6, uBubble);
   float hi = smoothstep(0.45, 0.0, length(p - vec2(-0.35, -0.35)));
-  gl_FragColor = vec4(uColor + hi * 0.6, (body + hi) * min(vLife * 3.0, 1.0) * 0.85);
+  gl_FragColor = vec4(uColor * (0.9 + hi * 0.15), (body + hi * 0.5) * min(vLife * 3.0, 1.0) * 0.7);
 }
 `
 

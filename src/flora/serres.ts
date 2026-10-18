@@ -61,11 +61,17 @@ export function buildSerres(rng: () => number, level: QualityLevel): SerreBuild 
     const grow = GROW_OF_COLUMN[col]!
     const crop = CROPS[col]!
     for (const [z0, z1] of BED_Z) {
+      for (let z = z0 + 0.6; z < z1 - 0.4; z += (0.75 + rng() * 0.4) / Math.sqrt(density)) {
+        const base = new THREE.Vector3(cx + (rng() - 0.5) * 1.3, WATER_Y - 0.45, z)
+        const tall = 3.8 + rng() * 4
+        const blades = 2 + Math.floor(rng() * 3)
+        for (let b = 0; b < blades; b++) laminaria(g, rng, base, tall * (0.62 + rng() * 0.38), grow)
+      }
       const step = 0.62 / Math.sqrt(density)
       let side = 1
-      for (let z = z0 + 0.5; z < z1 - 0.4; z += step * (0.8 + rng() * 0.4)) {
+      for (let z = z0 + 0.5; z < z1 - 0.4; z += step * (2.2 + rng() * 0.8)) {
         side = -side
-        const h = (col === 1 ? 2.4 : 1.6) + rng() * 1.6 + Math.sin(z * 0.7) * 0.35
+        const h = (col === 1 ? 1.6 : 1.1) + rng() * 1.0 + Math.sin(z * 0.7) * 0.25
         const tint = col === 0 ? pickOf([P.varech, P.algueRouge, P.laminaire]) : col === 1 ? pickOf([P.laminaire, P.varechClair, P.algueDoree]) : pickOf([P.varech, P.feuille, P.laitue])
         kelpStalk(g, rng, new THREE.Vector3(cx + side * (0.15 + rng() * 0.45), WATER_Y - 0.45, z), h, { grow, bladeLen: 0.95, tint })
       }
@@ -227,6 +233,66 @@ export function buildSerres(rng: () => number, level: QualityLevel): SerreBuild 
   bubbles.boundingSphere = new THREE.Sphere(new THREE.Vector3(90, 6, 33), 48)
 
   return { plants: g.build(), glow: glow.build(), tanks, bubbles, colliders, stalks }
+}
+
+const LAM_ROOT = new THREE.Color(0x4a6438)
+const LAM_BODY = new THREE.Color(0x6f8f4e)
+const LAM_TIP = new THREE.Color(0xb9d98a)
+const LAM_GOLD = new THREE.Color(0xa89a4a)
+const ACROSS = [-1, -0.42, 0, 0.42, 1] as const
+
+// One laminaria strap: short stipe, long blade with a pale mid-rib and ruffled edges, dark at the root, light at the tip.
+function laminaria(g: PlantGeo, rng: () => number, base: THREE.Vector3, L: number, grow: number): void {
+  const s = sway(base, SWAY.ribbon, 0.55 + rng() * 0.25, rng() * 6.28, grow)
+  const yaw = rng() * Math.PI * 2
+  const leanA = rng() * Math.PI * 2
+  const lean = 0.05 + rng() * 0.12
+  const wMax = 0.22 + rng() * 0.14
+  const twist = (rng() - 0.5) * 1.6
+  const gold = rng() < 0.22 ? 0.45 : 0
+  const hue = (rng() - 0.5) * 0.04
+  const phase = rng() * 6.28
+  const freq = 5.5 + rng() * 2.5
+  const steps = Math.max(10, Math.round(L / 0.22))
+  const p = new THREE.Vector3()
+  const along = new THREE.Vector3()
+  const side = new THREE.Vector3()
+  const nrm = new THREE.Vector3()
+  const c = new THREE.Color()
+  const at = (u: number, out: THREE.Vector3) => out.set(
+    base.x + Math.cos(leanA) * lean * L * u * u + Math.sin(u * 4 + phase) * 0.06 * u,
+    base.y + L * u,
+    base.z + Math.sin(leanA) * lean * L * u * u + Math.cos(u * 3.3 + phase) * 0.06 * u,
+  )
+  let prev: number[] | null = null
+  for (let i = 0; i <= steps; i++) {
+    const u = i / steps
+    at(u, p)
+    at(Math.min(1, u + 0.01), along).sub(at(Math.max(0, u - 0.01), nrm)).normalize()
+    const a = yaw + twist * u
+    side.set(Math.cos(a), 0, Math.sin(a))
+    side.addScaledVector(along, -side.dot(along)).normalize()
+    nrm.crossVectors(side, along).normalize()
+    const stipe = 0.07
+    const w = u < stipe ? 0.025 : wMax * Math.min(1, (u - stipe) / 0.1) * (1 - 0.7 * Math.pow(u, 1.6)) + 0.01
+    c.copy(LAM_ROOT).lerp(LAM_BODY, Math.min(1, u / 0.35)).lerp(LAM_TIP, Math.max(0, (u - 0.35) / 0.65) * 0.85)
+    if (gold) c.lerp(LAM_GOLD, gold * (1 - u * 0.5))
+    c.offsetHSL(hue, 0, 0)
+    const row: number[] = []
+    for (const k of ACROSS) {
+      const edge = Math.abs(k)
+      const ruffle = edge * edge * (0.03 + 0.07 * u) * Math.sin(u * L * freq + phase + (k < 0 ? Math.PI : 0)) * (u < stipe ? 0 : 1)
+      const x = p.x + side.x * w * k + nrm.x * ruffle
+      const y = p.y + side.y * w * k + nrm.y * ruffle
+      const z = p.z + side.z * w * k + nrm.z * ruffle
+      const shade = k === 0 ? 1.16 : edge === 1 ? 1.08 : 0.9
+      const vc = c.clone().multiplyScalar(shade)
+      if (k === 0) vc.lerp(LAM_TIP, 0.12)
+      row.push(g.vert(x, y, z, nrm.x + side.x * ruffle * 3, nrm.y, nrm.z + side.z * ruffle * 3, vc, s))
+    }
+    if (prev) for (let j = 0; j < ACROSS.length - 1; j++) g.quad(prev[j]!, prev[j + 1]!, row[j + 1]!, row[j]!)
+    prev = row
+  }
 }
 
 function kelpBlade(g: PlantGeo, rng: () => number, p: THREE.Vector3, out: THREE.Vector3, L: number): void {

@@ -38,9 +38,10 @@ const K = 5
 const TAKEN_SECONDS = 150
 const WANDER_MIN = 28
 const WANDER_MAX = 150
-const SORTIE_SCHOOL = 36
-const SORTIE_CLEAR = 6
-const SORTIE_CLEAR_BIG = 11
+const SORTIE_CLEAR = 7
+const SORTIE_NEAR = 4
+const SORTIE_FULL = 6
+const SORTIE_SIZE = 0.8
 
 /**
  * Instanced fish in boids schools (sampled-neighbour boids: separation, alignment, cohesion), one draw call.
@@ -169,11 +170,11 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       const f = this.ctx.camera.getWorldDirection(this.look)
       const off = 2.5 + s.radius + s.depth * 0.15 + Math.sin(now * 0.05 + s.phase * 2) * 1.2
       const toward = -f.dot(st.normal)
-      const t = toward > 0.12 ? THREE.MathUtils.clamp((st.depth(cam) - off) / toward, 7, 28) : 9 + s.depth * 0.5
-      const lat = (s.phase - Math.PI) * (0.9 + s.sway * 0.08) + Math.sin(now * 0.06 + s.phase) * 1.5
+      const t = toward > 0.12 ? THREE.MathUtils.clamp((st.depth(cam) - off) / toward, 10, 24) : 11 + s.depth * 0.5
+      const lat = (s.phase - Math.PI) * 0.8 + Math.sin(now * 0.06 + s.phase) * 1.5
       out.copy(cam).addScaledVector(f, t)
       out.addScaledVector(st.tangent, lat)
-      out.y += Math.sin(now * 0.08 + s.phase) * 1.5 + (s.phase % 1.7) + 0.6
+      out.y += Math.sin(now * 0.08 + s.phase) * 1.2 + (s.phase % 1.7) * 0.6
       const under = st.depth(out) - (2.5 + s.radius)
       if (under < 0) out.addScaledVector(st.normal, -under)
       out.y = clampWaterY(this.ctx, out.x, out.y, out.z, 2 + s.radius * 0.6, 4)
@@ -346,12 +347,12 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
         if (dc < 0) s.c.addScaledVector(st.normal, -dc)
       } else {
         const cam = ctx.camera.position
-        const clear = (s.species.scale > 1.5 ? SORTIE_CLEAR_BIG : SORTIE_CLEAR) + s.radius
+        const clear = SORTIE_CLEAR + s.radius
         const away = this.tmp.copy(s.c).sub(cam)
         const dl = away.length()
         if (dl < clear) s.c.addScaledVector(dl > 1e-3 ? away.divideScalar(dl) : st.normal, clear - dl)
       }
-      s.shown = sortie && s.kind === 'stage' ? Math.min(s.count, SORTIE_SCHOOL) : s.count
+      s.shown = sortie ? sortieShown(s) : s.count
       this.stepSchool(s, dt, now, hero, heroWater, sortie, arr)
     }
     mesh.instanceMatrix.needsUpdate = true
@@ -447,18 +448,21 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       pos[k] = px + vx * dt
       pos[k + 1] = py + vy * dt
       pos[k + 2] = pz + vz * dt
+      let size = this.scale[i]!
       if (sortie) {
         const cx2 = pos[k]! - camX, cy2 = pos[k + 1]! - camY, cz2 = pos[k + 2]! - camZ
         const cd2 = cx2 * cx2 + cy2 * cy2 + cz2 * cz2
-        if (cd2 < 16) {
+        if (cd2 < SORTIE_FULL * SORTIE_FULL) {
           const cd = Math.sqrt(cd2) + 1e-3
-          const f = (4 - cd) * 3 / cd
+          const f = (SORTIE_FULL - cd) * 3 / cd
           vel[k] = vx + cx2 * f * dt; vel[k + 2] = vz + cz2 * f * dt
-          if (cd < 2) { hideInstance(arr, o); continue }
+          if (cd < SORTIE_NEAR) { hideInstance(arr, o); continue }
+          size *= (cd - SORTIE_NEAR) / (SORTIE_FULL - SORTIE_NEAR)
         }
+        size *= SORTIE_SIZE
       }
       if (depth < 0.25) hideInstance(arr, o)
-      else writeBasis(arr, o, pos[k]!, pos[k + 1]!, pos[k + 2]!, vx, vy * 0.6, vz, this.scale[i]!)
+      else writeBasis(arr, o, pos[k]!, pos[k + 1]!, pos[k + 2]!, vx, vy * 0.6, vz, size)
     }
   }
 
@@ -471,4 +475,13 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     this.geometry.dispose()
     this.material.dispose()
   }
+}
+
+// Outside, the sea is three small schools at a distance: silver sardines, a teal school and a few coral fish.
+function sortieShown(s: School): number {
+  if (s.kind !== 'stage') return 0
+  if (s.species === SARDINE) return Math.min(s.count, 36)
+  if (s.species === MENTHE) return Math.min(s.count, 26)
+  if (s.species === CORAIL) return Math.min(s.count, 14)
+  return 0
 }

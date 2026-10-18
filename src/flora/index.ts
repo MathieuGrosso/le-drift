@@ -74,6 +74,7 @@ export function createFloraSystem(): System {
   let built = false
   let seaOn = true
   let frame = 0
+  let stripsHidden = false
   let ctxRef: GameContext | null = null
   const current = new THREE.Vector3(0, 0, -0.4)
   const heroLocal: Vec3 = { x: 0, y: -1000, z: 0 }
@@ -382,6 +383,8 @@ export function createFloraSystem(): System {
         const camDistrict = drift.cameraEnv().district
         const serresOn = loaded.includes('serres') || camDistrict === 'serres'
         for (const m of serreMeshes) m.visible = serresOn
+        if (serresOn && (!stripsHidden || frame % 120 === 0)) ctx.scene.traverse(hideDriftStrips)
+        stripsHidden = serresOn
         if (nefMesh) nefMesh.visible = loaded.includes('nef') || camDistrict === 'nef'
       }
       scanStep(ctx)
@@ -436,4 +439,9 @@ function registerPoses(ctx: GameContext): void {
     camera: { position: { x: 80, y: 96, z: 520 }, target: { x: 60, y: 118, z: 470 }, fov: 62 },
     hour: 12,
   })
+}
+
+// The Serres' laminaria are flora's; drift's flat placeholder strips in the same beds stay hidden.
+function hideDriftStrips(o: THREE.Object3D): void {
+  if (o.name === 'laminaires-serre' && (o as THREE.InstancedMesh).isInstancedMesh) (o as THREE.InstancedMesh).count = 0
 }

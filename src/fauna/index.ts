@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { CHOSE_DIVE_HOURS, DRIFT_ROUTE } from '../core/layout'
 import type { FaunaService, GameContext, System, Vec3 } from '../core/types'
+import { SeaBackdrop } from './backdrop'
 import { Bubbles } from './bubbles'
 import { Chose } from './chose'
 import { Curious } from './curious'
@@ -18,6 +19,7 @@ const WHALE_DAY_PERIOD = 2
 const WHALE_WAIT_HOURS = 3
 const RAY_MIN_SECONDS = 220
 const RAY_MAX_SECONDS = 420
+const BIG_WINDOW = 'grande-vitre'
 
 interface Parts {
   root: THREE.Group
@@ -32,6 +34,7 @@ interface Parts {
   chose: Chose
   motes: Motes
   curious: Curious
+  backdrop: SeaBackdrop
 }
 
 function routeLength(from: number, to: number): number {
@@ -64,6 +67,7 @@ export function createFaunaSystem(): System {
   let rayIn = 90
   let externalRain = 0
   let ownRipple = false
+  let breakfastTurtleDay = -1
   const unsubs: (() => void)[] = []
   const scratch = new THREE.Vector3()
   let rng: () => number = Math.random
@@ -118,6 +122,10 @@ export function createFaunaSystem(): System {
         p.whale.pass(st, st.kind === 'sortie' ? 26 : 32 + rng() * 14)
       } else if (day * 24 + hours > whaleDue) whaleDue = -1
     }
+    if (st.kind === 'window' && st.windowId === BIG_WINDOW && hours > 7 && hours < 8.6 && breakfastTurtleDay !== day && !p.turtle.active) {
+      breakfastTurtleDay = day
+      p.turtle.start(ctx.state.debug.cameraLocked)
+    }
     const h = hours
     if (st.visible && h > 6.5 && h < 19 && !p.manta.isActive) {
       rayIn -= dt
@@ -153,10 +161,11 @@ export function createFaunaSystem(): System {
     const chose = new Chose(ctx, stage, frame, bubbles, fish)
     const motes = new Motes(ctx, stage)
     const curious = new Curious(ctx, stage, bubbles)
-    root.add(fish.group, jelly.group, whale.group, manta.group, turtle.group, chose.group, bubbles.group, motes.group,
+    const backdrop = new SeaBackdrop(ctx, stage)
+    root.add(backdrop.group, fish.group, jelly.group, whale.group, manta.group, turtle.group, chose.group, bubbles.group, motes.group,
       curious.group, chose.shadow.mesh, chose.pages.group)
     ctx.scene.add(root)
-    return { root, frame, stage, bubbles, fish, jelly, whale, manta, turtle, chose, motes, curious }
+    return { root, frame, stage, bubbles, fish, jelly, whale, manta, turtle, chose, motes, curious, backdrop }
   }
 
   return {
@@ -225,6 +234,7 @@ export function createFaunaSystem(): System {
       p.jelly.update(dt)
       p.motes.update(dt)
       p.curious.update(dt)
+      p.backdrop.update(dt)
     },
     dispose() {
       for (const u of unsubs.splice(0)) u()
@@ -240,6 +250,7 @@ export function createFaunaSystem(): System {
       p.bubbles.dispose()
       p.motes.dispose()
       p.curious.dispose()
+      p.backdrop.dispose()
       p.root.removeFromParent()
     },
   }

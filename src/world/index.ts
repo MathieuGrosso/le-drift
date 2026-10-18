@@ -5,6 +5,7 @@ import { currentAt } from './current'
 import { RouteDebris } from './debris'
 import { FarKelp } from './kelpfar'
 import { Landmarks } from './landmarks'
+import { SeaVolume } from './seavolume'
 import { driftShadeShader, updateDriftShade } from './shade'
 import { clampSwimLocal, SortieSpace, SWIM_LIMITS, type SortieRing, type SwimLimits } from './sortie'
 import { makeMaterial } from './surface'
@@ -67,6 +68,7 @@ export function createWorldSystem(): System {
   let sortie: SortieSpace | null = null
   let wake: Wake | null = null
   let wrecks: Wrecks | null = null
+  let sea: SeaVolume | null = null
   let anchorsSent = -1
   let material: THREE.Material | null = null
   let ctxRef: GameContext | null = null
@@ -105,7 +107,8 @@ export function createWorldSystem(): System {
         backdrop.add(kelp.mesh)
       }
       sortie = new SortieSpace(ctx)
-      ctx.scene.add(backdrop, sortie.group)
+      sea = new SeaVolume(ctx)
+      ctx.scene.add(backdrop, sortie.group, sea.dome)
       sortie.lockRing('sas')
       offs.push(ctx.quality.onChange((q) => {
         streamer?.rebuildForQuality()
@@ -122,6 +125,7 @@ export function createWorldSystem(): System {
     update(dt, ctx) {
       if (!streamer) return
       updateDriftShade(ctx.state)
+      sea?.update(dt)
       const visible = seaVisible(ctx)
       backdrop.visible = visible
       const outside = ctx.state.mode === 'sortie'
@@ -145,6 +149,7 @@ export function createWorldSystem(): System {
       sortie?.dispose()
       wake?.dispose()
       wrecks?.dispose()
+      sea?.dispose()
       material?.dispose()
       backdrop.removeFromParent()
       if (ctxRef?.services.world === service) delete ctxRef.services.world
@@ -155,6 +160,7 @@ export function createWorldSystem(): System {
       sortie = null
       wake = null
       wrecks = null
+      sea = null
       ctxRef = null
     },
   }
