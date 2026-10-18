@@ -89,7 +89,7 @@ function cry(rig: Rig, dest: AudioNode, t: number, scale: number): void {
   out(rig, g, dest, 0.7)
 }
 
-export type StepSurface = 'sable' | 'bois' | 'metal' | 'tapis' | 'grille' | 'echelle' | 'mouille'
+export type StepSurface = 'sable' | 'bois' | 'metal' | 'tapis' | 'grille' | 'echelle' | 'mouille' | 'corde'
 
 function step(rig: Rig, dest: AudioNode, t: number, surface: StepSurface, wet: boolean, v: number): void {
   if (surface === 'sable') {
@@ -112,6 +112,9 @@ function step(rig: Rig, dest: AudioNode, t: number, surface: StepSurface, wet: b
     noiseHit(rig, dest, t, 'lowpass', 350, 0.7, 0.18 * v, 0.07)
   } else if (surface === 'echelle') {
     metal(rig, dest, t, 620 + Math.random() * 90, 0.7 * v, 0.4)
+  } else if (surface === 'corde') {
+    stickSlip(rig, dest, t, 520 + Math.random() * 160, 0.22, 5, 0.35 * v)
+    noiseHit(rig, dest, t, 'lowpass', 600, 0.6, 0.08 * v, 0.08, 0.05, 'pink')
   } else if (surface === 'mouille') {
     noiseHit(rig, dest, t, 'bandpass', 1200, 1.2, 0.2 * v, 0.12, 0.1)
     bubbles(rig, dest, t + 0.01, 2, 0.05, 600, 1200, 0.4 * v)
@@ -610,6 +613,62 @@ export const SFX: Record<string, SfxFn> = {
   rain: (r, d, t, a) => {
     for (let i = 0; i < 6; i++) drop(r, d, t + Math.random() * 0.5, 1400 + Math.random() * 1500, 0.3 + a * 0.4, 0.5)
   },
+  pant: (r, d, t, a) => {
+    for (let i = 0; i < 3; i++) {
+      const ti = t + i * 0.62
+      const inhale = filter(r, 'bandpass', 1500 + Math.random() * 300, 1.2)
+      const gi = r.ctx.createGain()
+      gi.gain.setValueAtTime(0, ti)
+      gi.gain.linearRampToValueAtTime(0.05 * a, ti + 0.16)
+      gi.gain.linearRampToValueAtTime(0, ti + 0.24)
+      noise(r, 'pink', ti, 0.26).connect(inhale)
+      inhale.connect(gi)
+      out(r, gi, d, 0.05)
+      const ex = filter(r, 'bandpass', 900 + Math.random() * 200, 1)
+      const ge = r.ctx.createGain()
+      ge.gain.setValueAtTime(0, ti + 0.28)
+      ge.gain.linearRampToValueAtTime(0.07 * a, ti + 0.32)
+      ge.gain.exponentialRampToValueAtTime(SILENT, ti + 0.55)
+      noise(r, 'pink', ti + 0.28, 0.3).connect(ex)
+      ex.connect(ge)
+      out(r, ge, d, 0.05)
+    }
+  },
+  heartbeat: (r, d, t, a) => {
+    thud(r, d, t, 46, 0.32 * a, 0.16, 0)
+    thud(r, d, t + 0.19, 40, 0.22 * a, 0.2, 0)
+  },
+  jump: (r, d, t, a) => {
+    const bp = filter(r, 'bandpass', 600, 0.9)
+    bp.frequency.exponentialRampToValueAtTime(1500, t + 0.18)
+    const g = r.ctx.createGain()
+    g.gain.setValueAtTime(SILENT, t)
+    g.gain.exponentialRampToValueAtTime(0.07 * a + 0.02, t + 0.05)
+    g.gain.exponentialRampToValueAtTime(SILENT, t + 0.24)
+    noise(r, 'pink', t, 0.25).connect(bp)
+    bp.connect(g)
+    out(r, g, d, 0.05)
+  },
+  'crowd-ooh': (r, d, t, a) => {
+    const n = 7
+    for (let i = 0; i < n; i++) {
+      const child = i % 3 === 0
+      const m = (child ? 68 : 52) + Math.random() * 8
+      const at = t + Math.random() * 0.35
+      const v: Vowel = i % 2 ? 'o' : 'u'
+      sing(r, d, at, m, v, 0.16 * a, 1.1 + Math.random() * 0.5, child, 0.6)
+      sing(r, d, at + 0.5, m - 2 - Math.random() * 2, v, 0.1 * a, 0.7, child, 0.6)
+    }
+  },
+  'door-rattle': (r, d, t, a) => {
+    for (let i = 0; i < 3; i++) metal(r, d, t + i * 0.11 + Math.random() * 0.03, 240 + Math.random() * 40, 0.35 * a + 0.1, 0.35)
+    stickSlip(r, d, t, 1800, 0.35, 5, 0.2 * a)
+  },
+  'net-creak': (r, d, t, a) => stickSlip(r, d, t, 480 + Math.random() * 200, 0.5, 9, 0.3 * a + 0.1),
+  forecast: (r, d, t, a) => {
+    hiss(r, d, t, 0.5, 0.03 * a, 2500)
+    ;[81, 78, 74].forEach((m, i) => bell(r, d, t + 0.5 + i * 0.28, m, 0.3 * a, 1.6, 2, 0.4))
+  },
 }
 
 const ALIASES: Record<string, string> = {
@@ -620,7 +679,8 @@ const ALIASES: Record<string, string> = {
   'endurance-vide': 'breath-empty', 'endurance-pleine': 'breath-full',
   poulie: 'zip', toboggan: 'slide', vanne: 'valve', pompe: 'pump', levier: 'lever', lest: 'ballast',
   anneau: 'tether-clip', longe: 'rope-taut', vitre: 'glass-tap', lunette: 'paper', hamac: 'bed', lit: 'bed',
-  'dome-veille': 'dome', cloche: 'gong',
+  'dome-veille': 'dome', cloche: 'gong', haleter: 'pant', saut: 'jump', verrou: 'door-rattle', meteo: 'forecast',
+  filet: 'net-creak', coeur: 'heartbeat',
 }
 for (const [alias, id] of Object.entries(ALIASES)) if (!SFX[alias] && SFX[id]) SFX[alias] = SFX[id]!
 

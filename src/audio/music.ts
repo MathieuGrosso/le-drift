@@ -6,6 +6,9 @@ import { bass, bell, choir, clap, flute, marimba, pad, piano, pluck, tick } from
 const D_PENT = [62, 64, 66, 69, 71, 74, 76, 78, 81, 83, 86] as const
 const B_MIN_PENT = [59, 62, 64, 66, 69, 71, 74, 76, 78, 81] as const
 const NIGHT = [74, 76, 78, 81, 83, 86, 88, 90, 93, 95] as const
+// North of the loop the light changes: a raised fourth, the tune leans up.
+const D_LYDIAN = [62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81] as const
+const WHITE = [69, 71, 74, 76, 81, 83, 86, 88] as const
 
 // « Pluie, pluie, va-t'en » : the clapping game on the sill. [midi, beats]
 export const PLUIE: readonly (readonly [number, number])[] = [
@@ -40,7 +43,8 @@ export interface MusicDirector {
   setFlavor(f: Flavor): void
   /** 0 = standing still, 1 = running, climbing, sliding. */
   setEnergy(e: number): void
-  stinger(kind: 'dome' | 'trouvaille' | 'decouverte' | 'reveil' | 'scellee'): void
+  setAct(a: 1 | 2 | 3): void
+  stinger(kind: 'dome' | 'trouvaille' | 'decouverte' | 'reveil' | 'scellee' | 'aube'): void
   update(): void
 }
 
@@ -52,6 +56,7 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
   let cue: Cue = 'silence'
   let flavor: Flavor = 'home'
   let energy = 0
+  let act: 1 | 2 | 3 = 1
 
   const pick = <T>(a: readonly T[]): T => a[Math.floor(rnd() * a.length)]!
   const range = (a: number, b: number) => a + rnd() * (b - a)
@@ -126,9 +131,13 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     const minorish = flavor === 'engine' || flavor === 'prow' || flavor === 'sealed'
     if (lastExplore.length > 0 && rnd() < 0.25) {
       notes = lastExplore.map((m) => m + pick([0, 0, 5, -5, 7]))
+    } else if (act === 3 && rnd() < 0.6) {
+      notes = walk(WHITE, Math.floor(range(3, 6)), Math.floor(range(1, 5)))
+      pad(rig, l.gain, t, [45, 52, 57, 64], 0.3, 4, 4, 6, 1600, 0.9)
     } else {
-      const minor = minorish ? rnd() < 0.8 : rnd() < 0.3
-      notes = walk(minor ? B_MIN_PENT : D_PENT, Math.floor(range(3, 8)), Math.floor(range(2, 6)))
+      const minor = minorish ? rnd() < 0.8 : rnd() < (act === 1 ? 0.3 : 0.15)
+      const bright = act >= 2 && !minor && rnd() < 0.5
+      notes = walk(minor ? B_MIN_PENT : bright ? D_LYDIAN : D_PENT, Math.floor(range(3, 8)), Math.floor(range(2, 6)))
       if (rnd() < 0.4) lastExplore = notes
     }
     if (flavor === 'engine') {
@@ -145,7 +154,8 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
       if (rnd() < 0.15) piano(rig, l.gain, at + 0.01, m - 12, 0.25, 3)
       at += d * beat
     })
-    const gap = range(18, 55) * (1.3 - 0.6 * energy)
+    if (act === 3 && rnd() < 0.5) bell(rig, l.gain, at, notes[notes.length - 1]! + 12, 0.25, 4, 2, 0.9)
+    const gap = range(18, 55) * (1.3 - 0.6 * energy) * (act === 3 ? 1.3 : 1)
     return at - t + gap
   }
 
@@ -267,7 +277,7 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     melody.forEach((m, i) => piano(rig, dest, t + 4 + i * 1.6, m, 0.35, 4, 0.6))
   }
 
-  function jingle(dest: AudioNode, t: number, kind: 'trouvaille' | 'decouverte' | 'reveil'): void {
+  function jingle(dest: AudioNode, t: number, kind: 'trouvaille' | 'decouverte' | 'reveil' | 'aube'): void {
     if (kind === 'trouvaille') {
       ;[69, 74, 78, 81].forEach((m, i) => piano(rig, dest, t + i * 0.1, m, 0.5, i === 3 ? 3 : 1.2, 0.4))
       bell(rig, dest, t + 0.32, 86, 0.45, 3)
@@ -276,6 +286,9 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
       ;[74, 81, 78, 83, 86].forEach((m, i) => piano(rig, dest, t + i * 0.22, m, 0.55, 4, 0.5))
       pad(rig, dest, t, [50, 57, 62, 66], 0.8, 0.6, 2.5, 3, 1400)
       bell(rig, dest, t + 0.9, 98, 0.3, 3)
+    } else if (kind === 'aube') {
+      PLUIE.slice(0, 5).forEach(([m, b], i) => bell(rig, dest, t + i * 0.45 * b + i * 0.1, m + 12, 0.22, 3, 2, 0.8))
+      pad(rig, dest, t, [50, 57, 62, 69], 0.4, 3, 2, 5, 1100, 0.7)
     } else {
       ;[66, 69, 74].forEach((m, i) => piano(rig, dest, t + i * 0.35, m, 0.35, 3, 0.5))
     }
@@ -313,6 +326,9 @@ export function createMusicDirector(rig: Rig, rnd: Rand): MusicDirector {
     },
     setFlavor(f) {
       flavor = f
+    },
+    setAct(a) {
+      act = a
     },
     setEnergy(e) {
       energy = Math.max(0, Math.min(1, e))

@@ -5,6 +5,7 @@ import { createAmbience, type Ambience, type Listening } from './ambience'
 import { createMusicDirector, normalizeCue, type Cue, type MusicDirector } from './music'
 import { createRig, DRY, type Rig } from './rig'
 import { playSfx, playStep, type StepSurface } from './sfx'
+import { babble, voiceOf } from './voices'
 
 const OVERRIDE_TTL: Partial<Record<Cue, number>> = {
   home: 60, dome: 12, vista: 45, scellee: 600, danger: 20, night: 60, wonder: 45, sortie: 600, rain: 1e9, silence: 1e9,
@@ -53,6 +54,15 @@ export function createAudioSystem(): System {
   let windowNear = 0
   let energy = 0
   let lastSurface: StepSurface = 'bois'
+  let gite = 0
+  let groanGite = 0
+  let hushLeft = 0
+  let sleeping = false
+  let pantIn = 0
+  let heartIn = 0
+  let air = 0
+  let vistaCell: string | null = null
+  const vistaAt = new Map<string, number>()
   const warned = new Set<string>()
 
   const drift = () => game?.services.drift
@@ -138,6 +148,7 @@ export function createAudioSystem(): System {
 
   function autoCue(ctx: GameContext): Cue {
     const s = ctx.state
+    if (sleeping) return 'silence'
     if (s.env.rain > 0.3) return 'rain'
     if (choseLeft > 0) return 'wonder'
     if (scelleeId) return 'scellee'
@@ -155,6 +166,7 @@ export function createAudioSystem(): System {
   function build(ctx: AudioContext): Live {
     const rig = createRig(ctx)
     const music = createMusicDirector(rig, rnd)
+    if (game) music.setAct(game.state.act)
     const amb = createAmbience(rig, { place: (spread, glass) => around(spread, glass) }, rnd)
     return { rig, music, amb }
   }
@@ -187,9 +199,10 @@ export function createAudioSystem(): System {
 
   function stepSurface(ctx: GameContext, reported: StepSurface): StepSurface {
     const mode = ctx.state.hero.mode as string
-    if (mode === 'ladder' || mode === 'climb') return 'echelle'
     const floor = live?.amb.profile.floor ?? 'bois'
-    if (reported === 'sable') return floor
+    if (reported === 'tapis' && (mode === 'climb' || mode === 'ladder')) return 'corde'
+    if (mode === 'ladder' || mode === 'climb') return 'echelle'
+    if (reported === 'sable' || reported === 'bois') return floor === 'echelle' ? 'metal' : floor
     if (reported === 'metal' && floor === 'grille') return 'grille'
     return reported
   }
@@ -208,6 +221,23 @@ export function createAudioSystem(): System {
       sfx('lock-clang', at)
       sfx('sas', at, out ? 0.8 : 0.4)
     }
+  }
+
+  function greet(npcId: string, vel: number, chars = 30): void {
+    if (!live || live.rig.ctx.state !== 'running' || !npcId) return
+    const v = voiceOf(npcId)
+    const at = around(1.5, false)
+    if (!at) return
+    const t = live.rig.ctx.currentTime + 0.03
+    const syll = Math.max(2, Math.min(7, Math.round(chars / 12)))
+    babble(live.rig, at, t, vel * v.vel, v.pitch, v.child, syll, v.pace)
+  }
+
+  function ooh(amount: number, delay: number): void {
+    if (!live || game?.state.mode !== 'inside') return
+    const crowd = live.amb.profile.crowd
+    if (crowd < 0.3) return
+    play('crowd-ooh', around(10, false), amount * Math.min(1, crowd), delay)
   }
 
   function wire(ctx: GameContext): void {
@@ -234,7 +264,13 @@ export function createAudioSystem(): System {
         sfx('land', undefined, a)
         playStep(live.rig, live.rig.sfx, live.rig.ctx.currentTime + 0.01, lastSurface, ctx.state.hero.wetness > 0.1, 1.3)
       }),
-      bus.on('hero:breathEmpty', () => sfx('breath-empty')),
+      bus.on('hero:breathEmpty', () => {
+        if (ctx.state.mode === 'sortie' || ctx.state.hero.medium === 'water') sfx('breath-empty')
+        else {
+          sfx('pant', undefined, 0.9)
+          pantIn = 2
+        }
+      }),
       bus.on('hero:breathFull', () => sfx('breath-full')),
       bus.on('hero:stung', () => {
         sfx('sting')
@@ -243,10 +279,15 @@ export function createAudioSystem(): System {
       bus.on('hero:medium', ({ medium }) => sfx(medium === 'water' ? 'splash' : 'sas', undefined, 0.4)),
       bus.on('hero:mode', ({ to }) => {
         const m = to as HeroMode | 'zip' | 'tube' | 'slide' | 'run'
+        if (to !== 'sleep') sleeping = false
         if (m === 'ladder') sfx('ladder-grab')
         else if (m === 'climb') sfx('grip')
+        else if ((m as string) === 'jump') sfx('jump', undefined, 0.8)
         else if (m === 'sit') sfx('sit')
-        else if (m === 'sleep') sfx('bed')
+        else if (m === 'sleep') {
+          sfx('bed')
+          sleeping = true
+        }
         else if (m === 'swim') sfx('bubbles', undefined, 0.5)
         else if (m === 'zip') sfx('zip')
         else if (m === 'tube') sfx('tube')
@@ -262,6 +303,15 @@ export function createAudioSystem(): System {
       bus.on('airlock:cycle', (p) => onLock(p as unknown as Payload)),
       loose.on('lock:cycle', onLock),
       bus.on('door:changed', ({ open }) => sfx(open ? 'door' : 'hatch-clang', hero(), open ? 1 : 0.4)),
+      loose.on('door:locked', () => sfx('door-rattle', hero(), 0.8)),
+      bus.on('dialogue:start', ({ npcId }) => greet(npcId, 1)),
+      loose.on('dialogue:line', (p) => greet(str(p, 'npcId'), 0.7, num(p, 'chars', 40))),
+      bus.on('act:changed', ({ act }) => live?.music.setAct(act)),
+      bus.on('time:phase', ({ phase: p }) => {
+        if (p !== 'aube' || ctx.state.mode !== 'inside' || sleeping) return
+        live?.music.stinger('aube')
+        if (ctx.state.hero.district === 'ecluse') play('forecast', around(6, false), 0.6, 2)
+      }),
       bus.on('interact', ({ kind }) => {
         const k = kind as string
         const map: Record<string, string> = {
@@ -327,7 +377,9 @@ export function createAudioSystem(): System {
       }),
       loose.on('gite:changed', (p) => {
         const mag = Math.abs(num(p, 'roll')) + Math.abs(num(p, 'pitch'))
-        if (groanCooldown > 4) return
+        gite = clamp01(mag / 0.07)
+        if (groanCooldown > 0 || Math.abs(mag - groanGite) < 0.015) return
+        groanGite = mag
         groanCooldown = 10
         sfx('groan', undefined, clamp01(0.4 + mag * 8))
         play('creak', around(8, false), 0.8, 1.2)
@@ -352,9 +404,11 @@ export function createAudioSystem(): System {
           sfx('bird', { x: position.x, y: Math.min(position.y + 20, CEILING_Y), z: position.z })
           sfx('chose-pass', position, 0.8)
           choseLeft = 40
+          hushLeft = 25
         } else if (p === 'grab') {
           sfx('splash', position, 0.6)
           choseLeft = Math.max(choseLeft, 20)
+          ooh(0.9, 0.4)
         } else {
           sfx('wings', position)
           choseLeft = Math.max(choseLeft, 15)
@@ -363,7 +417,11 @@ export function createAudioSystem(): System {
       bus.on('whale:pass', ({ position }) => {
         sfx('whale', position, 1)
         window.setTimeout(() => sfx('whale', position, 0.7), 6000 + rnd() * 4000)
-        if (ctx.state.mode === 'inside') window.setTimeout(() => play('hull-tick', around(6, false), 0.6), 2500)
+        if (ctx.state.mode === 'inside') {
+          window.setTimeout(() => play('hull-tick', around(6, false), 0.6), 2500)
+          hushLeft = Math.max(hushLeft, 10)
+          ooh(0.7, 3)
+        }
       }),
       bus.on('ceiling:ripple', ({ x, z, strength }) => sfx('ring', { x, y: CEILING_Y, z }, strength)),
     )
@@ -393,6 +451,16 @@ export function createAudioSystem(): System {
       ? clamp01(1 - (env.glassDist - 1) / 12)
       : GLASS_CELLS[cell ?? ''] ?? 0.1
     const localY = s.hero.localPosition?.y ?? 0
+    air += ((env?.airHaze ?? 0) - air) * Math.min(1, dt * 0.8)
+    if (env && env.airHaze >= 0.6 && env.cell && env.cell !== vistaCell && s.mode === 'inside') {
+      const last = vistaAt.get(env.cell) ?? -1e9
+      if (ctx.clock.elapsed - last > 480 && !override) {
+        vistaAt.set(env.cell, ctx.clock.elapsed)
+        override = 'vista'
+        overrideLeft = OVERRIDE_TTL.vista ?? 45
+      }
+    }
+    vistaCell = env && env.airHaze >= 0.6 ? env.cell : null
     windowCheck -= dt
     if (windowCheck <= 0) {
       windowCheck = 0.5
@@ -410,6 +478,10 @@ export function createAudioSystem(): System {
       rain: s.env.rain,
       windowNear,
       taut: tautLeft > 0,
+      gite,
+      hush: clamp01(hushLeft / 8),
+      air,
+      sleeping,
     }
   }
 
@@ -419,6 +491,7 @@ export function createAudioSystem(): System {
       game = ctx
       rnd = ctx.rng('audio')
       phase = phaseAt(ctx.state.time.hours)
+      sleeping = ctx.state.hero.mode === 'sleep'
       ctx.services.audio = service
       wire(ctx)
       window.addEventListener('pointerdown', onGesture, true)
@@ -429,6 +502,7 @@ export function createAudioSystem(): System {
       groanCooldown -= dt
       waterCooldown -= dt
       tautLeft -= dt
+      if (hushLeft > 0) hushLeft -= dt
       if (overrideLeft > 0) {
         overrideLeft -= dt
         if (overrideLeft <= 0) override = null
@@ -455,13 +529,27 @@ export function createAudioSystem(): System {
       }
       lastHeading = heading
 
+      const hm = s.hero.mode as string
+      const low = s.hero.breathMax > 0 ? s.hero.breath / s.hero.breathMax : 1
+      const indoorsAir = s.mode === 'inside' && !wet
+      pantIn -= dt
+      if (indoorsAir && (hm === 'exhausted' || s.hero.exhausted) && pantIn <= 0) {
+        pantIn = 1.9 + rnd() * 0.4
+        sfx('pant', undefined, 0.7)
+      }
+      heartIn -= dt
+      if (low < 0.3 && (hm === 'climb' || hm === 'run' || hm === 'exhausted' || hm === 'swim') && heartIn <= 0) {
+        heartIn = 0.55 + low
+        play('heartbeat', rig.sfx, 0.4 + (0.3 - low) * 2)
+      }
+
       const l = listening(ctx, dt)
       amb.update(dt, l)
       music.setFlavor(amb.profile.flavor)
       energy += ((ENERGY[s.hero.mode] ?? 0) - energy) * Math.min(1, dt * 0.5)
       music.setEnergy(energy)
       music.setMuffled(wet)
-      const wanted = override ?? autoCue(ctx)
+      const wanted = sleeping ? 'silence' : override ?? autoCue(ctx)
       if (wanted !== music.cue) music.setCue(wanted)
       music.update()
     },

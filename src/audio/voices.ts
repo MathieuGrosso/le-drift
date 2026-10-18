@@ -263,3 +263,47 @@ export function flute(rig: Rig, dest: AudioNode, t: number, midi: number, vel: n
   ag.connect(amp)
   out(rig, amp, dest, send)
 }
+
+export interface Voice { pitch: number; child: boolean; vel: number; pace: number }
+
+const VOICES: Record<string, Voice> = {
+  'grand-pere': { pitch: 43, child: false, vel: 0.8, pace: 1.5 },
+  cuistot: { pitch: 46, child: false, vel: 1, pace: 0.9 },
+  ilo: { pitch: 62, child: true, vel: 0.8, pace: 1 },
+}
+
+/** A stable voice per NPC: kids high and quick, elders low and slow. */
+export function voiceOf(npcId: string): Voice {
+  const known = VOICES[npcId]
+  if (known) return known
+  let h = 0
+  for (let i = 0; i < npcId.length; i++) h = (h * 31 + npcId.charCodeAt(i)) >>> 0
+  const child = /enfant|gamin|petit|kid|mousse/.test(npcId)
+  const vieux = /vieil|vieux|grand|ancien|doyen/.test(npcId)
+  const pitch = child ? 66 + (h % 6) : vieux ? 44 + (h % 4) : 50 + (h % 12)
+  return { pitch, child, vel: 0.85, pace: child ? 0.75 : vieux ? 1.4 : 1 }
+}
+
+/** Gibberish speech, a few syllables with a melodic contour, the greeting of a talking NPC. */
+export function babble(
+  rig: Rig, dest: AudioNode, t: number, vel: number, pitch: number, child: boolean, syllables: number, pace = 1,
+): number {
+  const vowels: Vowel[] = ['a', 'o', 'e', 'i', 'u', 'an']
+  const rises = Math.random() < 0.3
+  let at = t
+  for (let i = 0; i < syllables; i++) {
+    const k = i / Math.max(1, syllables - 1)
+    const contour = rises ? -1 + k * 4 : 1.5 - k * 3.5
+    const d = (0.07 + Math.random() * 0.07) * pace
+    const m = pitch + contour + (Math.random() * 2 - 1)
+    const v = vowels[Math.floor(Math.random() * vowels.length)]!
+    sing(rig, dest, at, m, v, 0.32 * vel * (i === 0 ? 1.15 : 0.85 + Math.random() * 0.3), d, child, 0.25)
+    const click = filter(rig, 'bandpass', child ? 3400 : 2400, 3)
+    const g = perc(rig, at, 0.035 * vel, 0.025, 0.001)
+    noise(rig, 'white', at, 0.03).connect(click)
+    click.connect(g)
+    g.connect(dest)
+    at += d + (0.03 + Math.random() * 0.05) * pace
+  }
+  return at - t
+}

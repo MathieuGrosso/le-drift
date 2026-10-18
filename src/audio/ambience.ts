@@ -19,6 +19,13 @@ export interface Listening {
   /** Sortie only: 0..1 how close Ilo floats to a window with people behind it. */
   windowNear: number
   taut: boolean
+  /** 0..1 how hard the current is tilting the ship: the hull talks more. */
+  gite: number
+  /** 0..1 the crowd falls quiet, everyone is looking at a window. */
+  hush: number
+  /** 0..1 how big and open the space around the camera is. */
+  air: number
+  sleeping: boolean
 }
 
 export interface AmbienceHooks {
@@ -248,8 +255,9 @@ export function createAmbience(rig: Rig, hooks: AmbienceHooks, rnd: () => number
       const outside = s.mode === 'sortie' || s.water
       const deep = s.deckDepth
 
-      ease(rig.roomSend.gain, outside ? 0.2 : profile.room, 1)
-      ease(rig.hallSend.gain, outside ? 0.9 : profile.hall, 1)
+      ease(rig.roomSend.gain, outside ? 0.2 : profile.room * (1 - 0.6 * s.air), 1)
+      ease(rig.hallSend.gain, outside ? 0.9 : Math.max(profile.hall, s.air), 1)
+      ease(rig.amb.gain, s.sleeping ? 0.3 : 0.85, s.sleeping ? 3 : 1.5)
       ease(rig.glassTone.frequency, outside ? 1600 : 280 + 1100 * s.seaNear, 0.6)
       ease(rig.glass.gain, outside ? 0.5 : 0.18 + 0.65 * s.seaNear, 0.6)
 
@@ -263,7 +271,7 @@ export function createAmbience(rig: Rig, hooks: AmbienceHooks, rnd: () => number
       ease(rainGlass.gain, outside ? 0 : 0.18 * s.rain * (0.25 + s.seaNear), 1.5)
       ease(rainOut.gain, outside ? 0.06 * s.rain : 0, 1.5)
 
-      crowdLevel = outside ? 0 : profile.crowd * crowdAt(s.hours, s.cell, profile.flavor)
+      crowdLevel = outside ? 0 : profile.crowd * crowdAt(s.hours, s.cell, profile.flavor) * (1 - 0.85 * s.hush)
       wobbleIn -= dt
       if (wobbleIn <= 0) {
         wobbleIn = 0.15 + rnd() * 0.3
@@ -279,7 +287,8 @@ export function createAmbience(rig: Rig, hooks: AmbienceHooks, rnd: () => number
           if (left === undefined) left = between(e.every) * (0.3 + rnd() * 0.7)
           left -= dt
           if (left <= 0) {
-            left = between(e.every) / (e.crowd ? Math.max(0.15, crowdLevel) : 1)
+            const hull = e.id === 'creak' || e.id === 'hull-tick' || e.id === 'groan' ? 1 + 3 * s.gite : 1
+            left = between(e.every) / (e.crowd ? Math.max(0.15, crowdLevel) : hull)
             if (!e.crowd || rnd() < Math.min(1, crowdLevel * 1.3)) {
               fire(e.id, e.amount ? between(e.amount) : 0.6, e.spread ?? 10, e.glass ?? false)
             }
