@@ -6,8 +6,10 @@ import { PALETTE } from './palette'
 
 export const MAX_LAMPS = 8
 export const MAX_RIPPLES = 16
+export const MAX_GLASS = 6
+export const MAX_WIPES = 8
 
-export type PublicUniforms = RenderService['uniforms']
+export type PublicUniforms = RenderService['uniforms'] & { uGravity: { value: THREE.Vector3 } }
 
 export interface InternalUniforms {
   rdAbysse: { value: THREE.Color }
@@ -32,6 +34,15 @@ export interface InternalUniforms {
   rdCreme: { value: THREE.Color }
   rdBoisOmbre: { value: THREE.Color }
   rdVitreMer: { value: THREE.Color }
+  rdVitreLumiere: { value: THREE.Color }
+  rdRevetement: { value: THREE.Color }
+  rdGlassA: { value: THREE.Vector4[] }
+  rdGlassB: { value: THREE.Vector4[] }
+  rdGlassC: { value: THREE.Vector4[] }
+  rdHours: { value: number }
+  rdCondensation: { value: number }
+  rdWipes: { value: THREE.Vector4[] }
+  rdLampFill: { value: THREE.Color }
 }
 
 export function createPublicUniforms(): PublicUniforms {
@@ -48,6 +59,7 @@ export function createPublicUniforms(): PublicUniforms {
     uLampColors: { value: Array.from({ length: MAX_LAMPS }, () => new THREE.Color(PALETTE.soleilAube)) },
     uAirHaze: { value: 0 },
     uGlassDist: { value: 4 },
+    uGravity: { value: new THREE.Vector3(0, -9.81, 0) },
   }
 }
 
@@ -75,6 +87,15 @@ export function createInternalUniforms(): InternalUniforms {
     rdCreme: { value: new THREE.Color(PALETTE.creme) },
     rdBoisOmbre: { value: new THREE.Color(PALETTE.boisOmbre) },
     rdVitreMer: { value: new THREE.Color(PALETTE.vitreMer) },
+    rdVitreLumiere: { value: new THREE.Color(PALETTE.vitreLumiere) },
+    rdRevetement: { value: new THREE.Color(PALETTE.revetement) },
+    rdGlassA: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4()) },
+    rdGlassB: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4(0, 0, 1, 0)) },
+    rdGlassC: { value: Array.from({ length: MAX_GLASS }, () => new THREE.Vector4()) },
+    rdHours: { value: 0 },
+    rdCondensation: { value: 0 },
+    rdWipes: { value: Array.from({ length: MAX_WIPES }, () => new THREE.Vector4(0, -1e4, 0, -100)) },
+    rdLampFill: { value: new THREE.Color(0, 0, 0) },
   }
 }
 
@@ -96,6 +117,7 @@ export function shaderUniforms(pub: PublicUniforms, int: InternalUniforms): AllU
     rdLampColors: pub.uLampColors,
     rdAirHaze: pub.uAirHaze,
     rdGlassDist: pub.uGlassDist,
+    rdGravity: pub.uGravity,
     ...int,
   }
 }

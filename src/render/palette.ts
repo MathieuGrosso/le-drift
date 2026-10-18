@@ -18,4 +18,7 @@ export const PALETTE = {
   airBrume: 0xe9dcc2,
   boisOmbre: 0x5e4a5c,
   vitreMer: 0x9fd6d0,
+  vitreLumiere: 0xffd9a0,
+  revetement: 0x6f8f4e,
+  lampe: 0xffc27a,
 } as const

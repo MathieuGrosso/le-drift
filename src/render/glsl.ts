@@ -1,4 +1,4 @@
-import { MAX_LAMPS, MAX_RIPPLES } from './uniforms'
+import { MAX_GLASS, MAX_LAMPS, MAX_RIPPLES, MAX_WIPES } from './uniforms'
 
 export const GLSL_UNIFORMS = /* glsl */ `
 uniform float rdTime;
@@ -35,6 +35,16 @@ uniform mat4 rdShadowMatrix;
 uniform float rdShadowOn;
 uniform float rdShadowTexel;
 uniform vec4 rdRipples[${MAX_RIPPLES}];
+uniform vec3 rdGravity;
+uniform vec3 rdVitreLumiere;
+uniform vec3 rdRevetement;
+uniform vec4 rdGlassA[${MAX_GLASS}];
+uniform vec4 rdGlassB[${MAX_GLASS}];
+uniform vec4 rdGlassC[${MAX_GLASS}];
+uniform float rdHours;
+uniform float rdCondensation;
+uniform vec4 rdWipes[${MAX_WIPES}];
+uniform vec3 rdLampFill;
 `
 
 export const GLSL_NOISE = /* glsl */ `
@@ -95,6 +105,10 @@ float rd_hazeAmount(float d) {
 float rd_airAmount(float d) {
   return (1.0 - exp(-d / 140.0)) * 0.45 * rdAirHaze * rdIndoor;
 }
+vec3 rd_airColor() {
+  float near = step(0.001, rdLamps[0].w);
+  return mix(rdAirBrume, rdAirBrume * mix(vec3(1.0), rdLampColors[0] / max(max(rdLampColors[0].r, rdLampColors[0].g), 1e-3), 0.2), near);
+}
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;
   float d = length(dv);
@@ -105,7 +119,7 @@ vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   col = mix(col, rd_hazeColor(v, wp.y), hz);
   float ah = rd_airAmount(dAir);
   hz = max(hz, ah);
-  return mix(col, rdAirBrume, ah);
+  return mix(col, rd_airColor(), ah);
 }
 vec3 rd_applyIndoorHaze(vec3 col, vec3 wp, out float hz) {
   vec3 dv = wp - cameraPosition;
@@ -114,7 +128,7 @@ vec3 rd_applyIndoorHaze(vec3 col, vec3 wp, out float hz) {
   col = mix(col, rd_hazeColor(dv / max(d, 1e-4), wp.y), sea);
   float ah = rd_airAmount(d);
   hz = max(sea, ah);
-  return mix(col, rdAirBrume, ah);
+  return mix(col, rd_airColor(), ah);
 }
 float rd_caustics(vec3 wp) {
   vec3 L = rdSunDir;
@@ -152,5 +166,88 @@ float rd_shadow(vec3 wp, float ndl) {
 }
 `
 
+// Glass slots: A = centre.xyz + half width, B = inward normal.xyz + half height, C = (clean, round, strength, -).
+export const GLSL_GLASS = /* glsl */ `
+vec3 rd_glassT(vec3 n) {
+  vec3 t = cross(vec3(0.0, 1.0, 0.0), n);
+  if (dot(t, t) < 1e-4) t = vec3(1.0, 0.0, 0.0);
+  return normalize(t);
+}
+float rd_glassMask(vec2 uv, vec4 A, vec4 B, vec4 C, float soft) {
+  vec2 h = max(vec2(A.w, B.w), vec2(1e-3));
+  if (C.y > 0.5) return 1.0 - smoothstep(-soft, soft, length(uv) - h.x);
+  vec2 q = abs(uv) - h;
+  return 1.0 - smoothstep(-soft, soft, max(q.x, q.y));
+}
+// Underwater light arrives from above (Snell's window): every pane throws its beam down and inward.
+vec3 rd_beamDir(vec3 nIn) {
+  vec2 s = rdSunDir.xz;
+  return normalize(vec3(0.0, 1.0, 0.0) - nIn * 0.8 + vec3(s.x, 0.0, s.y) * 0.3);
+}
+vec3 rd_beamColor() {
+  vec3 day = mix(rdVitreMer, rdSunColor, 0.4) * rdSunI * rdDay;
+  vec3 night = rdVitreMer * 0.05 + vec3(0.25, 0.4, 0.12) * rdPlankton * 0.5;
+  return day + night * (1.0 - rdDay);
+}
+float rd_beamAt(vec3 P, int i, out float along) {
+  along = 0.0;
+  vec4 A = rdGlassA[i];
+  vec4 B = rdGlassB[i];
+  vec4 C = rdGlassC[i];
+  if (C.z <= 0.0) return 0.0;
+  vec3 rel = P - A.xyz;
+  float front = dot(rel, B.xyz);
+  if (front < 0.0) return 0.0;
+  vec3 Lb = rd_beamDir(B.xyz);
+  float t = -front / min(dot(Lb, B.xyz), -0.05);
+  along = t;
+  vec3 hit = rel + Lb * t;
+  vec3 T = rd_glassT(B.xyz);
+  vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
+  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * C.x * C.z * exp(-t * 0.09) * smoothstep(0.0, 0.25, front);
+}
+vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
+  vec3 fill = vec3(0.0);
+  patchLight = vec3(0.0);
+  vec3 beam = rd_beamColor();
+  for (int i = 0; i < ${MAX_GLASS}; i++) {
+    vec4 A = rdGlassA[i];
+    vec4 B = rdGlassB[i];
+    vec4 C = rdGlassC[i];
+    if (C.z <= 0.0) continue;
+    vec3 rel = W - A.xyz;
+    float front = dot(rel, B.xyz);
+    if (front < -0.02) continue;
+    float area = 4.0 * A.w * B.w;
+    float d2 = dot(rel, rel) + 0.05;
+    vec3 L = -rel * inversesqrt(d2);
+    float ndl = clamp(dot(N, L) * 0.65 + 0.35, 0.0, 1.0);
+    float facing = clamp(front * inversesqrt(d2) + 0.15, 0.0, 1.0);
+    fill += rdVitreMer * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
+
+    vec3 Lb = rd_beamDir(B.xyz);
+    float denom = min(dot(Lb, B.xyz), -0.05);
+    float t = -front / denom;
+    if (t <= 0.0 || t > 16.0) continue;
+    vec3 hit = rel + Lb * t;
+    vec3 T = rd_glassT(B.xyz);
+    vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
+    float m = rd_glassMask(uv, A, B, C, 0.03 + t * 0.025);
+    if (m <= 0.0) continue;
+    float lit = m * smoothstep(-0.05, 0.3, dot(N, Lb)) * exp(-t * 0.06) * C.x * C.z;
+    vec2 cu = uv * 2.4 + vec2(rdTime * 0.07, -rdTime * 0.05) + float(i) * 3.7;
+    float aa = 1.0 - smoothstep(0.03, 0.12, foot * 2.4);
+    float pattern = 0.8;
+    if (aa > 0.0) {
+      float e1 = 1.0 - smoothstep(0.0, 0.11, rd_cellEdge(cu, rdTime * 0.9));
+      float e2 = 1.0 - smoothstep(0.0, 0.16, rd_cellEdge(cu * 1.37 + 4.1, rdTime * 0.7 + 1.3));
+      pattern = mix(0.8, 0.45 + 0.75 * e1 + 0.45 * e2 + e1 * e2 * 0.8, aa);
+    }
+    patchLight += beam * lit * pattern;
+  }
+  return fill;
+}
+`
+
 export const GLSL_VERTEX = GLSL_UNIFORMS + GLSL_NOISE
-export const GLSL_COMMON = GLSL_UNIFORMS + GLSL_NOISE + GLSL_WATER
+export const GLSL_COMMON = GLSL_UNIFORMS + GLSL_NOISE + GLSL_WATER + GLSL_GLASS

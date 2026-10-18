@@ -22,24 +22,37 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   vec3 shadowTint = mix(vec3(1.0), shadowHue, 0.62);
   vec3 sun = rdSunColor * rdSunI;
 #ifdef CEL_INDOOR
-  // Hemisphere: cream from above, plum-brown from below; the sea only adds a cool rim of glass light.
-  vec3 amb = mix(rdBoisOmbre * 0.25, rdCreme * 0.35, smoothstep(0.15, 0.85, up));
-  vec3 sea = rdVitreMer * 0.12 * rdDay;
-  vec3 col = albedo * (mix(shadowTint * amb, amb, 0.5 + 0.5 * smoothstep(-0.2, 0.3, N.y)) + sea);
+  vec3 plum = mix(vec3(1.0), rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3)), 0.45);
+  vec3 skyB = rdCreme * 0.62;
+  vec3 floorB = rdBoisOmbre * 0.42 + rdCreme * 0.12;
+  vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(plum, vec3(1.0), smoothstep(-0.3, 0.6, N.y));
+  amb += mix(vec3(dot(rdLampFill, vec3(0.33))), rdLampFill, 0.5) * 0.22;
+  vec3 key = vec3(0.0);
   for (int i = 0; i < ${MAX_LAMPS}; i++) {
     vec4 lp = rdLamps[i];
     if (lp.w <= 0.0) continue;
     vec3 tl = lp.xyz - W;
     float d = length(tl);
-    float a = 1.0 - clamp(d / lp.w, 0.0, 1.0);
-    a = smoothstep(0.08, 0.16, a) * 0.55 + smoothstep(0.45, 0.53, a) * 0.45;
+    float x = clamp(d / lp.w, 0.0, 1.0);
+    float att = (1.0 - x * x);
+    att *= att;
+    float near = att / (1.0 + d * d * 0.06);
+    float stepA = smoothstep(0.02, 0.22, near) * 0.5 + smoothstep(0.3, 0.62, near) * 0.32 + near * 0.35;
     float nl = dot(N, tl / max(d, 1e-4));
-    float band = mix(0.45, 1.0, smoothstep(0.0, 0.08, nl));
-    vec3 lampTint = mix(shadowTint, vec3(1.0), band);
-    col += albedo * mix(vec3(1.0), rdLampColors[i], 0.3) * lampTint * 1.05 * a * band;
+    float wrap = smoothstep(-0.25, 0.25, nl);
+    vec3 tone = mix(plum * 0.55, vec3(1.0), wrap);
+    vec3 lc = mix(vec3(1.0), rdLampColors[i], 0.2);
+    key += lc * tone * stepA;
   }
-  float rimI = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * rdCelRim * 0.5;
-  col += rdInterieur * rimI;
+  key = (1.0 - exp(-key * 1.15)) * 1.1;
+  amb *= 1.0 - 0.22 * rdAirHaze;
+  vec3 canopy = mix(rdVitreMer, rdCreme, 0.55) * rdAirHaze * (0.3 + 0.7 * rdDay);
+  canopy *= smoothstep(-0.15, 0.35, N.y) * 0.42 + smoothstep(0.55, 0.8, N.y) * 0.18;
+  vec3 patchL;
+  vec3 sea = rd_glassLight(W, N, length(fwidth(W)), patchL);
+  vec3 col = albedo * (amb + key + canopy + sea * 0.9 + patchL * 1.25);
+  float rimI = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * rdCelRim;
+  col += (rdCreme * 0.06 + sea * 0.35) * rimI;
   float hz;
   col = rd_applyIndoorHaze(col, W, hz);
   return col + rdCelEmissive * 1.6 * (1.0 - 0.6 * hz);

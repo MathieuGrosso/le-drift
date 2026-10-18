@@ -159,13 +159,15 @@ void main() {
 #ifdef RADIAL
   col += texture2D(tRadial, vUv).rgb * 0.9 * (1.0 - uIndoor);
 #endif
-  col += texture2D(tBloom, vUv).rgb * 0.55;
+  col += texture2D(tBloom, vUv).rgb * mix(0.55, 0.7, uIndoor);
 
   float l = luma(col);
-  col = mix(col, col * uShadowTone * 1.6, (1.0 - smoothstep(0.0, 0.35, l)) * 0.22);
-  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.08, uIndoor));
+  vec3 shadowTone = mix(uShadowTone, uInterieur, uIndoor);
+  col = mix(col, col * shadowTone * 1.6, (1.0 - smoothstep(0.0, 0.35, l)) * mix(0.22, 0.16, uIndoor));
+  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.06, uIndoor));
+  col += uInterieur * 0.035 * uIndoor * (1.0 - smoothstep(0.0, 0.25, l));
   l = luma(col);
-  col = mix(vec3(l), col, 1.06 - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
+  col = mix(vec3(l), col, 1.06 + 0.05 * uIndoor - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
   float m = max(col.r, max(col.g, col.b));
   if (m > 0.82) col *= (0.82 + 0.18 * (1.0 - exp(-(m - 0.82) / 0.18))) / m;
 
@@ -308,7 +310,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
         const t = bloom[i]!.rt
         downMat.uniforms.tSrc!.value = src
         downMat.uniforms.uTexel!.value.set(1 / srcW, 1 / srcH)
-        downMat.uniforms.uThreshold!.value = i === 0 ? 1.25 : 0
+        downMat.uniforms.uThreshold!.value = i === 0 ? 1.25 - 0.3 * pub.uIndoor.value : 0
         pass(renderer, downMat, t, true)
         src = t.texture
         srcW = t.width

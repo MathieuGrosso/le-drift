@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { QualityLevel } from '../core/types'
-import { GLSL_COMMON, GLSL_VERTEX } from './glsl'
-import type { AllUniforms } from './uniforms'
+import { GLSL_COMMON, GLSL_GLASS, GLSL_VERTEX } from './glsl'
+import { MAX_GLASS, MAX_LAMPS, type AllUniforms } from './uniforms'
 
 const TILE = 420
 const SHAFTS: Record<QualityLevel, number> = { high: 140, medium: 100, low: 55 }
@@ -61,8 +61,10 @@ varying float vSeed;
 varying float vY;
 uniform float uStrength;
 void main() {
+  if (rdIndoor > 0.5 && vViewZ < rdGlassDist + 0.4) discard;
   float sceneZ = rd_sceneViewZ();
   if (vViewZ > sceneZ) discard;
+  if (rdIndoor > 0.01 && sceneZ < rdGlassDist + 6.0) discard;
   float soft = smoothstep(0.0, 8.0, sceneZ - vViewZ) * smoothstep(2.0, 14.0, vViewZ);
   float across = 1.0 - abs(vQ.x) * 2.0;
   across = across * across * (3.0 - 2.0 * across);
@@ -83,30 +85,108 @@ uniform float uBox;
 uniform float uPx;
 varying float vA;
 varying float vViewZ;
+varying vec3 vCol;
 void main() {
-  vec3 drift = rdCurrent * rdTime * 0.6 + vec3(sin(rdTime * 0.2 + aMote.w * 20.0), sin(rdTime * 0.13 + aMote.w * 9.0) * 0.6, cos(rdTime * 0.17 + aMote.w * 13.0));
-  vec3 p = aMote.xyz + drift;
-  vec3 rel = mod(p - cameraPosition + uBox * 0.5, uBox) - uBox * 0.5;
+  float slow = mix(1.0, 0.18, rdIndoor);
+  vec3 drift = rdCurrent * rdTime * 0.6 * (1.0 - rdIndoor) + vec3(sin(rdTime * 0.2 * slow + aMote.w * 20.0), sin(rdTime * 0.13 * slow + aMote.w * 9.0) * 0.6, cos(rdTime * 0.17 * slow + aMote.w * 13.0));
+  float box = mix(uBox, uBox * 0.35, rdIndoor);
+  vec3 p = aMote.xyz * (box / uBox) + drift * mix(1.0, 0.5, rdIndoor);
+  vec3 rel = mod(p - cameraPosition + box * 0.5, box) - box * 0.5;
   vec3 wp = cameraPosition + rel;
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   gl_Position = projectionMatrix * mv;
   float dist = length(rel);
   vViewZ = -mv.z;
-  vA = smoothstep(0.6, 2.5, dist) * (1.0 - smoothstep(uBox * 0.3, uBox * 0.5, dist));
-  gl_PointSize = clamp(uPx * (0.03 + aMote.w * 0.05) / max(vViewZ, 0.1), 1.0, 9.0);
+  vA = smoothstep(0.4, 1.6, dist) * (1.0 - smoothstep(box * 0.3, box * 0.5, dist));
+  vec3 outC = mix(rdPlafond * 0.55, rdSunColor * rdSunI, 0.35) * (0.35 + 0.65 * rdDay) + rdPlankton * vec3(0.25, 0.45, 0.15);
+  vec3 inC = vec3(0.0);
+  if (rdIndoor > 0.01) {
+    for (int i = 0; i < ${MAX_LAMPS}; i++) {
+      vec4 lp = rdLamps[i];
+      if (lp.w <= 0.0) continue;
+      float x = clamp(length(lp.xyz - wp) / (lp.w * 0.6), 0.0, 1.0);
+      inC += rdLampColors[i] * (1.0 - x) * (1.0 - x) * 1.6;
+    }
+    float along;
+    for (int i = 0; i < ${MAX_GLASS}; i++) inC += rd_beamColor() * rd_beamAt(wp, i, along) * 3.0;
+  }
+  vCol = mix(outC, inC, rdIndoor);
+  if (rdIndoor > 0.5 && vViewZ > rdGlassDist + 0.5) vCol = outC * 0.5;
+  gl_PointSize = clamp(uPx * (0.03 + aMote.w * 0.05) * mix(1.0, 0.45, rdIndoor) / max(vViewZ, 0.1), 1.0, 9.0);
 }
 `
 
 const MOTE_FS = /* glsl */ `
 varying float vA;
 varying float vViewZ;
+varying vec3 vCol;
 void main() {
-  if (vViewZ > rd_sceneViewZ()) discard;
+  float sz = rd_sceneViewZ();
+  if (vViewZ > sz) discard;
+  if (rdIndoor > 0.5 && vViewZ > rdGlassDist + 0.5 && sz < rdGlassDist + 6.0) discard;
   vec2 q = gl_PointCoord - 0.5;
   float r = 1.0 - smoothstep(0.15, 0.5, length(q));
-  vec3 col = mix(rdPlafond * 0.55, rdSunColor * rdSunI, 0.35) * (0.35 + 0.65 * rdDay);
-  col += rdPlankton * vec3(0.25, 0.45, 0.15);
-  gl_FragColor = vec4(col * r * vA * 0.32, 1.0);
+  float tw = mix(1.0, 0.6 + 0.4 * sin(rdTime * 2.0 + gl_FragCoord.x * 0.37), rdIndoor);
+  gl_FragColor = vec4(vCol * r * vA * 0.32 * tw, 1.0);
+}
+`
+
+const VOL_VS = /* glsl */ `
+uniform mat4 uInvProj;
+uniform mat4 uCamWorld;
+varying vec3 vRay;
+void main() {
+  vec4 v = uInvProj * vec4(position.xy, 1.0, 1.0);
+  vRay = (uCamWorld * vec4(v.xyz / v.w, 0.0)).xyz;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`
+
+const VOL_FS = /* glsl */ `
+uniform vec3 uCamFwd;
+uniform float uBeams;
+uniform float uHalos;
+varying vec3 vRay;
+void main() {
+  vec3 rd = normalize(vRay);
+  float viewZ = rd_sceneViewZ();
+  float dist = min(viewZ / max(dot(rd, uCamFwd), 0.05), 60.0);
+  float glassCut = rdGlassDist + 0.3;
+  vec3 col = vec3(0.0);
+  if (uBeams > 0.5) {
+    float span = min(dist, max(glassCut, 2.0) + 18.0);
+    const int STEPS = 28;
+    float jit = 0.5 + 0.25 * (fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)) * 52.9829189) - 0.5);
+    float stepL = span / float(STEPS);
+    float acc = 0.0;
+    for (int s = 0; s < STEPS; s++) {
+      float t = (float(s) + jit) * stepL;
+      vec3 P = cameraPosition + rd * t;
+      float along;
+      float b = 0.0;
+      for (int i = 0; i < ${MAX_GLASS}; i++) b += rd_beamAt(P, i, along);
+      if (b > 0.0) {
+        float dust = 0.6 + 0.4 * rd_noise(P.xz * 1.7 + P.y * 0.9 + vec2(rdTime * 0.05, rdTime * 0.03));
+        acc += b * dust * stepL * smoothstep(0.2, 1.2, t);
+      }
+    }
+    col += rd_beamColor() * acc * 0.085;
+  }
+  if (uHalos > 0.5) {
+    for (int i = 0; i < ${MAX_LAMPS}; i++) {
+      vec4 lp = rdLamps[i];
+      if (lp.w <= 0.0) continue;
+      vec3 rel = lp.xyz - cameraPosition;
+      float s = clamp(dot(rel, rd), 0.0, dist);
+      float behind = step(dot(rel, rd) - 0.4, dist);
+      vec3 q = rel - rd * s;
+      float d2 = dot(q, q);
+      float far = 1.0 / (1.0 + dot(rel, rel) * 0.004);
+      float h = exp(-d2 * 18.0) * 0.5 * behind + exp(-d2 * 1.4) * 0.05 + exp(-d2 * 0.2) * 0.008;
+      col += mix(vec3(1.0), rdLampColors[i], 0.75) * h * far;
+    }
+  }
+  gl_FragColor = vec4(col * rdIndoor, 1.0);
 }
 `
 
@@ -115,6 +195,7 @@ export interface Shafts {
   setQuality(level: QualityLevel): void
   bindDepth(depth: THREE.Texture, w: number, h: number, near: number, far: number): void
   setStrength(s: number): void
+  setCamera(camera: THREE.PerspectiveCamera, beams: boolean, halos: boolean): void
   dispose(): void
 }
 
@@ -175,13 +256,36 @@ export function createShafts(shared: AllUniforms, rng: () => number, level: Qual
   const pxUniform = { value: 600 }
   const moteMat = new THREE.ShaderMaterial({
     uniforms: { ...shared, ...depthUniforms, uBox: { value: MOTE_BOX }, uPx: pxUniform },
-    vertexShader: GLSL_VERTEX + MOTE_VS,
+    vertexShader: GLSL_VERTEX + GLSL_GLASS + MOTE_VS,
     fragmentShader: GLSL_COMMON + DEPTH_GLSL + MOTE_FS,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthTest: false,
     depthWrite: false,
   })
+  const volUniforms = {
+    uInvProj: { value: new THREE.Matrix4() },
+    uCamWorld: { value: new THREE.Matrix4() },
+    uCamFwd: { value: new THREE.Vector3(0, 0, -1) },
+    uBeams: { value: 0 },
+    uHalos: { value: 0 },
+  }
+  const volMat = new THREE.ShaderMaterial({
+    uniforms: { ...shared, ...depthUniforms, ...volUniforms },
+    vertexShader: VOL_VS,
+    fragmentShader: GLSL_COMMON + DEPTH_GLSL + VOL_FS,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthTest: false,
+    depthWrite: false,
+  })
+  const volGeo = new THREE.BufferGeometry()
+  volGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3))
+  const vol = new THREE.Mesh(volGeo, volMat)
+  vol.frustumCulled = false
+  vol.renderOrder = 10
+  vol.visible = false
+  scene.add(vol)
   let shaftMesh: THREE.Mesh | null = null
   let motes: THREE.Points | null = null
 
@@ -215,7 +319,17 @@ export function createShafts(shared: AllUniforms, rng: () => number, level: Qual
     setStrength(s) {
       strength.value = s
     },
+    setCamera(camera, beams, halos) {
+      volUniforms.uInvProj.value.copy(camera.projectionMatrixInverse)
+      volUniforms.uCamWorld.value.copy(camera.matrixWorld)
+      camera.getWorldDirection(volUniforms.uCamFwd.value)
+      volUniforms.uBeams.value = beams ? 1 : 0
+      volUniforms.uHalos.value = halos ? 1 : 0
+      vol.visible = beams || halos
+    },
     dispose() {
+      volGeo.dispose()
+      volMat.dispose()
       shaftMesh?.geometry.dispose()
       motes?.geometry.dispose()
       shaftMat.dispose()

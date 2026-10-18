@@ -1,14 +1,26 @@
 import * as THREE from 'three'
 import { BLOOM_HAZE_MUL, HAZE_BY_VISIBILITY } from '../core/tuning'
-import type { DayPhase, GameContext, RenderService, System } from '../core/types'
+import type { DayPhase, GameContext, RenderService, System, Vec3 } from '../core/types'
 import { createCelFactory, createPatchWater } from './cel'
 import { createEnvironment, FX_LAYER, type Environment } from './environment'
+import { createGlassFactory, type GlassParams } from './glass'
+import { GlassLights, type GlassLight } from './glasslights'
 import { PALETTE } from './palette'
 import { createPost, type Post } from './post'
 import { createShadowPass, type ShadowPass } from './shadow'
 import { createShafts, type Shafts } from './shafts'
 import { computeSun, createSunState, phaseAt } from './sun'
-import { createInternalUniforms, createPublicUniforms, MAX_RIPPLES, shaderUniforms } from './uniforms'
+import { createInternalUniforms, createPublicUniforms, MAX_RIPPLES, MAX_WIPES, shaderUniforms, type PublicUniforms } from './uniforms'
+
+export type { GlassLight, GlassParams }
+
+export interface RenderServiceV2 extends RenderService {
+  readonly uniforms: PublicUniforms
+  glass(params?: GlassParams): THREE.Material
+  setGlassLights(lights: GlassLight[] | null): void
+  wipeGlass(p: Vec3): void
+  seaVisible(): boolean
+}
 
 function hazeForVisibility(v: number): number {
   const keys = Object.keys(HAZE_BY_VISIBILITY).map(Number).sort((a, b) => a - b)
@@ -46,6 +58,9 @@ export function createRenderSystem(): System {
   let phase: DayPhase = 'aube'
   let lastRenderer: THREE.WebGLRenderer | null = null
   let wasLocked = false
+  let wipeIdx = 0
+  const glassLights = new GlassLights(int)
+  let seaVis = true
 
   const addRipple = (x: number, z: number, strength: number) => {
     const r = int.rdRipples.value[rippleIdx]!
@@ -55,9 +70,16 @@ export function createRenderSystem(): System {
 
   const shadowCenter = new THREE.Vector3()
 
-  const service: RenderService = {
+  const service: RenderServiceV2 = {
     cel: createCelFactory(shared),
     patchWater: createPatchWater(shared),
+    glass: createGlassFactory(shared),
+    setGlassLights: (lights) => glassLights.set(lights),
+    wipeGlass(p) {
+      int.rdWipes.value[wipeIdx]!.set(p.x, p.y, p.z, int.rdHours.value)
+      wipeIdx = (wipeIdx + 1) % MAX_WIPES
+    },
+    seaVisible: () => seaVis,
     uniforms: pub,
     addRipple,
     sunPhase: () => phase,
@@ -75,6 +97,8 @@ export function createRenderSystem(): System {
       }
       camera.layers.enable(FX_LAYER)
       env.follow(camera)
+      env.backdrop.visible = seaVis
+      env.ceiling.visible = seaVis
       post.begin(renderer)
 
       const indoor = pub.uIndoor.value
@@ -91,6 +115,8 @@ export function createRenderSystem(): System {
       renderer.render(scene, camera)
 
       const st = post.shaftTarget
+      const inside = pub.uIndoor.value > 0.01
+      shafts.setCamera(camera, inside && glassLights.active > 0, inside)
       shafts.bindDepth(post.sceneTarget.depthTexture!, st.width, st.height, camera.near, camera.far)
       renderer.setRenderTarget(st)
       renderer.setClearColor(0x000000, 1)
@@ -159,6 +185,30 @@ export function createRenderSystem(): System {
     const airHaze = camEnv?.airHaze ?? 0
     pub.uAirHaze.value += (airHaze - pub.uAirHaze.value) * k
     pub.uGlassDist.value = camEnv?.glassDist ?? 4
+
+    int.rdHours.value = (s.time.day - 1) * 24 + s.time.hours
+    const cond = (s.env as { condensation?: number }).condensation
+    int.rdCondensation.value = THREE.MathUtils.clamp(cond ?? 0, 0, 1)
+
+    const fill = int.rdLampFill.value.setRGB(0, 0, 0)
+    const lamps = pub.uLamps.value
+    let wsum = 0
+    for (let i = 0; i < lamps.length; i++) {
+      const l = lamps[i]!
+      if (l.w <= 0) continue
+      const d = Math.hypot(l.x - ctx.camera.position.x, l.y - ctx.camera.position.y, l.z - ctx.camera.position.z)
+      const w = Math.max(0, 1 - d / (l.w * 1.6))
+      fill.r += pub.uLampColors.value[i]!.r * w
+      fill.g += pub.uLampColors.value[i]!.g * w
+      fill.b += pub.uLampColors.value[i]!.b * w
+      wsum += w
+    }
+    if (wsum > 0) fill.multiplyScalar(Math.min(1, wsum * 0.6) / wsum)
+
+    glassLights.update(dt, ctx.scene, ctx.camera, pub.uIndoor.value)
+    const drift = ctx.services.drift as { glassPortalsVisible?: () => number } | undefined
+    const portals = typeof drift?.glassPortalsVisible === 'function' ? drift.glassPortalsVisible() : -1
+    seaVis = portals < 0 || pub.uIndoor.value < 0.99 || portals > 0
 
     if (hemi && dirLight) {
       hemi.color.copy(int.rdPlafond.value)

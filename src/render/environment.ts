@@ -19,6 +19,15 @@ void main() {
   vec3 v = normalize(vDir);
   float y = clamp(cameraPosition.y + v.y * 2500.0, 0.0, rdCeilY);
   vec3 c = rd_hazeColor(v, y);
+  vec2 h = normalize(v.xz + 1e-4);
+  float lean = v.y * 0.35;
+  float s1 = rd_noise(vec2(h.x * 7.0 + h.y * 3.0 + lean + rdTime * 0.012, rdTime * 0.04));
+  float s2 = rd_noise(vec2(h.y * 13.0 - h.x * 5.0 - lean + rdTime * 0.02, 5.0 + rdTime * 0.06));
+  float curtain = smoothstep(0.55, 0.95, s1) * 0.7 + smoothstep(0.6, 0.98, s2) * 0.5;
+  curtain *= smoothstep(-0.35, 0.25, v.y) * (1.0 - smoothstep(0.55, 0.95, v.y));
+  c += mix(rdPlafond, rdSunColor, 0.5) * rdSunI * rdDay * curtain * mix(0.07, 0.13, rdIndoor);
+  float deep = smoothstep(0.0, -0.8, v.y);
+  c = mix(c, rdAbysse * 0.8, deep * 0.35);
   c += rdPlankton * vec3(0.05, 0.07, 0.0);
   gl_FragColor = vec4(c, 1.0);
 }
