@@ -120,8 +120,6 @@ export function buildCamille(mat: THREE.Material): CamilleModel {
     [new THREE.SphereGeometry(0.142, 14, 10, Math.PI, Math.PI, 0, Math.PI * 0.55), LOOK.cheveux, [0, 0.135, 0.008], [0.3, 0, -0.06]],
     [new THREE.CylinderGeometry(0.148, 0.172, 0.27, 18, 1, true, Math.PI + faceOpen, Math.PI * 2 - faceOpen * 2), LOOK.cheveux, [0, 0.04, 0.012]],
     [new THREE.CylinderGeometry(0.152, 0.176, 0.12, 18, 1, true, Math.PI + faceOpen + 0.3, Math.PI * 2 - faceOpen * 2 - 0.6), LOOK.reflets, [0, 0.12, 0.014]],
-    [box(0.03, 0.06, 0.012), LOOK.reflets, [-0.06, 0.22, -0.115], [0.4, 0, 0.5]],
-    [box(0.03, 0.06, 0.012), LOOK.reflets, [0.06, 0.22, -0.115], [0.4, 0, -0.5]],
     [ball(0.03, 8, 6), LOOK.peau, [-0.128, 0.1, 0.0], undefined, [0.5, 1, 0.8]],
     [ball(0.02, 6, 6), LOOK.yeux, [-0.045, 0.12, -0.121], undefined, [1.1, 0.75, 0.6]],
     [ball(0.02, 6, 6), LOOK.yeux, [0.045, 0.12, -0.121], undefined, [1.1, 0.75, 0.6]],
@@ -140,10 +138,13 @@ export function buildCamille(mat: THREE.Material): CamilleModel {
     [box(0.025, 0.1, 0.02), LOOK.cheveux, [-0.02, -0.03, 0.03], [0.3, 0, 0.3]],
     [ring(0.025, 0.007, Math.PI), LOOK.cheveux, [-0.035, -0.08, 0.06], [0, Math.PI / 2, 0]],
   ])
-  add(lockR, [
-    [box(0.026, 0.19, 0.018), LOOK.cheveux, [0.005, -0.1, -0.005], [0.05, 0, 0.08]],
-    [box(0.014, 0.17, 0.016), LOOK.reflets, [0.012, -0.11, -0.012], [0.05, 0, 0.1]],
-  ])
+  const lock: Piece[] = []
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5
+    const r = 0.03 * (1 - t * 0.6)
+    lock.push([ball(r, 8, 6), t > 0.5 ? LOOK.reflets : LOOK.cheveux, [0.012 + Math.sin(t * 2.4) * 0.018, -0.02 - t * 0.17, -0.012 - t * 0.012], [0, 0, 0.15], [1.25, 1.7, 0.55]])
+  }
+  add(lockR, lock)
 
   // Day: long heathered-grey hooded coat, toggles, wide taupe trousers.
   add(chest, [
