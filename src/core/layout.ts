@@ -1,3 +1,4 @@
+import { quarterPoint } from '../drift/interiors/scale'
 import type { DeckId, DistrictId, GameMode, PlaceId, RegionId, RoomId, Vec3 } from './types'
 
 export const SEED = 0x0d21f7
@@ -129,7 +130,7 @@ export interface DistrictDef {
 
 // Lookup order matters where boxes overlap: the first match owns the point (see districtAt).
 export const DISTRICTS: readonly DistrictDef[] = [
-  { id: 'ecluse', nom: "Le Quartier de l'Écluse", x0: -50, x1: 50, z0: 40, z1: 80, y0: -24, y1: 18, hulls: 34, decks: ['cale', 'machines', 'bas', 'principal', 'haut', 'toits'], accent: 0xd9b48f },
+  { id: 'ecluse', nom: "Le Quartier de l'Écluse", x0: -50, x1: 62, z0: 40, z1: 80, y0: -24, y1: 18, hulls: 34, decks: ['cale', 'machines', 'bas', 'principal', 'haut', 'toits'], accent: 0xd9b48f },
   { id: 'proue', nom: 'La Proue', x0: -30, x1: 30, z0: -80, z1: -50, y0: 4, y1: 30, hulls: 26, decks: ['haut', 'toits', 'domes'], accent: 0xefe3c4 },
   { id: 'machines', nom: 'Le Puits des Machines', x0: -40, x1: 40, z0: -60, z1: 40, y0: -24, y1: -10, hulls: 44, decks: ['cale', 'machines'], accent: 0xc46a4a },
   { id: 'nef', nom: 'La Grande Nef', x0: -50, x1: 50, z0: -40, z1: 40, y0: -10, y1: 30, hulls: 40, decks: ['bas', 'principal', 'haut', 'toits'], accent: 0xd9b48f },
@@ -192,18 +193,18 @@ export interface PlaceDef {
 
 // Named teleport targets, Drift-local. `room` null + mode 'inside' = a cell drift builds outside the v1 quarter.
 export const PLACES: Record<PlaceId, PlaceDef> = {
-  cabine: { nom: 'Ta cabine', mode: 'inside', district: 'ecluse', room: 'cabine', local: { x: -7, y: 0, z: 65.4 }, yaw: 0 },
-  coursive: { nom: 'La coursive', mode: 'inside', district: 'ecluse', room: 'coursive-sud', local: { x: -4, y: 0, z: 62 }, yaw: Math.PI / 2 },
-  sas: { nom: "L'écluse", mode: 'inside', district: 'ecluse', room: 'sas', local: { x: 0, y: 0, z: 66.4 }, yaw: Math.PI },
-  refectoire: { nom: 'Le Réfectoire', mode: 'inside', district: 'ecluse', room: 'refectoire', local: { x: 18, y: 0, z: 57.9 }, yaw: Math.PI },
-  'grande-vitre': { nom: 'La Grande Vitre', mode: 'inside', district: 'ecluse', room: 'refectoire', local: { x: 18.6, y: 0, z: 66.6 }, yaw: Math.PI },
-  rebord: { nom: 'Le rebord', mode: 'inside', district: 'ecluse', room: 'rebord', local: { x: 18, y: 0.6, z: 70.2 }, yaw: Math.PI },
-  cuisine: { nom: 'La cuisine', mode: 'inside', district: 'ecluse', room: 'cuisine', local: { x: 13.5, y: 0, z: 54.6 }, yaw: 0 },
-  marche: { nom: 'Le petit marché', mode: 'inside', district: 'ecluse', room: 'marche', local: { x: -31, y: 0, z: 62 }, yaw: -Math.PI / 2 },
-  'salle-des-cartes': { nom: 'La Salle des Cartes', mode: 'inside', district: 'ecluse', room: 'salle-des-cartes', local: { x: 40, y: 0, z: 64.4 }, yaw: 0 },
-  'cabines-voisins': { nom: 'Les cabines voisines', mode: 'inside', district: 'ecluse', room: 'cabines-voisins', local: { x: -6, y: 0, z: 59.6 }, yaw: 0 },
-  'echelle-toit': { nom: "L'échelle du toit", mode: 'inside', district: 'ecluse', room: 'echelle-toit', local: { x: -2.35, y: 3.05, z: 64.6 }, yaw: Math.PI / 2 },
+  cabine: { nom: 'Ta cabine', mode: 'inside', district: 'ecluse', room: 'cabine', local: quarterPoint({ x: -7, y: 0, z: 65.4 }), yaw: 0 },
+  coursive: { nom: 'La coursive', mode: 'inside', district: 'ecluse', room: 'coursive-sud', local: quarterPoint({ x: -4, y: 0, z: 62 }), yaw: Math.PI / 2 },
+  sas: { nom: "L'écluse", mode: 'inside', district: 'ecluse', room: 'sas', local: quarterPoint({ x: 0, y: 0, z: 66.4 }), yaw: Math.PI },
+  refectoire: { nom: 'Le Réfectoire', mode: 'inside', district: 'ecluse', room: 'refectoire', local: quarterPoint({ x: 18, y: 0, z: 57.9 }), yaw: Math.PI },
+  'grande-vitre': { nom: 'La Grande Vitre', mode: 'inside', district: 'ecluse', room: 'refectoire', local: quarterPoint({ x: 18.6, y: 0, z: 66.6 }), yaw: Math.PI },
+  rebord: { nom: 'Le rebord', mode: 'inside', district: 'ecluse', room: 'rebord', local: quarterPoint({ x: 18, y: 0.6, z: 70.2 }), yaw: Math.PI },
+  cuisine: { nom: 'La cuisine', mode: 'inside', district: 'ecluse', room: 'cuisine', local: quarterPoint({ x: 13.5, y: 0, z: 54.6 }), yaw: 0 },
+  marche: { nom: 'Le petit marché', mode: 'inside', district: 'ecluse', room: 'marche', local: quarterPoint({ x: -31, y: 0, z: 62 }), yaw: -Math.PI / 2 },
+  'salle-des-cartes': { nom: 'La Salle des Cartes', mode: 'inside', district: 'ecluse', room: 'salle-des-cartes', local: quarterPoint({ x: 40, y: 0, z: 64.4 }), yaw: 0 },
+  'cabines-voisins': { nom: 'Les cabines voisines', mode: 'inside', district: 'ecluse', room: 'cabines-voisins', local: quarterPoint({ x: -6, y: 0, z: 59.6 }), yaw: 0 },
+  'echelle-toit': { nom: "L'échelle du toit", mode: 'inside', district: 'ecluse', room: 'echelle-toit', local: quarterPoint({ x: -2.35, y: 3.05, z: 64.6 }), yaw: Math.PI / 2 },
   nef: { nom: 'La Grande Nef', mode: 'inside', district: 'nef', room: null, local: { x: 0, y: 8, z: 24 }, yaw: 0 },
   'nef-haut': { nom: 'La Grande Nef', mode: 'inside', district: 'nef', room: null, local: { x: -24, y: 16, z: 26 }, yaw: 0.75 },
-  sortie: { nom: 'Dehors, au bout de la longe', mode: 'sortie', district: 'ecluse', room: null, local: { x: 4, y: 1.5, z: 82 }, yaw: 0 },
+  sortie: { nom: 'Dehors, au bout de la longe', mode: 'sortie', district: 'ecluse', room: null, local: quarterPoint({ x: 4, y: 1.5, z: 82 }), yaw: 0 },
 }

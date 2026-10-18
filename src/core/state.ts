@@ -1,6 +1,7 @@
 import { DRIFT_ROUTE, DRIFT_Y } from './layout'
 import { TIME } from './tuning'
 import type { DayPhase, GameState, QualityLevel } from './types'
+import { quarterPoint } from '../drift/interiors/scale'
 
 export function createInitialState(quality: QualityLevel = 'high'): GameState {
   const start = DRIFT_ROUTE[0]!
@@ -24,7 +25,7 @@ export function createInitialState(quality: QualityLevel = 'high'): GameState {
       medium: 'air',
       room: 'cabine',
       wetness: 0,
-      localPosition: { x: -7, y: 0, z: 65.4 },
+      localPosition: quarterPoint({ x: -7, y: 0, z: 65.4 }),
       district: 'ecluse',
       sortie: null,
     },

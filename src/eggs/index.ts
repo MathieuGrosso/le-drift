@@ -9,6 +9,7 @@ import {
 import { Rebot } from './rebot'
 import { ATLAS, BRIBES, CAMP, CHEVRE, GREFFIER, JUS, OURS, PLAFOND, POSTERS, PROMPTS, REBOT, SCAN, SPEAKER, type Line } from './text'
 import { EggUi } from './ui'
+import { quarterPoint } from '../drift/interiors/scale'
 
 interface Spot {
   id: string
@@ -30,20 +31,24 @@ interface Plafond {
 const BUSY_MODES: ReadonlySet<HeroMode> = new Set<HeroMode>(['cutscene', 'sleep', 'airlock', 'sit', 'lean', 'ladder', 'exhausted'])
 const GP_OVERLAYS = '.gp-dialogue.show, .gp-narrate, .gp-credits, .gp-clap'
 const ARM_S = 0.3
-const REBOT_AT = { x: 25.25, y: 0, z: 58.55 }
-const REMISE_AT = { x: -6, y: 3.7, z: 57.8 }
-const SANCTUAIRE_AT = { x: 18, y: 7.9, z: 64 }
-const CAMP_AT = { x: -11, y: 3.65, z: 62 }
-const ROOFS_CENTER = { x: 6, y: 5, z: 63 }
-const ROOFS_VIEW = 45
+const quarterVec = (x: number, y: number, z: number) => {
+  const p = quarterPoint({ x, y, z })
+  return new THREE.Vector3(p.x, p.y, p.z)
+}
+const REBOT_AT = quarterPoint({ x: 25.25, y: 0, z: 58.55 })
+const REMISE_AT = quarterPoint({ x: -6, y: 3.7, z: 57.8 })
+const SANCTUAIRE_AT = quarterPoint({ x: 18, y: 7.9, z: 64 })
+const CAMP_AT = quarterPoint({ x: -11, y: 3.65, z: 62 })
+const ROOFS_CENTER = quarterPoint({ x: 6, y: 5, z: 63 })
+const ROOFS_VIEW = 60
 const PLAFOND_AT: Record<Exclude<keyof typeof PLAFOND.objets, 'disquette'>, Vec3> = {
-  scanette: { x: 2.5, y: 2.75, z: 62.2 },
-  gobelet: { x: 23, y: 3.5, z: 63.5 },
-  etiquette: { x: -16, y: 2.45, z: 62 },
-  colis: { x: -4.0, y: 2.75, z: 59.9 },
-  stylo: { x: -22.5, y: 2.45, z: 57.5 },
-  casque: { x: 33.5, y: 2.45, z: 62 },
-  bonnet: { x: 2.2, y: 3.5, z: 72.5 },
+  scanette: quarterPoint({ x: 2.5, y: 2.75, z: 62.2 }),
+  gobelet: quarterPoint({ x: 23, y: 3.5, z: 63.5 }),
+  etiquette: quarterPoint({ x: -16, y: 2.45, z: 62 }),
+  colis: quarterPoint({ x: -4.0, y: 2.75, z: 59.9 }),
+  stylo: quarterPoint({ x: -22.5, y: 2.45, z: 57.5 }),
+  casque: quarterPoint({ x: 33.5, y: 2.45, z: 62 }),
+  bonnet: quarterPoint({ x: 2.2, y: 3.5, z: 72.5 }),
 }
 
 export function createEggsSystem(): System {
@@ -118,31 +123,31 @@ export function createEggsSystem(): System {
     rebot.wearsHat = flag('rebot-bonnet')
     inside.add(rebot.root)
 
-    inside.add(poster(mat, paintCommande(), 3.0, 1.5, { x: 21.5, y: 2.9, z: 56.13 }, 0))
+    inside.add(poster(mat, paintCommande(), 3.0, 1.5, quarterPoint({ x: 21.5, y: 2.9, z: 56.13 }), 0))
     const jus = canvas2d(256, 320)
     paintJus(jus)
-    inside.add(poster(mat, jus, 0.8, 1.0, { x: -10.2, y: 1.4, z: 60.94 }, 0))
-    inside.add(poster(mat, paintComptage(), 0.64, 0.8, { x: 3.3, y: 1.4, z: 63.06 }, Math.PI))
-    inside.add(poster(mat, paintAntigaspi(), 0.64, 0.8, { x: 17.87, y: 1.5, z: 52.0 }, -Math.PI / 2))
+    inside.add(poster(mat, jus, 0.8, 1.0, quarterPoint({ x: -10.2, y: 1.4, z: 60.94 }), 0))
+    inside.add(poster(mat, paintComptage(), 0.64, 0.8, quarterPoint({ x: 3.3, y: 1.4, z: 63.06 }), Math.PI))
+    inside.add(poster(mat, paintAntigaspi(), 0.64, 0.8, quarterPoint({ x: 17.87, y: 1.5, z: 52.0 }), -Math.PI / 2))
     creneaux = canvas2d(256, 256)
     paintCreneaux(creneaux, ctx.state.time.hours)
-    inside.add(poster(mat, creneaux, 0.8, 0.8, { x: 10.13, y: 1.5, z: 49.6 }, Math.PI / 2, 0x5a3a26))
+    inside.add(poster(mat, creneaux, 0.8, 0.8, quarterPoint({ x: 10.13, y: 1.5, z: 49.6 }), Math.PI / 2, 0x5a3a26))
     mercuriale = canvas2d(384, 384)
     paintMercuriale(mercuriale, ctx.state.time.day)
     lastDay = ctx.state.time.day
-    inside.add(poster(mat, mercuriale, 1.4, 1.4, { x: -31.6, y: 1.9, z: 54.13 }, 0, 0x5a3a26))
-    inside.add(poster(mat, paintPatee(), 0.9, 0.56, { x: -28.2, y: 2.2, z: 54.13 }, 0, 0x6b4a22))
+    inside.add(poster(mat, mercuriale, 1.4, 1.4, quarterPoint({ x: -31.6, y: 1.9, z: 54.13 }), 0, 0x5a3a26))
+    inside.add(poster(mat, paintPatee(), 0.9, 0.56, quarterPoint({ x: -28.2, y: 2.2, z: 54.13 }), 0, 0x6b4a22))
     avis = canvas2d(256, 320)
     paintAvis(avis, flag('chevre-or'))
-    inside.add(poster(mat, avis, 0.64, 0.8, { x: -39.87, y: 1.75, z: 61.0 }, Math.PI / 2))
-    inside.add(poster(mat, paintRetro(), 1.0, 0.8, { x: -3.13, y: 1.45, z: 59.6 }, -Math.PI / 2))
+    inside.add(poster(mat, avis, 0.64, 0.8, quarterPoint({ x: -39.87, y: 1.75, z: 61.0 }), Math.PI / 2))
+    inside.add(poster(mat, paintRetro(), 1.0, 0.8, quarterPoint({ x: -3.13, y: 1.45, z: 59.6 }), -Math.PI / 2))
 
     const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.6), mat({ color: 0x8a5a3b, indoor: true }))
-    shelf.position.set(-39.78, 1.18, 61.0)
+    shelf.position.copy(quarterVec(-39.78, 1.18, 61.0))
     inside.add(shelf)
     const g = goatModel(mat, 0xf2c14e, 0x4a3410, true)
     g.scale.setScalar(0.5)
-    g.position.set(-39.78, 1.2, 61.0)
+    g.position.copy(quarterVec(-39.78, 1.2, 61.0))
     g.rotation.y = Math.PI / 2
     g.visible = flag('chevre-or')
     inside.add(g)
@@ -150,15 +155,15 @@ export function createEggsSystem(): System {
 
     greffier = canvas2d(320, 128)
     paintGreffier(greffier, GREFFIER.noms[0]!)
-    inside.add(poster(mat, greffier, 0.75, 0.3, { x: 28.3, y: 1.4, z: 61.13 }, 0, 0x7a5a1e))
+    inside.add(poster(mat, greffier, 0.75, 0.3, quarterPoint({ x: 28.3, y: 1.4, z: 61.13 }), 0, 0x7a5a1e))
 
     atlas = canvas2d(320, 200)
     paintAtlas(atlas, true, null)
-    inside.add(poster(mat, atlas, 0.72, 0.45, { x: -11.5, y: 1.4, z: 56.63 }, 0, 0x2a2f3a))
+    inside.add(poster(mat, atlas, 0.72, 0.45, quarterPoint({ x: -11.5, y: 1.4, z: 56.63 }), 0, 0x2a2f3a))
 
     if (!flag('scan')) {
       const s = scanGhost()
-      s.root.position.set(-20.5, 1.45, 62)
+      s.root.position.copy(quarterVec(-20.5, 1.45, 62))
       inside.add(s.root)
       ghost = { ...s, leaving: 0 }
     }
@@ -173,7 +178,7 @@ export function createEggsSystem(): System {
     })
     add({
       id: 'jus', medium: 'air', reach: 1.8, label: PROMPTS.lire,
-      pos: () => ({ x: -10.2, y: 1.0, z: 61.3 }),
+      pos: () => quarterPoint({ x: -10.2, y: 1.0, z: 61.3 }),
       run: () => {
         const h = ctx.state.hero
         const ratio = h.breathMax > 0 ? h.breath / h.breathMax : 1
@@ -183,12 +188,12 @@ export function createEggsSystem(): System {
     })
     add({
       id: 'comptage', medium: 'air', reach: 1.6, label: PROMPTS.lire,
-      pos: () => ({ x: 3.3, y: 1.0, z: 62.7 }),
+      pos: () => quarterPoint({ x: 3.3, y: 1.0, z: 62.7 }),
       run: () => talk([[null, `${POSTERS.comptage.titre}. ${POSTERS.comptage.lignes.join(' ')}`]]),
     })
     add({
       id: 'greffier', medium: 'air', reach: 1.8, label: PROMPTS.lire,
-      pos: () => ({ x: 28.3, y: 1.0, z: 61.5 }),
+      pos: () => quarterPoint({ x: 28.3, y: 1.0, z: 61.5 }),
       run: async () => {
         const n = GREFFIER.noms
         const from = n[greffierIdx]!
@@ -201,7 +206,7 @@ export function createEggsSystem(): System {
     })
     add({
       id: 'atlas', medium: 'air', reach: 1.8, label: PROMPTS.interroger,
-      pos: () => ({ x: -11.5, y: 1.0, z: 57.0 }),
+      pos: () => quarterPoint({ x: -11.5, y: 1.0, z: 57.0 }),
       run: async () => {
         const qs = [...ATLAS.questions, flag('chevre-or') ? ATLAS.chevreOk : ATLAS.chevre]
         const [q, a] = qs[atlasIdx % qs.length]!
@@ -214,7 +219,7 @@ export function createEggsSystem(): System {
     })
     add({
       id: 'scan', medium: 'air', reach: 1.8, label: PROMPTS.aider,
-      pos: () => ({ x: -20.5, y: 1.0, z: 62 }),
+      pos: () => quarterPoint({ x: -20.5, y: 1.0, z: 62 }),
       active: () => !flag('scan'),
       run: async () => {
         await talk(SCAN.bip)

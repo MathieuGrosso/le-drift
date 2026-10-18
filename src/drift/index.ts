@@ -16,6 +16,7 @@ import { registerDriftPoses } from './poses'
 import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from './route'
 import { drawingsTexture, menuTexture } from './textures'
 import { Windows } from './windows'
+import { quarterPoint, quarterPoints } from './interiors/scale'
 
 export type DriftAnchor = Anchor | { kind: 'ring'; id: string; at: Vec3 }
 export type DriftSiteKind = 'dome' | 'scellee' | 'trouvaille' | 'couchette' | 'etal' | 'table-carte'
@@ -69,7 +70,7 @@ export interface DriftServiceV2 extends DriftService {
 
 const QUARTER_GATES: Record<string, number> = { 'porte-nef': 2, 'porte-grand-marche': 2 }
 
-const SPAWNS: Record<RoomId, { x: number; y: number; z: number; yaw: number }> = {
+const SPAWNS: Record<RoomId, { x: number; y: number; z: number; yaw: number }> = quarterPoints({
   sas: { x: 0, y: 0, z: 66.4, yaw: Math.PI },
   'coursive-sud': { x: -4, y: 0, z: 62, yaw: Math.PI / 2 },
   refectoire: { x: 18, y: 0, z: 57.9, yaw: Math.PI },
@@ -83,14 +84,14 @@ const SPAWNS: Record<RoomId, { x: number; y: number; z: number; yaw: number }> =
   cabine: { x: -7, y: 0, z: 65.4, yaw: 0 },
   'cabines-voisins': { x: -6, y: 0, z: 59.6, yaw: 0 },
   'echelle-toit': { x: -2.35, y: 3.05, z: 64.6, yaw: Math.PI / 2 },
-}
-const EXTRA_SPAWNS: Record<string, { x: number; y: number; z: number; yaw: number }> = {
+})
+const EXTRA_SPAWNS: Record<string, { x: number; y: number; z: number; yaw: number }> = quarterPoints({
   'passerelle-nef': { x: -6, y: 0, z: 46, yaw: 0 },
-}
+})
 
 const LOCK_ANCHORS: Record<'sas' | 'echelle-toit', Vec3> = {
   sas: LOCK_OUTSIDE,
-  'echelle-toit': { x: -2.3, y: 6.6, z: 64.6 },
+  'echelle-toit': quarterPoint({ x: -2.3, y: 6.6, z: 64.6 }),
 }
 const ATRIUM_AIR: Partial<Record<string, number>> = { refectoire: 0.15, marche: 0.2 }
 const SEAT_ALIAS: Record<string, string> = { 'lit-cabine': 'couchette-cabine' }
@@ -117,10 +118,13 @@ function glassPoints(): Map<string, Vec3[]> {
   return out
 }
 
-const GUIDE_ROPE: readonly [number, number, number][] = [
+const GUIDE_ROPE: readonly [number, number, number][] = ([
   [0.7, 0.4, 73.7], [3.5, -0.2, 74.6], [8, 0.1, 73.4], [12.4, 0.6, 72.4], [23.6, 0.6, 72.4],
   [27, -0.3, 70.5], [33, 0.1, 68.4], [38.2, 0.5, 67.4], [42, 0.4, 67.4],
-]
+] as const).map(([x, y, z]) => {
+  const p = quarterPoint({ x, y, z })
+  return [p.x, p.y, p.z] as [number, number, number]
+})
 
 const near3 = (a: Vec3, b: Vec3) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 
@@ -239,7 +243,7 @@ export function createDriftSystem(): System {
     const out: DriftAnchor[] = []
     for (const l of quarter?.furniture.ladders ?? []) out.push({ kind: 'ladder', id: l.id, bottom: l.bottom, top: l.top, normal: l.normal })
     for (const s of quarter?.furniture.seats ?? []) out.push({ kind: s.lying ? 'bed' : 'seat', id: s.id, at: { x: s.x, y: s.y, z: s.z }, yaw: s.yaw })
-    out.push({ kind: 'chart-table', id: 'table-carte', at: { x: 40, y: 0, z: 62.6 }, yaw: Math.PI })
+    out.push({ kind: 'chart-table', id: 'table-carte', at: quarterPoint({ x: 40, y: 0, z: 62.6 }), yaw: Math.PI })
     return out
   }
   let quarterAnchorList: DriftAnchor[] = []

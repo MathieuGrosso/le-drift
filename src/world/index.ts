@@ -12,6 +12,7 @@ import { makeMaterial } from './surface'
 import { heightAt, normalAt, regionAt, TRENCH } from './terrain'
 import { Wake } from './wake'
 import { Wrecks } from './wrecks'
+import { quarterPoint } from '../drift/interiors/scale'
 
 export type { SortieRing, SwimLimits } from './sortie'
 
@@ -56,7 +57,7 @@ function registerPoses(ctx: GameContext, space: () => SortieSpace | null): void 
   reg.registerFactory?.('art-sortie', (c) => {
     const drift = c.services.drift
     const sp = space()
-    if (!drift || !sp) return local(c, { x: 9, y: 4, z: 89 }, { x: 2, y: 1.5, z: 77 }, 7.2)
+    if (!drift || !sp) return local(c, quarterPoint({ x: 9, y: 4, z: 89 }), quarterPoint({ x: 2, y: 1.5, z: 77 }), 7.2)
     const lock = sp.lockRing('sas')
     const L = new THREE.Vector3(lock.local.x, lock.local.y, lock.local.z)
     const ring = sp.allRings()

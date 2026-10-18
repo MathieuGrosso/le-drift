@@ -3,13 +3,14 @@ import type { GameContext, QualityLevel } from '../core/types'
 import { PlantGeo } from './plantgeo'
 import { floorPlant, hangingBasket, railPlanter, shelfSprouts } from './plants'
 import type { ShapeSpec } from './ship'
+import { quarterPoint } from '../drift/interiors/scale'
 
 interface Hang { x: number; z: number; hook: number; drop: number; r: number; vines: number; len: number }
 interface Floor { x: number; y: number; z: number; scale: number }
 interface Shelf { x0: number; x1: number; y: number; z: number; alongZ: boolean }
 
 // Drift-local spots in the v1 quarter; hooks are re-snapped to drift's real ceiling when it answers.
-const HANGS: readonly Hang[] = [
+const HANGS: readonly Hang[] = ([
   { x: -8.4, z: 66.6, hook: 2.9, drop: 0.3, r: 0.13, vines: 4, len: 0.9 },
   { x: -11.5, z: 61.25, hook: 3.1, drop: 0.25, r: 0.11, vines: 3, len: 0.7 },
   { x: -1.5, z: 61.25, hook: 3.1, drop: 0.25, r: 0.11, vines: 3, len: 0.75 },
@@ -23,7 +24,10 @@ const HANGS: readonly Hang[] = [
   { x: -33.0, z: 56.2, hook: 6.3, drop: 1.4, r: 0.26, vines: 7, len: 1.5 },
   { x: -33.0, z: 68.4, hook: 6.3, drop: 1.3, r: 0.24, vines: 6, len: 1.3 },
   { x: 11.2, z: 50.0, hook: 3.95, drop: 0.6, r: 0.14, vines: 4, len: 0.8 },
-]
+] as const).map((h) => {
+  const p = quarterPoint({ x: h.x, y: h.hook, z: h.z })
+  return { ...h, x: p.x, z: p.z, hook: p.y }
+})
 
 const FLOORS: readonly Floor[] = [
   { x: 10.65, y: 0, z: 71.25, scale: 1.6 },
@@ -34,11 +38,14 @@ const FLOORS: readonly Floor[] = [
   { x: -26.65, y: 0, z: 55.0, scale: 1.2 },
   { x: 37.15, y: 0, z: 66.3, scale: 1.25 },
   { x: 18.0, y: 0.6, z: 71.55, scale: 0.45 },
-]
+].map((f) => quarterPoint(f))
 
 const SHELVES: readonly Shelf[] = [
   { x0: 11.0, x1: 14.2, y: 2.22, z: 48.35, alongZ: false },
-]
+].map((s) => {
+  const a = quarterPoint({ x: s.x0, y: s.y, z: s.z })
+  return { ...s, x0: a.x, x1: a.x + (s.x1 - s.x0), y: a.y, z: a.z }
+})
 
 // Mirrors drift's Nef hall (city/world.ts NEF): gallery edges, levels and rail gaps, Drift-local.
 const NEF = {

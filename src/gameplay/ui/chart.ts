@@ -4,6 +4,7 @@ import type { Chart, Gp } from '../context'
 import { DOME_DISTRICT, MAP_DOMES, PLAN_FALLBACK, SCELLEES } from '../world/sites'
 import { DISTRICT_NAMES, DOME_NAMES, SCELLEE_TEXT, STATION_NAMES, UI } from '../text/fr'
 import { button, h } from './dom'
+import { PARTS, RECT_WINDOWS } from '../../drift/interiors/layout'
 
 const SIZE = 1024
 const GRID = 256
@@ -416,10 +417,7 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       lg.stroke()
     }
     if (d.id === 'ecluse') {
-      const rooms: [number, number, number, number][] = [
-        [10, 26, 56, 72], [10, 18, 48, 56], [-40, -26, 54, 70], [-14, 10, 60.8, 63.2], [-9, -5, 63.2, 67.2], [-9, -3, 55, 60.8],
-        [36, 44, 57, 67], [-3, 3, 63.2, 73.5], [-26, -14, 61, 63], [26, 36, 61, 63], [-26, -9, 56.5, 58.5],
-      ]
+      const rooms = PARTS.filter((r) => r.floorY === 0).map((r) => [r.x0, r.x1, r.z0, r.z1] as const)
       lg.fillStyle = 'rgba(239,227,196,0.95)'
       lg.lineWidth = 1.6
       for (const [x0, x1, z0, z1] of rooms) {
@@ -428,12 +426,14 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
         lg.fillRect(p.x, p.y, q.x - p.x, q.y - p.y)
         lg.strokeRect(p.x, p.y, q.x - p.x, q.y - p.y)
       }
-      const gv = toPlan(13, 72)
+      const vitre = RECT_WINDOWS.find((w) => w.id === 'grande-vitre')!
+      const z1 = PARTS.find((r) => r.id === vitre.part)!.z1
+      const gv = toPlan(vitre.at - vitre.w / 2, z1)
       lg.strokeStyle = SEA_INK
       lg.lineWidth = 4
       lg.beginPath()
       lg.moveTo(gv.x, gv.y)
-      lg.lineTo(toPlan(23, 72).x, gv.y)
+      lg.lineTo(toPlan(vitre.at + vitre.w / 2, z1).x, gv.y)
       lg.stroke()
     }
     lg.restore()

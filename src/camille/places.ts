@@ -1,5 +1,6 @@
 import type { Vec3 } from '../core/types'
 import type { Pose } from './anim'
+import { quarterPoint } from '../drift/interiors/scale'
 
 export type Where = 'refectoire' | 'serres' | 'proue' | 'dodo'
 
@@ -10,9 +11,9 @@ export const FACE_AFT = Math.PI
 export const FACE_FORE = 0
 export const faceDir = (dx: number, dz: number) => Math.atan2(-dx, -dz)
 
-export const REFECTOIRE: Spot = { at: { x: 18.0, y: 0, z: 67.3 }, yaw: FACE_AFT, pose: 'sip' }
-export const FINALE_SOL: Spot = { at: { x: 18.25, y: 0, z: 67.6 }, yaw: FACE_AFT, pose: 'talk' }
-export const FINALE_VITRE: Spot = { at: { x: 18.4, y: 0.6, z: 71.3 }, yaw: FACE_AFT, pose: 'hand-on-glass' }
+export const REFECTOIRE: Spot = { at: quarterPoint({ x: 18.0, y: 0, z: 67.3 }), yaw: FACE_AFT, pose: 'sip' }
+export const FINALE_SOL: Spot = { at: quarterPoint({ x: 18.25, y: 0, z: 67.6 }), yaw: FACE_AFT, pose: 'talk' }
+export const FINALE_VITRE: Spot = { at: quarterPoint({ x: 18.4, y: 0.6, z: 71.3 }), yaw: FACE_AFT, pose: 'hand-on-glass' }
 
 // Les Serres hall (x 72..108, z -6..72): aisles run along z at x 86 and 94 between the beds.
 export const SERRES_PTS: readonly Spot[] = [
@@ -33,10 +34,10 @@ export const VIGIE_BANC: Vec3 = { x: 0, y: 16, z: -69.5 }
 export const VIGIE_FINALE: Spot = { at: { x: -2.5, y: 16, z: -70.6 }, yaw: FACE_FORE, pose: 'look-up' }
 
 export const CABINE_CADEAUX: Record<'feuille' | 'dessin' | 'ligne' | 'bocal', Vec3> = {
-  feuille: { x: -5.04, y: 1.5, z: 64.6 },
-  dessin: { x: -5.04, y: 1.55, z: 65.4 },
-  ligne: { x: -5.04, y: 1.5, z: 66.2 },
-  bocal: { x: -5.45, y: 0.62, z: 66.6 },
+  feuille: quarterPoint({ x: -5.04, y: 1.5, z: 64.6 }),
+  dessin: quarterPoint({ x: -5.04, y: 1.55, z: 65.4 }),
+  ligne: quarterPoint({ x: -5.04, y: 1.5, z: 66.2 }),
+  bocal: quarterPoint({ x: -5.45, y: 0.62, z: 66.6 }),
 }
 
 export function routine(hours: number): Where {

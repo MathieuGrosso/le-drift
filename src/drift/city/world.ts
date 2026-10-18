@@ -194,7 +194,7 @@ export function buildCity(): CityBuild {
   const reserved = [
     ...HALLS.map((h) => ({ x0: h.x0 - 4, x1: h.x1 + 4, y0: h.floorY - 3, y1: h.spring + h.rise + 2, z0: h.z0 - 4, z1: h.z1 + 4 })),
     { x0: -14, x1: 14, y0: -27, y1: -5, z0: -14, z1: 14 },
-    { x0: -48, x1: 52, y0: -1.5, y1: 9.5, z0: 42, z1: 84 },
+    { x0: -48, x1: 64, y0: -1.5, y1: 12, z0: 36, z1: 84 },
     { x0: -12, x1: 12, y0: 4, y1: 34, z0: -76, z1: -36 },
     { x0: -8, x1: 8, y0: -1, y1: 26, z0: 30, z1: 56 },
     { x0: -92, x1: 94, y0: 24, y1: 30, z0: 40, z1: 48 },

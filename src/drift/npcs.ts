@@ -6,6 +6,7 @@ import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
 import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, touchLooks, writeLook, type Look, type Role as Fig } from './people'
+import { mapX, mapZ } from './interiors/scale'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
 
@@ -53,13 +54,19 @@ interface Npc {
 
 type SceneId = 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie' | 'chose-vitre'
 
-const PATHS = {
+const PATHS = mapPaths({
   coursive: { part: 'coursive-sud', pts: [{ x: -12.5, z: 62.2 }, { x: 8.5, z: 62.2 }], loop: false },
   coursiveKids: { part: 'coursive-sud', pts: [{ x: -12, z: 61.7 }, { x: 8, z: 61.7 }], loop: false },
   marche: { part: 'marche', pts: [{ x: -35, z: 60 }, { x: -30.6, z: 60 }, { x: -30.6, z: 66.6 }, { x: -35, z: 66.6 }], loop: true },
   marcheKids: { part: 'marche', pts: [{ x: -34, z: 61.8 }, { x: -31.5, z: 63.6 }, { x: -34, z: 65.2 }, { x: -35.2, z: 63.4 }], loop: true },
   service: { part: 'refectoire', pts: [{ x: 15.5, z: 56.6 }, { x: 17.0, z: 58.5 }, { x: 18.0, z: 58.6 }, { x: 18.0, z: 66.3 }], loop: false },
-} as const
+} as const)
+
+function mapPaths<T extends Record<string, { part: string; pts: readonly { x: number; z: number }[]; loop: boolean }>>(paths: T): T {
+  const out = {} as Record<string, unknown>
+  for (const [k, p] of Object.entries(paths)) out[k] = { ...p, pts: p.pts.map((q) => ({ x: mapX(p.part, q.x), z: mapZ(p.part, q.z) })) }
+  return out as T
+}
 
 
 function roster(rand: () => number): NpcDef[] {

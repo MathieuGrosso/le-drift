@@ -12,6 +12,7 @@ import { buildFurniture, emptyFurniture } from './furniture'
 import { PARTS, RECT_WINDOWS, REBORD, ROOM_NEIGHBOURS, partTop, type PartDef } from './layout'
 import { buildShell, ceilingAt } from './shell'
 import type { ColliderSpec, DoorDef, PaneDef } from './types'
+import { quarterPoint } from './scale'
 
 export type LockId = 'sas' | 'echelle-toit'
 
@@ -26,17 +27,21 @@ interface AirlockDef {
   spawnOut: Vec3
 }
 
+function lock(chamber: string, inner: string, outer: string, yMin: number, yMax: number, box: AirlockDef['box'], spawnIn: Vec3, spawnOut: Vec3): AirlockDef {
+  const a = quarterPoint({ x: box.x0, y: yMin, z: box.z0 })
+  const b = quarterPoint({ x: box.x1, y: yMax, z: box.z1 })
+  return {
+    chamber, inner, outer, yMin: a.y, yMax: b.y,
+    box: { x0: a.x, x1: b.x, z0: a.z, z1: b.z },
+    spawnIn: quarterPoint(spawnIn), spawnOut: quarterPoint(spawnOut),
+  }
+}
+
 export const AIRLOCKS: Record<LockId, AirlockDef> = {
-  sas: {
-    chamber: 'sas-chambre', inner: 'sas-interieure', outer: 'sas-exterieure', yMin: 0, yMax: 2.78,
-    box: { x0: -1.4, x1: 1.4, z0: 70.2, z1: 73.3 },
-    spawnIn: { x: 0, y: 1.2, z: 72.2 }, spawnOut: { x: 0, y: 0.05, z: 71.4 },
-  },
-  'echelle-toit': {
-    chamber: 'echelle-toit', inner: 'toit-interieure', outer: 'toit-exterieure', yMin: 3.0, yMax: 5.98,
-    box: { x0: -2.8, x1: -1.8, z0: 64.1, z1: 65.1 },
-    spawnIn: { x: -2.4, y: 4.6, z: 64.6 }, spawnOut: { x: -2.4, y: 3.05, z: 64.6 },
-  },
+  sas: lock('sas-chambre', 'sas-interieure', 'sas-exterieure', 0, 2.78, { x0: -1.4, x1: 1.4, z0: 70.2, z1: 73.3 },
+    { x: 0, y: 1.2, z: 72.2 }, { x: 0, y: 0.05, z: 71.4 }),
+  'echelle-toit': lock('echelle-toit', 'toit-interieure', 'toit-exterieure', 3.0, 5.98, { x0: -2.8, x1: -1.8, z0: 64.1, z1: 65.1 },
+    { x: -2.4, y: 4.6, z: 64.6 }, { x: -2.4, y: 3.05, z: 64.6 }),
 }
 
 interface AirlockRuntime {
@@ -184,7 +189,7 @@ export class Quarter {
   private lastHeading: number | null = null
   private turnLean = 0
   readonly lampOrder: number[] = []
-  readonly outsideBoard: { x: number; y: number; z: number } = { x: 3.03, y: 1.6, z: 66.0 }
+  readonly outsideBoard: { x: number; y: number; z: number } = quarterPoint({ x: 3.03, y: 1.6, z: 66.0 })
 
   constructor(private readonly ctx: GameContext, private readonly mats: Mats, tex: QuarterTextures, pose: { position: Vec3; heading: number }) {
     this.root.name = 'drift-quarter'

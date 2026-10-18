@@ -8,6 +8,8 @@ const _p = new THREE.Vector3()
 const _n = new THREE.Vector3()
 const _nm = new THREE.Matrix3()
 const _c = new THREE.Color()
+const _t = new THREE.Vector3()
+const _mm = new THREE.Matrix4()
 
 export class GeoBuilder {
   private pos: number[] = []
@@ -21,6 +23,7 @@ export class GeoBuilder {
   colorPat: ((hex: number) => number) | null = null
   shade: ((p: THREE.Vector3, n: THREE.Vector3) => number) | null = null
   jitter = 0.05
+  move: ((p: THREE.Vector3) => void) | null = null
   private seed = 1
 
   private rand(): number {
@@ -33,6 +36,11 @@ export class GeoBuilder {
   }
 
   add(geom: THREE.BufferGeometry, matrix: THREE.Matrix4, color: ColorSpec, flip = false): this {
+    if (this.move) {
+      _t.setFromMatrixPosition(matrix)
+      this.move(_t)
+      matrix = _mm.copy(matrix).setPosition(_t)
+    }
     const g = geom
     const pa = g.getAttribute('position') as THREE.BufferAttribute
     const na = g.getAttribute('normal') as THREE.BufferAttribute | undefined

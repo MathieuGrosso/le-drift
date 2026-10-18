@@ -1,6 +1,7 @@
 import type { Vec3 } from '../core/types'
 import type { Gp, Travel } from './context'
 import { DOME_DISTRICT } from './world/sites'
+import { quarterPoint } from '../drift/interiors/scale'
 
 type Station = { id: string; at: Vec3; station: string }
 type HeroTube = { tube?(toLocal: Vec3, yaw: number): Promise<void> }
@@ -65,7 +66,7 @@ export function createTravel(gp: Gp): Travel {
       await teleportLocal({ x: s.at.x, y: s.at.y, z: s.at.z + 1.2 }, 0)
     },
     async returnToCabin() {
-      const spawn = ctx.services.drift?.cellSpawn('cabine') ?? { local: { x: -7, y: 0, z: 65.4 }, yaw: 0 }
+      const spawn = ctx.services.drift?.cellSpawn('cabine') ?? { local: quarterPoint({ x: -7, y: 0, z: 65.4 }), yaw: 0 }
       ctx.state.hero.wetness = 0
       await teleportLocal(spawn.local, spawn.yaw)
     },

@@ -16,6 +16,7 @@ import { FLORA_COLORS, PLANT_COLORS } from './palette'
 import { createPlantMaterial, createPlantUniforms, setPlantEmissive, type PlantUniforms } from './plantmat'
 import { buildSerres } from './serres'
 import { ShipFrame } from './ship'
+import { quarterPoint } from '../drift/interiors/scale'
 
 export { SERRE_COLUMNS, SERRE_HALL, SERRE_TRELLIS } from './serres'
 
@@ -418,7 +419,7 @@ const LOCAL_POSES: Record<string, LocalPose> = {
   'serre-galerie': { from: { x: 77.5, y: 8.7, z: 2 }, to: { x: 92, y: 2.5, z: 34 }, hour: 11, fov: 64 },
   'serre-bacs': { from: { x: 94, y: 2.2, z: 50 }, to: { x: 90, y: 1.2, z: 62 }, hour: 9, fov: 62 },
   'nef-jardins': { from: { x: -31, y: 17.7, z: 22 }, to: { x: 20, y: 6, z: -10 }, hour: 12, fov: 64 },
-  'refectoire-plantes': { from: { x: 24.8, y: 2.0, z: 57.0 }, to: { x: 17, y: 4.2, z: 66 }, hour: 7.8, fov: 64 },
+  'refectoire-plantes': { from: quarterPoint({ x: 24.8, y: 2.0, z: 57.0 }), to: quarterPoint({ x: 17, y: 4.2, z: 66 }), hour: 7.8, fov: 64 },
   'barbe-coque': { from: { x: 12, y: -38, z: 78 }, to: { x: 4, y: -26, z: 50 }, hour: 12, fov: 60 },
 }
 
