@@ -9,10 +9,11 @@ import { createHeroSystem } from './hero'
 import { createGameplaySystem } from './gameplay'
 import { createAudioSystem } from './audio'
 import { createEggsSystem } from './eggs'
+import { createCamilleSystem } from './camille'
 
 const systems: System[] = [
   createRenderSystem(), createWorldSystem(), createFloraSystem(), createDriftSystem(),
-  createFaunaSystem(), createHeroSystem(), createGameplaySystem(), createAudioSystem(), createEggsSystem(),
+  createFaunaSystem(), createHeroSystem(), createGameplaySystem(), createAudioSystem(), createEggsSystem(), createCamilleSystem(),
 ]
 
 void boot({ systems })
