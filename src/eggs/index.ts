@@ -34,6 +34,8 @@ const REBOT_AT = { x: 25.25, y: 0, z: 58.55 }
 const REMISE_AT = { x: -6, y: 3.7, z: 57.8 }
 const SANCTUAIRE_AT = { x: 18, y: 7.9, z: 64 }
 const CAMP_AT = { x: -11, y: 3.65, z: 62 }
+const ROOFS_CENTER = { x: 6, y: 5, z: 63 }
+const ROOFS_VIEW = 45
 const PLAFOND_AT: Record<Exclude<keyof typeof PLAFOND.objets, 'disquette'>, Vec3> = {
   scanette: { x: 2.5, y: 2.75, z: 62.2 },
   gobelet: { x: 23, y: 3.5, z: 63.5 },
@@ -50,6 +52,8 @@ export function createEggsSystem(): System {
   let rebot: Rebot | null = null
   const inside = new THREE.Group()
   inside.name = 'eggs-interieur'
+  const roofs = new THREE.Group()
+  roofs.name = 'eggs-toits'
   const spots: Spot[] = []
   const plafonds: Plafond[] = []
   const offs: (() => void)[] = []
@@ -160,7 +164,7 @@ export function createEggsSystem(): System {
     }
 
     const r = remise(mat, REMISE_AT)
-    inside.add(r.root)
+    roofs.add(r.root)
 
     add({
       id: 'rebot', medium: 'air', reach: 1.9, label: PROMPTS.parler,
@@ -227,11 +231,11 @@ export function createEggsSystem(): System {
     })
     const disquette = plafondModel(mat, 'disquette')
     disquette.position.set(r.plafond.x, r.plafond.y, r.plafond.z)
-    inside.add(disquette)
+    roofs.add(disquette)
     plafonds.push({ id: 'disquette', obj: disquette, base: r.plafond })
 
     const sanc = sanctuary(mat, SANCTUAIRE_AT)
-    inside.add(sanc.root)
+    roofs.add(sanc.root)
     shrineGoat = sanc.goat
     shrineLight = sanc.light
     add({
@@ -251,7 +255,7 @@ export function createEggsSystem(): System {
 
     const camp = campSign(mat, CAMP_AT)
     camp.scale.setScalar(0.8)
-    inside.add(camp)
+    roofs.add(camp)
     add({
       id: 'camp', medium: 'water', reach: 2.2, label: PROMPTS.lire,
       pos: () => ({ x: CAMP_AT.x, y: CAMP_AT.y + 1.0, z: CAMP_AT.z }),
@@ -261,7 +265,8 @@ export function createEggsSystem(): System {
     for (const [id, at] of Object.entries(PLAFOND_AT) as [Plafond['id'], Vec3][]) {
       const obj = plafondModel(mat, id)
       obj.position.set(at.x, at.y, at.z)
-      inside.add(obj)
+      const parent = id === 'bonnet' ? roofs : inside
+      parent.add(obj)
       plafonds.push({ id, obj, base: at })
     }
     for (const p of plafonds) {
@@ -413,7 +418,7 @@ export function createEggsSystem(): System {
       ui = new EggUi(ctx)
       const driftRoot = ctx.scene.getObjectByName('le-drift')
       if (driftRoot) {
-        driftRoot.add(inside)
+        driftRoot.add(inside, roofs)
         buildInterior(ctx, mat)
       }
       lastHour = Math.floor(ctx.state.time.hours)
@@ -443,6 +448,12 @@ export function createEggsSystem(): System {
         heroLocal.y = l.y
         heroLocal.z = l.z
       }
+      if (drift) {
+        const env = drift.cameraEnv?.()
+        inside.visible = env ? env.indoor > 0 : true
+        const c = drift.toLocal(ctx.camera.position)
+        roofs.visible = Math.hypot(c.x - ROOFS_CENTER.x, c.y - ROOFS_CENTER.y, c.z - ROOFS_CENTER.z) < ROOFS_VIEW
+      }
       animate(ctx, dt)
       bribes(ctx, dt)
 
@@ -470,6 +481,7 @@ export function createEggsSystem(): System {
     dispose() {
       for (const off of offs.splice(0)) off()
       inside.removeFromParent()
+      roofs.removeFromParent()
       ui?.dispose()
       ui = null
       ctxRef = null
