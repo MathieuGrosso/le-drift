@@ -69,8 +69,9 @@ export function createEnding(gp: Gp): Ending {
         if (Math.random() < 0.3) gp.sfx('rain-drop')
       }
       const k = Math.min(1, t / 14)
-      const eye = gp.toWorld({ x: cc.x + 1.4 - k * 0.8, y: cc.y + 1.3 + k * 1.2, z: cc.z + 2.2 - k * 1.2 })
-      const look = gp.toWorld({ x: cc.x, y: cc.y + 4 + k * 30, z: cc.z - 40 - k * 20 })
+      const mid = cc.x * 0.15
+      const eye = gp.toWorld({ x: mid + 0.5 - k * 0.4, y: cc.y + 1.4 + k * 0.3, z: cc.z + 3.6 - k * 1.6 })
+      const look = gp.toWorld({ x: mid, y: cc.y + 1.2 + k * 11, z: cc.z - 32 })
       gp.camera.set({ position: eye, target: look, fov: 60 + k * 6 })
     },
   }

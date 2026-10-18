@@ -41,14 +41,14 @@ export function registerCorePoses(reg: PoseRegistry): void {
   reg.registerFactory('vista', (ctx) => reg.resolve('atrium-vista', ctx) ?? fallbackPose(ctx))
   reg.registerFactory('heros', (ctx) => {
     const drift = ctx.services.drift
-    const pl = PLACES.coursive!
+    const pl = PLACES['grande-vitre']!
     if (!drift) return fallbackPose(ctx)
     const at = drift.toWorld(pl.local)
     const yaw = pl.yaw + drift.pose().heading
     const f = forward(yaw)
     return {
       hour: 9,
-      place: 'coursive',
+      place: 'grande-vitre',
       camera: {
         position: { x: at.x + f.x * 2.2, y: at.y + 1.4, z: at.z + f.z * 2.2 },
         target: { x: at.x, y: at.y + 1.1, z: at.z },

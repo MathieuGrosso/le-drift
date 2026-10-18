@@ -5,9 +5,9 @@ import { toWorld, yawToWorld } from './frame'
 interface LocalPose { hour: number; from: Vec3; to: Vec3; fov?: number; place?: string; hero?: Vec3 & { yaw: number } }
 
 const POSES: Record<string, LocalPose> = {
-  sas: { hour: 6.1, from: { x: -2.0, y: 1.8, z: 69.3 }, to: { x: 1.8, y: 1.2, z: 64.4 } },
-  refectoire: { hour: 7.8, from: { x: 24.6, y: 3.4, z: 57.4 }, to: { x: 15, y: 1.0, z: 68 } },
-  'refectoire-vitre': { hour: 7.8, from: { x: 19.2, y: 1.25, z: 66.4 }, to: { x: 18.4, y: 2.5, z: 76 }, fov: 60 },
+  sas: { hour: 6.1, from: { x: -2.0, y: 1.8, z: 69.3 }, to: { x: 1.8, y: 1.2, z: 64.4 }, place: 'sas' },
+  refectoire: { hour: 7.8, from: { x: 24.6, y: 3.4, z: 57.4 }, to: { x: 15, y: 1.0, z: 68 }, place: 'refectoire' },
+  'refectoire-vitre': { hour: 7.8, from: { x: 19.2, y: 1.25, z: 66.4 }, to: { x: 18.4, y: 2.5, z: 76 }, fov: 60, place: 'refectoire' },
   'refectoire-window': { hour: 7.6, from: { x: 18.2, y: 1.7, z: 58.6 }, to: { x: 18.2, y: 2.3, z: 72 }, fov: 60, place: 'refectoire' },
   'grande-vitre': { hour: 7.5, from: { x: 19.4, y: 1.3, z: 65.4 }, to: { x: 18.6, y: 2.6, z: 74 }, fov: 60, place: 'grande-vitre' },
   'atrium-vista': { hour: 9.5, from: { x: -26.8, y: 18.3, z: 28.6 }, to: { x: 6, y: 5, z: -16 }, fov: 64, place: 'nef-haut' },
@@ -25,10 +25,10 @@ const POSES: Record<string, LocalPose> = {
   'proue-vigie': { hour: 9, from: { x: 0, y: 17.7, z: -61 }, to: { x: 0, y: 17.5, z: -95 }, fov: 60, hero: { x: -1, y: 16, z: -64, yaw: 0 } },
   'dome-proue': { hour: 9, from: { x: 0, y: 25.8, z: -56 }, to: { x: 0, y: 27, z: -90 }, fov: 64, hero: { x: 1, y: 24, z: -58, yaw: 0 } },
   'dome-ecluse': { hour: 7, from: { x: -4, y: 17.8, z: 44 }, to: { x: 6, y: 12, z: -20 }, fov: 62, hero: { x: -2, y: 16, z: 40, yaw: 0 } },
-  'salle-des-cartes': { hour: 14, from: { x: 42.6, y: 2.1, z: 58.0 }, to: { x: 40, y: 0.9, z: 62 } },
-  rebord: { hour: 9.5, from: { x: 20.8, y: 1.6, z: 68.0 }, to: { x: 17.5, y: 0.9, z: 71 } },
-  cabine: { hour: 6.0, from: { x: -8.6, y: 1.6, z: 63.8 }, to: { x: -5.6, y: 0.8, z: 66.4 } },
-  marche: { hour: 10.5, from: { x: -27.2, y: 2.3, z: 55.2 }, to: { x: -35, y: 1.0, z: 66 } },
+  'salle-des-cartes': { hour: 14, from: { x: 42.6, y: 2.1, z: 58.0 }, to: { x: 40, y: 0.9, z: 62 }, place: 'salle-des-cartes' },
+  rebord: { hour: 9.5, from: { x: 20.8, y: 1.6, z: 68.0 }, to: { x: 17.5, y: 0.9, z: 71 }, place: 'rebord' },
+  cabine: { hour: 6.0, from: { x: -8.6, y: 1.6, z: 63.8 }, to: { x: -5.6, y: 0.8, z: 66.4 }, place: 'cabine' },
+  marche: { hour: 10.5, from: { x: -27.2, y: 2.3, z: 55.2 }, to: { x: -35, y: 1.0, z: 66 }, place: 'marche' },
   'drift-poupe': { hour: 7.6, from: { x: 30, y: 6, z: 100 }, to: { x: 5, y: 1, z: 66 }, fov: 55 },
   'drift-vitre': { hour: 7.75, from: { x: 18.5, y: 2.4, z: 79 }, to: { x: 18, y: 2.2, z: 66 }, fov: 55 },
   'drift-dehors': { hour: 9, from: { x: 170, y: 55, z: 150 }, to: { x: 0, y: 0, z: 0 }, fov: 50 },
