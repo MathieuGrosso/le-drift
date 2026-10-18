@@ -6,6 +6,10 @@ export type ClipId =
   | 'climb' | 'climb-idle' | 'climb-jump' | 'glide' | 'scrub' | 'ride' | 'exhausted' | 'talk' | 'hand-on-ceiling'
   | 'idle-dry' | 'walk-dry' | 'run-dry' | 'stairs-up' | 'stairs-down' | 'ladder' | 'ladder-top' | 'fall' | 'land-dry'
   | 'shake-off' | 'sit-down' | 'sit' | 'eat' | 'stand-up' | 'lean' | 'open-hatch' | 'lie-down' | 'sleep' | 'wake'
+  | 'sprint' | 'jump' | 'roll' | 'skid' | 'land-hard' | 'zip' | 'slide' | 'tube-in' | 'tube-out'
+  | 'carry-idle' | 'carry-walk' | 'clip-ring' | 'hand-on-glass' | 'turn-valve' | 'pump' | 'ladder-slide' | 'climb-slip'
+
+export type GestureClip = 'hand-on-glass' | 'turn-valve' | 'pump' | 'open-hatch' | 'clip-ring' | 'talk' | 'eat' | 'shake-off'
 
 export interface AnimParams {
   t: number
@@ -19,6 +23,7 @@ export interface AnimParams {
   wet: number
   exhausted: boolean
   inWater: boolean
+  swing: number
 }
 
 const NB = BONES.length
@@ -469,6 +474,172 @@ const CLIPS: Record<ClipId, Clip> = {
   wake(o, s) {
     lyingPose(o, s, 1 - min(1, s.clipTime / 1.0))
   },
+  sprint(o, s) {
+    gait(o, s, { stride: 0.88, knee: 1.55, arm: 0.95, lean: 0.36, bounce: 0.09, floaty: 0 })
+    arms(o, -sin(s.phase * TAU) * 1.0, 0.12, 1.55, 'L')
+    arms(o, sin(s.phase * TAU) * 1.0, 0.12, 1.55, 'R')
+    o.r('head', 0.25, sin(s.phase * TAU) * 0.05, 0)
+    o.buf.lift = 0.05 + max(0, sin(s.phase * TAU * 2)) * 0.12
+  },
+  jump(o, s) {
+    const k = min(1, s.clipTime / 0.35)
+    const tuck = sin(min(1, k * 1.4) * PI * 0.5)
+    legs(o, 0.95 * tuck, -1.35 * tuck, 0.25 * tuck, -0.55 * tuck, 0.1)
+    o.r('footL', 0.35 * tuck)
+    o.r('footR', -0.25)
+    o.r('upperArmL', -0.6 * tuck, 0, -0.55 - 0.4 * tuck)
+    o.r('foreArmL', 0.6)
+    o.r('upperArmR', 1.2 * tuck, 0, 0.45 + 0.3 * tuck)
+    o.r('foreArmR', 0.7)
+    o.r('spine', -0.12 * tuck)
+    o.r('head', -0.1)
+    o.buf.roll = s.bank * 0.4
+  },
+  roll(o, s) {
+    const k = min(1, s.clipTime / 0.72)
+    const e = k * k * (3 - 2 * k)
+    o.buf.pitch = -TAU * e
+    o.buf.lift = -0.42 * sin(k * PI)
+    const t = sin(k * PI)
+    legs(o, 1.7 * t, -2.1 * t, 1.6 * t, -2.0 * t, 0.12)
+    arms(o, 1.0 * t, 0.35, 1.7 * t)
+    o.r('spine', -0.5 * t)
+    o.r('head', 0.6 * t)
+  },
+  skid(o, s) {
+    o.r('spine', 0.22, 0, s.bank * 0.4)
+    o.r('chest', 0.08)
+    legs(o, 0.65, -0.15, -0.35, -0.75, 0.16)
+    o.r('footL', -0.35)
+    arms(o, 0.35, 1.0, 0.5)
+    o.r('head', -0.15)
+    o.buf.hipsY = -0.12
+    o.buf.roll = s.bank * 0.5
+  },
+  'land-hard'(o, s) {
+    const k = min(1, s.clipTime / 0.9)
+    const d = k < 0.2 ? k / 0.2 : 1 - ((k - 0.2) / 0.8) ** 2
+    legs(o, 1.35 * d, -2.2 * d, 1.1 * d, -1.9 * d, 0.18)
+    o.r('footL', -0.8 * d)
+    o.r('footR', -0.7 * d)
+    o.r('spine', -0.55 * d)
+    o.r('head', 0.35 * d)
+    arms(o, 0.95 * d, 0.55 * d, 0.9)
+    o.r('handL', -0.9 * d)
+    o.r('handR', -0.9 * d)
+    o.buf.hipsY = -0.45 * d
+  },
+  zip(o, s) {
+    const legSwing = sin(s.t * 2.6) * 0.18 + s.swing * 0.8
+    o.r('upperArmR', 0.12, 0, 2.92)
+    o.r('foreArmR', 0.15)
+    o.r('handR', 0.3)
+    o.r('upperArmL', 0.2, 0, -2.78)
+    o.r('foreArmL', 0.35)
+    legs(o, 0.35 + legSwing, -0.55 - max(0, legSwing) * 0.4, 0.15 + legSwing * 0.7, -0.35, 0.1)
+    o.r('footL', -0.5)
+    o.r('footR', -0.6)
+    o.r('spine', -0.05 - s.swing * 0.2)
+    o.r('head', 0.05, sin(s.t * 0.7) * 0.2, 0)
+    o.buf.lift = 0
+  },
+  slide(o, s) {
+    sitPose(o, 1)
+    const w = sin(s.t * 5)
+    o.r('spine', 0.32, 0, -s.bank * 0.5)
+    o.r('chest', 0.05, 0, -s.bank * 0.3)
+    o.r('upperArmL', 0.4, 0, -1.15 - w * 0.12)
+    o.r('foreArmL', 0.35)
+    o.r('upperArmR', 0.4, 0, 1.15 + w * 0.12)
+    o.r('foreArmR', 0.35)
+    legs(o, 1.2, -0.35, 1.25, -0.3, 0.14)
+    o.r('head', -0.2, 0, s.bank * 0.4)
+    o.buf.hipsY = -0.5
+  },
+  'tube-in'(o, s) {
+    const k = min(1, s.clipTime / 0.6)
+    arms(o, 2.7 * k, 0.15, 0.1)
+    o.r('spine', -0.7 * k)
+    legs(o, 0.6 * k, -1.0 * k, 0.4 * k, -0.6 * k, 0.08)
+    o.buf.pitch = -0.6 * k * k
+    o.buf.hipsY = -0.2 * sin(k * PI)
+  },
+  'tube-out'(o, s) {
+    const k = min(1, s.clipTime / 0.7)
+    const d = 1 - k
+    legs(o, 0.9 * d, -1.4 * d, 0.6 * d, -0.9 * d, 0.14)
+    arms(o, 0.4 * d, 0.6 * d + 0.1, 0.5)
+    o.r('spine', -0.4 * d)
+    o.r('head', 0.2 * d, sin(s.t * 9) * 0.15 * d, 0)
+    o.buf.hipsY = -0.3 * d
+  },
+  'carry-idle'(o, s) {
+    CLIPS['idle-dry'](o, s)
+    carryArms(o)
+  },
+  'carry-walk'(o, s) {
+    gait(o, s, { stride: 0.34, knee: 0.6, arm: 0, lean: -0.04, bounce: 0.04, floaty: 0 })
+    carryArms(o)
+  },
+  'clip-ring'(o, s) {
+    const k = min(1, s.clipTime / 0.8)
+    const reach = sin(k * PI)
+    CLIPS[s.inWater ? 'idle' : 'idle-dry'](o, s)
+    o.r('upperArmR', 1.1 + reach * 0.6, 0, 0.2)
+    o.r('foreArmR', 0.25 + (1 - reach) * 0.8)
+    o.r('handR', -0.4 * reach)
+    o.r('head', 0.3 * reach)
+  },
+  'hand-on-glass'(o, s) {
+    breathe(o, s, 0.6)
+    o.r('upperArmR', 1.42, 0, 0.12)
+    o.r('foreArmR', 0.08)
+    o.r('handR', -1.35)
+    arms(o, 0.06, 0.1, 0.2, 'L')
+    legs(o, 0.04, -0.06, -0.06, -0.04, 0.08)
+    o.r('spine', -0.04)
+    o.r('head', -0.12 + sin(s.t * 0.4) * 0.03, 0.08, 0.05)
+  },
+  'turn-valve'(o, s) {
+    CLIPS['open-hatch'](o, s)
+    o.r('spine', -0.18, sin(s.t * 3) * 0.1, 0)
+  },
+  pump(o, s) {
+    const w = sin(s.t * 4.2)
+    arms(o, 0.95 + w * 0.45, 0.2, 0.7 - w * 0.4)
+    o.r('spine', -0.25 - max(0, -w) * 0.25)
+    legs(o, 0.35, -0.5 - max(0, -w) * 0.3, -0.1, -0.2, 0.16)
+    o.buf.hipsY = -0.08 - max(0, -w) * 0.08
+    o.r('head', 0.1)
+  },
+  'ladder-slide'(o, s) {
+    o.r('upperArmL', 2.25, 0, -0.32)
+    o.r('foreArmL', 0.7)
+    o.r('upperArmR', 2.25, 0, 0.32)
+    o.r('foreArmR', 0.7)
+    legs(o, 0.45, -0.25, 0.4, -0.3, 0.32)
+    o.r('footL', -0.4)
+    o.r('footR', -0.4)
+    o.r('head', -0.35, sin(s.t * 11) * 0.04, 0)
+  },
+  'climb-slip'(o, s) {
+    CLIPS['climb-idle'](o, s)
+    const j = sin(s.t * 23) * 0.12
+    o.r('upperArmL', 2.7 + j, 0, -0.5)
+    o.r('upperArmR', 2.7 - j, 0, 0.5)
+    legs(o, 0.3 + j, -0.5, 0.2 - j, -0.4, 0.3)
+    o.r('head', 0.55)
+  },
+}
+
+function carryArms(o: PoseOut): void {
+  o.r('upperArmL', 1.05, 0, -0.32)
+  o.r('foreArmL', 0.95, 0, 0)
+  o.r('handL', 0, 0.6, 0)
+  o.r('upperArmR', 1.05, 0, 0.32)
+  o.r('foreArmR', 0.95)
+  o.r('handR', 0, -0.6, 0)
+  o.r('chest', -0.06)
 }
 
 function sitPose(o: PoseOut, k: number): void {

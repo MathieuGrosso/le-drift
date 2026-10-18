@@ -38,6 +38,9 @@ uniform vec4 uLamps[8];
 uniform vec3 uLampColors[8];
 uniform float uWet;
 uniform float uFade;
+uniform float uHazeDist;
+uniform float uHazeMax;
+uniform vec3 uSea;
 varying vec3 vNormalW;
 varying vec3 vWorldPos;
 varying vec3 vColor;
@@ -77,6 +80,12 @@ void main() {
   inside += vec3(1.0, 0.76, 0.48) * pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.22;
 
   vec3 col = mix(outside, inside, uIndoor);
+  float sea = 1.0 - uIndoor;
+  if (sea > 0.001) {
+    float d = length(cameraPosition - vWorldPos);
+    float h = (1.0 - exp(-d / max(uHazeDist, 1.0) * 2.5)) * uHazeMax * sea;
+    col = mix(col, uSea, clamp(h, 0.0, 1.0));
+  }
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -119,10 +128,12 @@ export function createHeroMaterials(ctx: GameContext): HeroMaterials {
       uLampColors: shared?.uLampColors ?? { value: fallback.colors },
       uWet: wet,
       uFade: fade,
+      uHazeDist: shared?.uHazeDist ?? { value: 170 },
+      uHazeMax: shared?.uHazeMax ?? { value: 0.9 },
+      uSea: { value: new THREE.Color(0x2e7f8c) },
     })
     const m = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, fog: true, side })
     m.name = 'hero-cel'
-    ctx.services.render?.patchWater(m)
     return m
   }
   return { body: make(THREE.FrontSide), cloth: make(THREE.DoubleSide), wet, fade }

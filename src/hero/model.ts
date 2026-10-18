@@ -40,6 +40,9 @@ export interface HeroModel {
   rest: Record<BoneName, THREE.Vector3>
   scrubber: THREE.Mesh
   voile: THREE.Mesh
+  poulie: THREE.Mesh
+  hold: THREE.Object3D
+  clip: THREE.Object3D
   scarfAnchor: THREE.Object3D
   hairAnchor: THREE.Object3D
   pivotHeight: number
@@ -180,6 +183,15 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   bones.chest.add(voile)
   voile.visible = false
 
+  const poulie = buildPoulie(mats)
+  const hold = new THREE.Object3D()
+  hold.name = 'hero-hold'
+  hold.position.set(0, 0.02, -0.34)
+  bones.chest.add(hold)
+  const clip = new THREE.Object3D()
+  clip.position.set(0, 0.07, 0.17)
+  bones.hips.add(clip)
+
   const scarfAnchor = new THREE.Object3D()
   scarfAnchor.position.set(0, 0.0, 0.09)
   bones.neck.add(scarfAnchor)
@@ -187,7 +199,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   hairAnchor.position.set(0, 0.25, 0.08)
   bones.head.add(hairAnchor)
 
-  return { root, pivot, mesh, bones, rest, scrubber, voile, scarfAnchor, hairAnchor, pivotHeight }
+  return { root, pivot, mesh, bones, rest, scrubber, voile, poulie, hold, clip, scarfAnchor, hairAnchor, pivotHeight }
 }
 
 function rigid(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -247,5 +259,27 @@ function buildVoile(mats: HeroMaterials): THREE.Mesh {
   m.name = 'hero-voile'
   m.castShadow = true
   m.position.set(0, 0.25, 0)
+  return m
+}
+
+function buildPoulie(mats: HeroMaterials): THREE.Mesh {
+  const parts: THREE.BufferGeometry[] = []
+  const wheel = new THREE.TorusGeometry(0.045, 0.014, 6, 16)
+  parts.push(paint(wheel, PALETTE.laiton))
+  const hub = new THREE.CylinderGeometry(0.018, 0.018, 0.04, 8)
+  hub.rotateX(Math.PI / 2)
+  parts.push(paint(hub, PALETTE.bottes))
+  for (const sz of [-1, 1]) {
+    const cheek = new THREE.BoxGeometry(0.11, 0.12, 0.008)
+    cheek.translate(0, -0.03, sz * 0.022)
+    parts.push(paint(cheek, PALETTE.laiton))
+  }
+  const handle = new THREE.TorusGeometry(0.05, 0.012, 5, 12, Math.PI)
+  handle.rotateZ(Math.PI)
+  handle.translate(0, -0.1, 0)
+  parts.push(paint(handle, PALETTE.bois))
+  const m = new THREE.Mesh(rigid(parts), mats.body)
+  m.name = 'hero-poulie'
+  m.castShadow = true
   return m
 }

@@ -1,20 +1,36 @@
 import * as THREE from 'three'
+import type RAPIER from '@dimforge/rapier3d-compat'
 import { CEILING_Y } from '../core/layout'
 import { CAMERA } from '../core/tuning'
-import type { CameraPose, GameContext } from '../core/types'
+import type { CameraPose, ColliderKind, GameContext } from '../core/types'
+import { ceilingLocal } from './anchors'
+import { WallFade } from './fade'
 
 const D2R = Math.PI / 180
 
+export type CameraStyle = 'walk' | 'climb' | 'ladder' | 'zip' | 'slide' | 'glide' | 'swim' | 'rest'
+
 export interface CameraFrame {
   focus: THREE.Vector3
+  chest: THREE.Vector3
+  head: THREE.Vector3
+  velocity: THREE.Vector3
   heroYaw: number
   moving: number
   indoor: boolean
-  wide: boolean
+  style: CameraStyle
   fast: boolean
-  climbing: boolean
   freeze: boolean
+  headingDelta: number
 }
+
+const EXCLUDE: readonly ColliderKind[] = ['trigger', 'fauna', 'kelp', 'net']
+const ATRIUM = { distance: 5, fov: 62 }
+const ZIP = { distance: 6, fov: 66 }
+const SORTIE = { distance: 6, fov: 55 }
+const PROBES: readonly [number, number, number][] = [
+  [0, 1, 0], [1, 0.25, 0], [-1, 0.25, 0], [0, 0.35, 1], [0.7, 0.5, 0.7], [-0.7, 0.5, 0.7], [0, 0.2, -1],
+]
 
 function angleDiff(a: number, b: number): number {
   let d = (b - a) % (Math.PI * 2)
@@ -23,29 +39,44 @@ function angleDiff(a: number, b: number): number {
   return d
 }
 
+const smooth = (k: number) => k * k * (3 - 2 * k)
+
 export class HeroCamera {
   yaw = 0
   pitch = 12 * D2R
-  private dist: number = CAMERA.outside.distance
-  private indoorK = 0
+  closeness = 1
+  private dist: number = CAMERA.indoor.distance
+  private indoorK = 1
+  private atriumK = 0
+  private atriumGoal = 0
+  private corridorK = 0
+  private styleK = { zip: 0, climb: 0 }
   private lookIdle = 10
   private recenterT = 0
   private recenterYaw = 0
   private pose: CameraPose | null = null
   private poseK = 0
   private pivot = new THREE.Vector3()
+  private smoothFocus = new THREE.Vector3()
+  private hasFocus = false
+  private lead = new THREE.Vector3()
   private desired = new THREE.Vector3()
   private dir = new THREE.Vector3()
+  private right = new THREE.Vector3()
   private gameplayPos = new THREE.Vector3()
   private gameplayTarget = new THREE.Vector3()
-  private ball: InstanceType<GameContext['physics']['rapier']['Ball']> | null = null
-  private fadeables: THREE.Object3D[] = []
-  private fadeScan = 0
-  private ray = new THREE.Raycaster()
-  private hits: THREE.Intersection[] = []
-  closeness = 1
+  private ball: RAPIER.Ball | null = null
+  private probeT = 0
+  private fade: WallFade
+  private filter: (c: RAPIER.Collider) => boolean
 
-  constructor(private ctx: GameContext) {}
+  constructor(private ctx: GameContext) {
+    this.fade = new WallFade(ctx.scene, CAMERA.indoor.fadeOpacity)
+    this.filter = (c) => {
+      const t = ctx.physics.tagOf(c.handle)
+      return !t || !EXCLUDE.includes(t.kind)
+    }
+  }
 
   setPose(p: CameraPose | null): void {
     this.pose = p
@@ -54,6 +85,7 @@ export class HeroCamera {
   snapBehind(yaw: number): void {
     this.yaw = yaw
     this.pitch = 12 * D2R
+    this.hasFocus = false
   }
 
   update(dt: number, f: CameraFrame): void {
@@ -63,10 +95,25 @@ export class HeroCamera {
     const input = ctx.input
     const o = CAMERA.outside
     const i = CAMERA.indoor
-
-    this.indoorK = THREE.MathUtils.clamp(this.indoorK + (f.indoor ? 1 : -1) * dt / i.transitionSeconds, 0, 1)
-    const k = this.indoorK * this.indoorK * (3 - 2 * this.indoorK)
     const lerp = THREE.MathUtils.lerp
+
+    this.yaw += f.headingDelta
+    this.indoorK = THREE.MathUtils.clamp(this.indoorK + (f.indoor ? 1 : -1) * dt / i.transitionSeconds, 0, 1)
+    const k = smooth(this.indoorK)
+    const zipGoal = f.style === 'zip' || f.style === 'slide' || f.style === 'glide' ? 1 : 0
+    this.styleK.zip += (zipGoal - this.styleK.zip) * Math.min(1, dt * 2.2)
+    const climbGoal = f.style === 'climb' || f.style === 'ladder' ? 1 : 0
+    this.styleK.climb += (climbGoal - this.styleK.climb) * Math.min(1, dt * 3)
+
+    if (!this.hasFocus || this.smoothFocus.distanceToSquared(f.focus) > 64) {
+      this.smoothFocus.copy(f.focus)
+      this.hasFocus = true
+    } else {
+      this.smoothFocus.x += (f.focus.x - this.smoothFocus.x) * Math.min(1, dt * 18)
+      this.smoothFocus.z += (f.focus.z - this.smoothFocus.z) * Math.min(1, dt * 18)
+      const vy = f.style === 'walk' ? 9 : 16
+      this.smoothFocus.y += (f.focus.y - this.smoothFocus.y) * Math.min(1, dt * vy)
+    }
 
     if (!f.freeze) {
       this.yaw += input.look.x
@@ -78,53 +125,73 @@ export class HeroCamera {
       this.recenterT = 0.3
       this.recenterYaw = f.heroYaw
     }
+    const travelYaw = Math.hypot(f.velocity.x, f.velocity.z) > 0.5 ? Math.atan2(f.velocity.x, -f.velocity.z) : f.heroYaw
     if (this.recenterT > 0) {
       this.recenterT -= dt
       const a = 1 - Math.exp(-14 * dt)
       this.yaw += angleDiff(this.yaw, this.recenterYaw) * a
       this.pitch = lerp(this.pitch, 12 * D2R, a)
-    } else if (!f.climbing && this.lookIdle > o.recenterHoldSeconds && f.moving > 0.2) {
-      const d = angleDiff(this.yaw, f.heroYaw)
-      const lateral = Math.abs(Math.sin(d))
-      this.yaw += d * Math.min(1, dt * (0.35 + lateral * 0.9) * f.moving)
-      this.pitch = lerp(this.pitch, (f.indoor ? 8 : 12) * D2R, Math.min(1, dt * 0.4 * f.moving))
+    } else if (this.lookIdle > 1.2) {
+      if (this.styleK.zip > 0.5) {
+        this.yaw += angleDiff(this.yaw, travelYaw) * Math.min(1, dt * 2.2)
+        this.pitch = lerp(this.pitch, 14 * D2R, Math.min(1, dt * 1.5))
+      } else if (this.styleK.climb > 0.5) {
+        this.yaw += angleDiff(this.yaw, f.heroYaw) * Math.min(1, dt * 0.9)
+        this.pitch = lerp(this.pitch, -4 * D2R, Math.min(1, dt * 0.8))
+      } else if (f.moving > 0.2 && this.lookIdle > o.recenterHoldSeconds * 0.6) {
+        const d = angleDiff(this.yaw, travelYaw)
+        const lateral = Math.abs(Math.sin(d))
+        const corridor = 1 + this.corridorK * 2.5
+        if (Math.abs(d) < 2.6) this.yaw += d * Math.min(1, dt * (0.3 + lateral * 0.9) * f.moving * corridor)
+        this.pitch = lerp(this.pitch, (f.indoor ? 10 : 12) * D2R, Math.min(1, dt * 0.5 * f.moving))
+      }
     }
     const pMin = lerp(o.pitchMinDeg, i.pitchMinDeg, k) * D2R
     const pMax = lerp(o.pitchMaxDeg, i.pitchMaxDeg, k) * D2R
     this.pitch = THREE.MathUtils.clamp(this.pitch, pMin, pMax)
 
-    const outDist = f.wide ? o.distanceGlide : f.climbing ? o.distanceNearWall : o.distance
-    const target = lerp(outDist, i.distance, k)
-    const pivotH = lerp(o.pivotHeight, i.pivotHeight, k)
-    this.pivot.set(f.focus.x, f.focus.y + pivotH, f.focus.z)
+    const pivotH = lerp(o.pivotHeight, i.pivotHeight, k) - this.styleK.zip * 0.3
+    this.lead.set(f.velocity.x, 0, f.velocity.z).multiplyScalar(0.07 * (1 - this.styleK.climb))
+    if (this.lead.lengthSq() > 0.25) this.lead.setLength(0.5)
+    this.pivot.set(this.smoothFocus.x + this.lead.x, this.smoothFocus.y + pivotH, this.smoothFocus.z + this.lead.z)
+
+    this.probeOpenness(dt, f.indoor)
+    this.atriumK += (this.atriumGoal - this.atriumK) * Math.min(1, dt * 0.8)
+    const indoorDist = lerp(i.distance, ATRIUM.distance, smooth(this.atriumK)) * (1 - this.corridorK * 0.12)
+    let want = lerp(SORTIE.distance, indoorDist, k)
+    want = lerp(want, ZIP.distance, this.styleK.zip)
+    want += this.styleK.climb * 0.6
+    if (f.style === 'swim' && !f.indoor) want = SORTIE.distance + (f.fast ? 0.8 : 0)
 
     const cp = Math.cos(this.pitch)
     this.dir.set(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp)
-    const allowed = this.collide(target, k)
+    const allowed = this.collide(want, k > 0.5 ? i.sphereRadius : 0.35)
     if (allowed < this.dist) this.dist = allowed
-    else this.dist = Math.min(allowed, this.dist + lerp(o.easeOut, i.easeOut, k) * dt * (f.wide ? 3 : 1))
+    else this.dist = Math.min(allowed, this.dist + lerp(o.easeOut, i.easeOut, k) * dt * (1 + this.styleK.zip * 2))
 
+    this.right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw))
     this.desired.copy(this.pivot).addScaledVector(this.dir, this.dist)
-    if (this.dist < i.distanceMin && k > 0.5) {
-      const right = new THREE.Vector3(Math.cos(this.yaw), 0, Math.sin(this.yaw))
-      this.desired.addScaledVector(right, i.shoulderOffset * (1 - this.dist / i.distanceMin))
+    if (this.dist < i.distanceMin * 1.6 && k > 0.5) {
+      const s = i.shoulderOffset * (1 - THREE.MathUtils.clamp(this.dist / (i.distanceMin * 1.6), 0, 1))
+      const side = this.sideClear(s)
+      this.desired.addScaledVector(this.right, side)
     }
     if (k < 0.5) {
-      const ground = ctx.services.world?.heightAt(this.desired.x, this.desired.z)
-      if (ground !== undefined) this.desired.y = Math.max(this.desired.y, ground + 0.5)
       this.desired.y = Math.min(this.desired.y, CEILING_Y - 0.4)
     } else {
-      const ceil = ctx.services.drift?.roomCeilingAt(this.desired)
-      if (ceil !== null && ceil !== undefined) this.desired.y = Math.min(this.desired.y, ceil - i.ceilingMargin)
+      const ceil = ceilingLocal(ctx, this.desired)
+      if (ceil !== null) this.desired.y = Math.min(this.desired.y, ceil - i.ceilingMargin)
     }
     this.closeness = THREE.MathUtils.clamp((this.desired.distanceTo(this.pivot) - 0.35) / 0.5, 0, 1)
 
     this.gameplayPos.copy(this.desired)
     this.gameplayTarget.copy(this.pivot)
-    const fov = lerp(f.fast || f.wide ? o.fovFast : o.fov, i.fov, k)
+    let fov = lerp(f.fast ? o.fovFast : SORTIE.fov, lerp(i.fov, ATRIUM.fov, this.atriumK), k)
+    fov = lerp(fov, ZIP.fov, this.styleK.zip)
+    if (f.fast && k > 0.5) fov += 3
 
     this.poseK = THREE.MathUtils.clamp(this.poseK + (this.pose ? dt : -dt) / 0.6, 0, 1)
-    const pk = this.poseK * this.poseK * (3 - 2 * this.poseK)
+    const pk = smooth(this.poseK)
     if (this.pose && pk > 0) {
       const p = this.pose
       cam.position.set(
@@ -141,7 +208,7 @@ export class HeroCamera {
       cam.lookAt(this.gameplayTarget)
       this.setFov(fov, dt)
     }
-    this.updateFadeables(dt, k > 0.5)
+    this.fade.update(dt, cam.position, f.chest, f.head, k > 0.5 && !this.pose)
   }
 
   private setFov(fov: number, dt: number): void {
@@ -153,50 +220,61 @@ export class HeroCamera {
     }
   }
 
-  private collide(want: number, indoorK: number): number {
+  private cast(origin: THREE.Vector3, dir: THREE.Vector3, max: number, radius: number): number {
     const phys = this.ctx.physics
-    const p = this.pivot
-    const exclude = ['trigger', 'fauna', 'kelp', 'window'] as const
-    if (indoorK > 0.5) {
-      const R = phys.rapier
-      if (!this.ball) this.ball = new R.Ball(CAMERA.indoor.sphereRadius)
-      const hit = phys.world.castShape(
-        { x: p.x, y: p.y, z: p.z }, { x: 0, y: 0, z: 0, w: 1 },
-        { x: this.dir.x, y: this.dir.y, z: this.dir.z }, this.ball, 0, want, true,
-        R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, undefined, undefined,
-        (c) => {
-          const t = phys.tagOf(c.handle)
-          return !t || !(exclude as readonly string[]).includes(t.kind)
-        },
-      )
-      return hit ? Math.max(0.05, hit.time_of_impact) : want
-    }
-    const hit = phys.raycast(p, this.dir, want + 0.3, { excludeKinds: [...exclude] })
-    return hit ? Math.max(0.3, hit.distance - 0.3) : want
+    const R = phys.rapier
+    if (!this.ball || this.ball.radius !== radius) this.ball = new R.Ball(radius)
+    const hit = phys.world.castShape(
+      { x: origin.x, y: origin.y, z: origin.z }, { x: 0, y: 0, z: 0, w: 1 },
+      { x: dir.x, y: dir.y, z: dir.z }, this.ball, 0, max, false,
+      R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, undefined, undefined, this.filter,
+    )
+    return hit ? hit.time_of_impact : max
   }
 
-  private updateFadeables(dt: number, indoor: boolean): void {
-    this.fadeScan -= dt
-    if (indoor && this.fadeScan <= 0) {
-      this.fadeScan = 0.5
-      this.fadeables.length = 0
-      this.ctx.scene.traverseVisible((o) => {
-        if (o.userData.fadeable) this.fadeables.push(o)
-      })
+  private collide(want: number, radius: number): number {
+    const d = this.cast(this.pivot, this.dir, want, radius)
+    return d < want ? Math.max(0.05, d - 0.02) : want
+  }
+
+  private sideTmp = new THREE.Vector3()
+  private sideClear(s: number): number {
+    const r = this.cast(this.desired, this.sideTmp.copy(this.right), s + 0.2, 0.15)
+    if (r > s) return s
+    const l = this.cast(this.desired, this.sideTmp.copy(this.right).negate(), s + 0.2, 0.15)
+    return l > s ? -s : 0
+  }
+
+  private probeDir = new THREE.Vector3()
+  private probeOpenness(dt: number, indoor: boolean): void {
+    this.probeT -= dt
+    if (this.probeT > 0) return
+    this.probeT = 0.25
+    if (!indoor) {
+      this.atriumGoal = 0
+      this.corridorK = 0
+      return
     }
-    if (this.fadeables.length === 0) return
-    const cam = this.ctx.camera
-    const toPivot = this.dir.clone().negate()
-    const len = cam.position.distanceTo(this.pivot)
-    this.ray.set(cam.position, toPivot)
-    this.ray.far = len
-    for (const o of this.fadeables) {
-      this.hits.length = 0
-      const blocking = indoor && this.ray.intersectObject(o, true, this.hits).length > 0
-      const cur = typeof o.userData.cameraFade === 'number' ? (o.userData.cameraFade as number) : 1
-      const goal = blocking ? CAMERA.indoor.fadeOpacity : 1
-      o.userData.cameraFade = cur + (goal - cur) * Math.min(1, dt * 8)
+    const env = this.ctx.services.drift?.cameraEnv?.()
+    let sum = 0
+    let sideMin = 99
+    const cy = Math.cos(this.yaw)
+    const sy = Math.sin(this.yaw)
+    for (let n = 0; n < PROBES.length; n++) {
+      const p = PROBES[n]!
+      this.probeDir.set(p[0] * cy - p[2] * sy, p[1], p[0] * sy + p[2] * cy).normalize()
+      const d = this.cast(this.pivot, this.probeDir, 24, 0.2)
+      sum += d
+      if (n === 1 || n === 2) sideMin = Math.min(sideMin, d)
     }
-    if (!indoor) this.fadeables.length = 0
+    const open = sum / PROBES.length
+    const probe = THREE.MathUtils.clamp((open - 6) / 9, 0, 1)
+    this.atriumGoal = Math.max(probe, env && env.indoor > 0.5 ? env.airHaze * 0.85 : 0)
+    const corridor = THREE.MathUtils.clamp((2.6 - sideMin) / 1.6, 0, 1) * (1 - probe)
+    this.corridorK += (corridor - this.corridorK) * 0.5
+  }
+
+  dispose(): void {
+    this.fade.dispose()
   }
 }
