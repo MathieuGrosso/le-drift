@@ -147,7 +147,7 @@ export class HeroCamera {
         const lateral = Math.abs(Math.sin(d))
         const corridor = 1 + this.corridorK * 2.5
         if (Math.abs(d) < 2.6) this.yaw += d * Math.min(1, dt * (0.3 + lateral * 0.9) * f.moving * corridor)
-        this.pitch = lerp(this.pitch, (f.indoor ? 14 + this.tightK * 6 : 12) * D2R, Math.min(1, dt * 0.5 * f.moving))
+        this.pitch = lerp(this.pitch, (f.indoor ? 14 + this.tightK * 20 : 12) * D2R, Math.min(1, dt * (0.5 + this.tightK) * f.moving))
       }
     }
     const pMin = lerp(o.pitchMinDeg, i.pitchMinDeg, k) * D2R
@@ -204,7 +204,7 @@ export class HeroCamera {
       const ceil = ceilingLocal(ctx, this.desired)
       if (ceil !== null) this.desired.y = Math.min(this.desired.y, ceil - i.ceilingMargin)
     }
-    this.closeness = THREE.MathUtils.clamp((Math.min(this.desired.distanceTo(f.head), this.desired.distanceTo(f.chest)) - 0.45) / 0.4, 0, 1)
+    this.closeness = THREE.MathUtils.clamp((Math.min(this.desired.distanceTo(f.head), this.desired.distanceTo(f.chest)) - 0.6) / 0.8, 0, 1)
 
     this.gameplayPos.copy(this.desired)
     this.gameplayTarget.copy(this.pivot)

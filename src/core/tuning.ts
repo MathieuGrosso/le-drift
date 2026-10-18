@@ -50,7 +50,7 @@ export const INDOOR = {
   walk: 1.6,
   run: 3.8,
   hopHeight: 0.45,
-  stepHeight: 0.35,
+  stepHeight: 0.5,
   maxSlopeDeg: 40,
   ladderSpeed: 1.2,
   hatchSpinSeconds: 0.8,
