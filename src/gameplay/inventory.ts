@@ -1,9 +1,9 @@
 import type { Gp, Inventory } from './context'
 import { ITEMS, UI, trouvailleText } from './text/fr'
 
-export const KEY_ITEMS = ['frottoir', 'longe', 'poulie', 'lest', 'voile', 'sifflet-raie', 'stylo', 'lanterne'] as const
+export const KEY_ITEMS = ['frottoir', 'longe', 'poulie', 'toile', 'stylo', 'lanterne'] as const
 export const INGREDIENTS = [
-  'poisson', 'algue-rouge', 'algue-doree', 'oursin', 'moule', 'crevette', 'sel-de-cheminee', 'plancton', 'mie-du-cuistot',
+  'poisson', 'algue-rouge', 'algue-doree', 'oursin', 'moule', 'crevette', 'sel-de-machine', 'plancton', 'mie-du-cuistot',
 ] as const
 export const DISHES = ['soupe-chaude', 'galette-de-plancton', 'brochette', 'pain-du-cuistot', 'rate'] as const
 
@@ -28,7 +28,7 @@ export function itemName(id: string): string {
   return ITEMS[id]?.nom ?? id
 }
 
-const UPGRADE_PREFIX = 'souffle+'
+const UPGRADE_PREFIX = 'endurance+'
 
 export function createInventory(gp: Gp): Inventory {
   const items = () => gp.ctx.state.inventory.items

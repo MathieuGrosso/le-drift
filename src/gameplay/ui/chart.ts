@@ -1,16 +1,17 @@
-import {
-  BLANC_SLOPE, CAMPS, CEILING_Y, DRIFT_ROUTE, HAUTS_FONDS, LANDMARKS, LANES, REGIONS, SEUIL, SONDES, WORLD_HALF,
-} from '../../core/layout'
-import type { RegionId } from '../../core/types'
+import { BLANC_SLOPE, DISTRICTS, DISTRICT_BY_ID, DRIFT_ROUTE, LANDMARKS, LANES, NEF_VOID, REGIONS, WORLD_HALF } from '../../core/layout'
+import type { DistrictId, RegionId } from '../../core/types'
 import type { Chart, Gp } from '../context'
-import { REGION_NAMES, SONDE_NAMES, UI } from '../text/fr'
+import { DOME_DISTRICT, MAP_DOMES, PLAN_FALLBACK, SCELLEES } from '../world/sites'
+import { DISTRICT_NAMES, DOME_NAMES, SCELLEE_TEXT, STATION_NAMES, UI } from '../text/fr'
 import { button, h } from './dom'
 
 const SIZE = 1024
 const GRID = 256
 const CELL = SIZE / GRID
 const STEP_M = (WORLD_HALF * 2) / GRID
-const REVEAL_R = 250
+const PW = 1040
+const PH = 640
+const PPM = 4
 const INK = '#4a3b2c'
 const INK_SOFT = 'rgba(74,59,44,0.55)'
 const SEA_INK = '#2f6b78'
@@ -18,7 +19,16 @@ const HERO_INK = '#d0563c'
 const SERIF = "'Fraunces', 'Iowan Old Style', Palatino, Georgia, serif"
 const HAND = "'Caveat', 'Bradley Hand', 'Segoe Print', 'Snell Roundhand', cursive"
 
+const REGION_LABELS: Record<Exclude<RegionId, 'bleu' | 'blanc'>, string> = {
+  prairie: "La Prairie de l'Écluse",
+  laminaires: 'La Forêt de Laminaires',
+  pilier: 'Le Pilier et les Arches',
+  cheminee: 'La Cheminée',
+  coques: 'Le Cimetière des Coques',
+}
+
 export const toChart = (x: number, z: number) => ({ x: (x + WORLD_HALF) / 2, y: (z + WORLD_HALF) / 2 })
+const toPlan = (x: number, z: number) => ({ x: (x + 130) * PPM, y: (z + 80) * PPM })
 
 function gauss(dx: number, dz: number, r: number) {
   return Math.exp(-(dx * dx + dz * dz) / (2 * r * r))
@@ -28,7 +38,6 @@ function fallbackHeight(x: number, z: number): number {
   let y = 14 + 6 * Math.sin(x / 97 + 1.3) * Math.cos(z / 131) + 4 * Math.sin((x + z) / 53) + 3 * Math.cos(x / 41 - z / 67)
   y += 80 * gauss(x, z, 45) + 30 * gauss(x + 260, z - 760, 70)
   y += 25 * gauss(x - 820, z - 380, 120) + 18 * gauss(x - 560, z + 520, 140)
-  for (const hf of HAUTS_FONDS) y = Math.max(y, (CEILING_Y - hf.topBelowCeiling) * gauss(x - hf.x, z - hf.z, 26))
   if (z < BLANC_SLOPE.zStart) {
     const t = Math.min(1, (BLANC_SLOPE.zStart - z) / (BLANC_SLOPE.zStart - BLANC_SLOPE.zEnd))
     y = Math.max(y, BLANC_SLOPE.yStart + (BLANC_SLOPE.yEnd - BLANC_SLOPE.yStart) * t + 3 * Math.sin(x / 23))
@@ -41,7 +50,7 @@ const SEGMENTS: readonly (readonly (readonly [number, number])[])[] = [
   [[3, 2]], [[0, 2]], [[0, 1], [3, 2]], [[1, 2]], [[3, 1]], [[0, 1]], [[3, 0]], [],
 ]
 
-function canvas2d(w = SIZE, hgt = SIZE): [HTMLCanvasElement, CanvasRenderingContext2D] {
+function canvas2d(w: number, hgt: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas')
   c.width = w
   c.height = hgt
@@ -50,72 +59,67 @@ function canvas2d(w = SIZE, hgt = SIZE): [HTMLCanvasElement, CanvasRenderingCont
   return [c, g]
 }
 
+function paperOn(g: CanvasRenderingContext2D, w: number, hgt: number, rng: () => number): void {
+  g.fillStyle = '#efe3c4'
+  g.fillRect(0, 0, w, hgt)
+  const [grain, gg] = canvas2d(256, 256)
+  const img = gg.createImageData(256, 256)
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = rng()
+    img.data[i] = 120
+    img.data[i + 1] = 96
+    img.data[i + 2] = 60
+    img.data[i + 3] = Math.floor(v * v * 26)
+  }
+  gg.putImageData(img, 0, 0)
+  g.globalAlpha = 0.9
+  for (let y = 0; y < hgt; y += 256) for (let x = 0; x < w; x += 256) g.drawImage(grain, x, y)
+  g.globalAlpha = 1
+  for (let i = 0; i < 9; i++) {
+    const x = rng() * w
+    const y = rng() * hgt
+    const r = 30 + rng() * 120
+    const s = g.createRadialGradient(x, y, r * 0.2, x, y, r)
+    s.addColorStop(0, 'rgba(176,140,90,0.10)')
+    s.addColorStop(1, 'rgba(176,140,90,0)')
+    g.fillStyle = s
+    g.fillRect(x - r, y - r, r * 2, r * 2)
+  }
+  const v = g.createRadialGradient(w / 2, hgt / 2, Math.min(w, hgt) * 0.35, w / 2, hgt / 2, Math.max(w, hgt) * 0.75)
+  v.addColorStop(0, 'rgba(120,90,50,0)')
+  v.addColorStop(1, 'rgba(120,90,50,0.28)')
+  g.fillStyle = v
+  g.fillRect(0, 0, w, hgt)
+}
+
+function seeded(seed: number): () => number {
+  let s = seed
+  return () => ((s = (s * 16807) % 2147483647) / 2147483647)
+}
+
 export function createChart(gp: Gp, root: HTMLElement): Chart {
   const ctx = gp.ctx
-  const [out, g] = canvas2d()
-  const [paper, pg] = canvas2d()
-  const [ink, ig] = canvas2d()
-  const [mask, mg] = canvas2d()
-  const [tmp, tg] = canvas2d()
+  const [out, g] = canvas2d(SIZE, SIZE)
+  const [paper, pg] = canvas2d(SIZE, SIZE)
+  const [ink, ig] = canvas2d(SIZE, SIZE)
+  const [plan, lg] = canvas2d(PW, PH)
+  const [planPaper, ppg] = canvas2d(PW, PH)
   const rng = ctx.rng('carte')
-  const anim = new Map<string, number>()
+  const reveal = new Map<DistrictId, number>()
   let lineProgress = -1
   let openEl: HTMLElement | null = null
   let overlay: CanvasRenderingContext2D | null = null
+  let overlayCanvas: HTMLCanvasElement | null = null
+  let side: 'mer' | 'plan' = 'plan'
   let dirty = true
+  let planDirty = true
 
   const heightAt = (x: number, z: number) => ctx.services.world?.heightAt(x, z) ?? fallbackHeight(x, z)
-
-  const drawPaper = () => {
-    pg.fillStyle = '#efe3c4'
-    pg.fillRect(0, 0, SIZE, SIZE)
-    const [grain, gg] = canvas2d(256, 256)
-    const img = gg.createImageData(256, 256)
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = rng()
-      img.data[i] = 120
-      img.data[i + 1] = 96
-      img.data[i + 2] = 60
-      img.data[i + 3] = Math.floor(v * v * 26)
-    }
-    gg.putImageData(img, 0, 0)
-    pg.globalAlpha = 0.9
-    for (let y = 0; y < SIZE; y += 256) for (let x = 0; x < SIZE; x += 256) pg.drawImage(grain, x, y)
-    pg.globalAlpha = 1
-    for (let i = 0; i < 9; i++) {
-      const x = rng() * SIZE
-      const y = rng() * SIZE
-      const r = 30 + rng() * 120
-      const st = pg.createRadialGradient(x, y, r * 0.2, x, y, r)
-      st.addColorStop(0, 'rgba(176,140,90,0.10)')
-      st.addColorStop(0.8, 'rgba(176,140,90,0.05)')
-      st.addColorStop(1, 'rgba(176,140,90,0)')
-      pg.fillStyle = st
-      pg.fillRect(x - r, y - r, r * 2, r * 2)
-    }
-    const v = pg.createRadialGradient(SIZE / 2, SIZE / 2, SIZE * 0.35, SIZE / 2, SIZE / 2, SIZE * 0.75)
-    v.addColorStop(0, 'rgba(120,90,50,0)')
-    v.addColorStop(1, 'rgba(120,90,50,0.28)')
-    pg.fillStyle = v
-    pg.fillRect(0, 0, SIZE, SIZE)
-    pg.strokeStyle = 'rgba(120,90,50,0.12)'
-    pg.lineWidth = 2
-    for (const f of [SIZE / 3, (SIZE * 2) / 3]) {
-      pg.beginPath()
-      pg.moveTo(f, 0)
-      pg.lineTo(f, SIZE)
-      pg.moveTo(0, f)
-      pg.lineTo(SIZE, f)
-      pg.stroke()
-    }
-  }
 
   const drawInk = () => {
     const n = GRID + 1
     const hs = new Float32Array(n * n)
-    for (let j = 0; j < n; j++) {
-      for (let i = 0; i < n; i++) hs[j * n + i] = heightAt(-WORLD_HALF + i * STEP_M, -WORLD_HALF + j * STEP_M)
-    }
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) hs[j * n + i] = heightAt(-WORLD_HALF + i * STEP_M, -WORLD_HALF + j * STEP_M)
     const [wash, wg] = canvas2d(GRID, GRID)
     const img = wg.createImageData(GRID, GRID)
     for (let j = 0; j < GRID; j++) {
@@ -130,9 +134,7 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       }
     }
     wg.putImageData(img, 0, 0)
-    ig.imageSmoothingEnabled = true
     ig.drawImage(wash, 0, 0, SIZE, SIZE)
-
     const levels = new Map<number, Path2D>()
     const LEVEL = 6
     for (let j = 0; j < GRID; j++) {
@@ -173,7 +175,6 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       ig.lineWidth = major ? 1.6 : 0.9
       ig.stroke(p)
     }
-
     ig.setLineDash([10, 8])
     ig.strokeStyle = SEA_INK
     ig.lineWidth = 2
@@ -185,26 +186,8 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
         else ig.lineTo(c.x, c.y)
       })
       ig.stroke()
-      for (let k = 1; k < lane.points.length; k++) {
-        const a = toChart(lane.points[k - 1]!.x, lane.points[k - 1]!.z)
-        const b = toChart(lane.points[k]!.x, lane.points[k]!.z)
-        const ang = Math.atan2(b.y - a.y, b.x - a.x)
-        const mx = (a.x + b.x) / 2
-        const my = (a.y + b.y) / 2
-        ig.save()
-        ig.setLineDash([])
-        ig.translate(mx, my)
-        ig.rotate(ang)
-        ig.beginPath()
-        ig.moveTo(-8, -6)
-        ig.lineTo(4, 0)
-        ig.lineTo(-8, 6)
-        ig.stroke()
-        ig.restore()
-      }
     }
     ig.setLineDash([])
-
     const vent = toChart(LANDMARKS.panache.x, LANDMARKS.panache.z)
     ig.strokeStyle = '#b8603a'
     ig.lineWidth = 1.8
@@ -213,76 +196,29 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       ig.arc(vent.x, vent.y, 6 + k * 7, 0.3 * k, Math.PI * 1.6 + 0.3 * k)
       ig.stroke()
     }
-    ig.fillStyle = INK_SOFT
-    ig.font = `16px ${SERIF}`
-    for (const c of CAMPS) {
-      const p = toChart(c.x, c.z)
-      ig.beginPath()
-      ig.arc(p.x, p.y, 4, 0, Math.PI * 2)
-      ig.fill()
-    }
-    for (const hf of HAUTS_FONDS) {
-      const p = toChart(hf.x, hf.z)
-      ig.strokeStyle = INK
-      ig.lineWidth = 1.2
-      ig.beginPath()
-      ig.arc(p.x, p.y, 7, 0, Math.PI * 2)
-      ig.stroke()
-      ig.font = `11px ${SERIF}`
-      ig.fillStyle = INK_SOFT
-      ig.fillText(String(Math.round(CEILING_Y - hf.topBelowCeiling)), p.x + 9, p.y + 4)
-    }
     ig.textAlign = 'center'
-    for (const [id, c] of Object.entries(REGIONS) as [Exclude<RegionId, 'bleu'>, { x: number; z: number }][]) {
-      if (id === 'blanc') continue
+    for (const [id, nom] of Object.entries(REGION_LABELS) as [keyof typeof REGION_LABELS, string][]) {
+      const c = REGIONS[id]
       const p = toChart(c.x, c.z)
       ig.font = `italic 22px ${SERIF}`
       ig.fillStyle = 'rgba(74,59,44,0.8)'
-      ig.fillText(REGION_NAMES[id], p.x, p.y - 28)
+      ig.fillText(nom, p.x, p.y - 28)
     }
     ig.textAlign = 'start'
-  }
-
-  const drawMask = () => {
-    mg.clearRect(0, 0, SIZE, SIZE)
-    for (const s of SONDES) {
-      const active = ctx.state.chart.sondes.includes(s.id)
-      const t = anim.get(s.id)
-      if (!active && t === undefined) continue
-      const p = t === undefined ? 1 : Math.min(1, t)
-      const center = s.region === 'bleu' ? toChart(s.x, s.z) : toChart(REGIONS[s.region].x, REGIONS[s.region].z)
-      const ease = 1 - Math.pow(1 - p, 3)
-      const r = REVEAL_R * ease
-      if (r <= 1) continue
-      const blob = ctx.rng(`blob-${s.id}`)
-      for (let k = 0; k < 14; k++) {
-        const ang = blob() * Math.PI * 2
-        const off = r * 0.35 * blob()
-        const rr = r * (0.55 + 0.35 * blob())
-        const x = center.x + Math.cos(ang) * off
-        const y = center.y + Math.sin(ang) * off
-        const grad = mg.createRadialGradient(x, y, rr * 0.55, x, y, rr)
-        grad.addColorStop(0, 'rgba(0,0,0,1)')
-        grad.addColorStop(1, 'rgba(0,0,0,0)')
-        mg.fillStyle = grad
-        mg.fillRect(x - rr, y - rr, rr * 2, rr * 2)
-      }
-    }
     const edge = toChart(0, BLANC_SLOPE.zStart).y
-    const blank = mg.createLinearGradient(0, edge - 22, 0, edge + 6)
-    blank.addColorStop(0, 'rgba(0,0,0,1)')
-    blank.addColorStop(1, 'rgba(0,0,0,0)')
-    mg.globalCompositeOperation = 'destination-out'
-    mg.fillStyle = blank
-    mg.fillRect(0, 0, SIZE, edge + 6)
-    mg.globalCompositeOperation = 'source-over'
+    const fade = ig.createLinearGradient(0, edge - 24, 0, edge + 6)
+    fade.addColorStop(0, 'rgba(0,0,0,1)')
+    fade.addColorStop(1, 'rgba(0,0,0,0)')
+    ig.globalCompositeOperation = 'destination-out'
+    ig.fillStyle = fade
+    ig.fillRect(0, 0, SIZE, edge + 6)
+    ig.globalCompositeOperation = 'source-over'
   }
 
   const drawRoute = () => {
     const pts = DRIFT_ROUTE.map((w) => toChart(w.x, w.z))
-    const usual = pts.slice(0, 4)
     const groove = new Path2D()
-    usual.forEach((p, k) => (k === 0 ? groove.moveTo(p.x, p.y) : groove.lineTo(p.x, p.y)))
+    pts.slice(0, 4).forEach((p, k) => (k === 0 ? groove.moveTo(p.x, p.y) : groove.lineTo(p.x, p.y)))
     const c1 = toChart(-620, -520)
     const c2 = toChart(-760, 760)
     groove.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, pts[0]!.x, pts[0]!.y)
@@ -296,9 +232,6 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
     g.restore()
     g.strokeStyle = 'rgba(74,59,44,0.85)'
     g.lineWidth = 4
-    g.stroke(groove)
-    g.strokeStyle = 'rgba(40,30,20,0.5)'
-    g.lineWidth = 1
     g.stroke(groove)
     const a = pts[3]!
     const b = pts[4]!
@@ -323,23 +256,14 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
     g.fillText(UI.carte.sillon, c2.x - 40, (c2.y + c1.y) / 2)
   }
 
-  const reperePoints = (progress: number) => {
-    const st = ctx.state
-    const start = DRIFT_ROUTE[DRIFT_ROUTE.length - 1]!
-    const pts = [toChart(start.x, start.z)]
-    for (const id of st.chart.reperes) {
-      const hf = HAUTS_FONDS.find((s) => s.id === id)
-      if (hf) pts.push(toChart(hf.x, hf.z))
-    }
-    if (st.flags['ending'] || st.flags['postgame']) pts.push(toChart(SEUIL.x, SEUIL.z))
-    if (progress >= 0 && progress < 1 && pts.length > 1) {
-      const segs = pts.length - 1
-      const t = progress * segs
-      const k = Math.floor(t)
-      const a = pts[k]!
-      const b = pts[Math.min(k + 1, segs)]!
-      const f = t - k
-      return [...pts.slice(0, k + 1), { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f }]
+  const linePts = () => {
+    const end = DRIFT_ROUTE[DRIFT_ROUTE.length - 1]!
+    const r = seeded(4242)
+    const pts: { x: number; y: number; d: number }[] = []
+    for (let i = 0; i <= 7; i++) {
+      const z = end.z - i * 45
+      const x = end.x - i * 8 + (r() - 0.5) * 30
+      pts.push({ ...toChart(x, z), d: Math.round(36 - i * 3.6) })
     }
     return pts
   }
@@ -351,239 +275,403 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
     g.textAlign = 'center'
     g.fillText(UI.carte.blanc, c.x, c.y - 40)
     g.textAlign = 'start'
-    const pts = reperePoints(lineProgress)
-    if (pts.length < 2) return
+    const drawn = ctx.state.flags['postgame'] || lineProgress >= 0
+    if (!drawn) return
+    const pts = linePts()
+    const k = lineProgress >= 0 ? lineProgress : 1
+    const n = Math.max(1, Math.floor(k * (pts.length - 1) + 1))
     g.strokeStyle = HERO_INK
     g.lineWidth = 3
     g.lineCap = 'round'
-    g.lineJoin = 'round'
     g.beginPath()
-    pts.forEach((p, k) => (k === 0 ? g.moveTo(p.x, p.y) : g.lineTo(p.x + Math.sin(k * 7.1) * 1.5, p.y)))
+    for (let i = 0; i < n; i++) {
+      const p = pts[i]!
+      if (i === 0) g.moveTo(p.x, p.y)
+      else g.lineTo(p.x, p.y)
+    }
+    const f = k * (pts.length - 1) - (n - 1)
+    if (n < pts.length && f > 0) {
+      const a = pts[n - 1]!
+      const b = pts[n]!
+      g.lineTo(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
+    }
     g.stroke()
     g.fillStyle = HERO_INK
     g.font = `15px ${HAND}`
-    for (const id of ctx.state.chart.reperes) {
-      const hf = HAUTS_FONDS.find((s) => s.id === id)
-      if (!hf) continue
-      const p = toChart(hf.x, hf.z)
-      g.beginPath()
-      g.arc(p.x, p.y, 4, 0, Math.PI * 2)
-      g.fill()
-      g.fillText(String(Math.round(CEILING_Y - hf.topBelowCeiling)), p.x + 8, p.y - 6)
-    }
+    for (let i = 1; i < n; i++) g.fillText(`${pts[i]!.d}`, pts[i]!.x + 8, pts[i]!.y - 4)
   }
 
-  const drawCartouche = () => {
-    g.save()
-    g.translate(70, SIZE - 120)
-    g.strokeStyle = INK
-    g.fillStyle = INK
-    g.lineWidth = 1.4
-    g.beginPath()
-    g.moveTo(0, -46)
-    g.lineTo(8, 0)
-    g.lineTo(0, 46)
-    g.lineTo(-8, 0)
-    g.closePath()
-    g.stroke()
-    g.beginPath()
-    g.moveTo(0, -46)
-    g.lineTo(8, 0)
-    g.lineTo(-8, 0)
-    g.closePath()
-    g.fill()
-    g.beginPath()
-    g.moveTo(-34, 0)
-    g.lineTo(34, 0)
-    g.stroke()
-    g.font = `bold 16px ${SERIF}`
-    g.textAlign = 'center'
-    g.fillText('N', 0, -54)
-    g.restore()
-    g.font = `italic 30px ${SERIF}`
-    g.fillStyle = 'rgba(74,59,44,0.9)'
-    g.textAlign = 'right'
-    g.fillText(UI.carte.titre, SIZE - 40, SIZE - 40)
-    g.textAlign = 'start'
+  const drawCompass = (cg: CanvasRenderingContext2D, x: number, y: number, s: number, title: string, w: number, hh: number) => {
+    cg.save()
+    cg.translate(x, y)
+    cg.scale(s, s)
+    cg.strokeStyle = INK
+    cg.fillStyle = INK
+    cg.lineWidth = 1.4
+    cg.beginPath()
+    cg.moveTo(0, -46)
+    cg.lineTo(8, 0)
+    cg.lineTo(0, 46)
+    cg.lineTo(-8, 0)
+    cg.closePath()
+    cg.stroke()
+    cg.beginPath()
+    cg.moveTo(0, -46)
+    cg.lineTo(8, 0)
+    cg.lineTo(-8, 0)
+    cg.closePath()
+    cg.fill()
+    cg.font = `bold 16px ${SERIF}`
+    cg.textAlign = 'center'
+    cg.fillText('N', 0, -54)
+    cg.restore()
+    cg.font = `italic 30px ${SERIF}`
+    cg.fillStyle = 'rgba(74,59,44,0.9)'
+    cg.textAlign = 'right'
+    cg.fillText(title, w - 40, hh - 34)
+    cg.textAlign = 'start'
   }
 
-  const drawSondes = () => {
-    for (const s of SONDES) {
-      if (!ctx.state.chart.sondes.includes(s.id)) continue
-      const p = toChart(s.x, s.z)
-      g.fillStyle = '#e8674a'
-      g.strokeStyle = INK
-      g.lineWidth = 1.5
-      g.beginPath()
-      g.moveTo(p.x, p.y - 13)
-      g.lineTo(p.x + 7, p.y + 6)
-      g.lineTo(p.x - 7, p.y + 6)
-      g.closePath()
-      g.fill()
-      g.stroke()
-    }
-  }
-
-  const compose = () => {
-    drawMask()
-    g.globalCompositeOperation = 'source-over'
+  const composeSea = () => {
     g.drawImage(paper, 0, 0)
-    tg.clearRect(0, 0, SIZE, SIZE)
-    tg.globalCompositeOperation = 'source-over'
-    tg.drawImage(ink, 0, 0)
-    tg.globalCompositeOperation = 'destination-in'
-    tg.drawImage(mask, 0, 0)
-    tg.globalCompositeOperation = 'source-over'
-    g.drawImage(tmp, 0, 0)
+    g.drawImage(ink, 0, 0)
     drawRoute()
     drawBlanc()
-    drawSondes()
-    drawCartouche()
-    for (const pin of ctx.state.chart.pins) {
-      const p = toChart(pin.x, pin.z)
-      g.fillStyle = HERO_INK
-      g.beginPath()
-      g.arc(p.x, p.y, 5, 0, Math.PI * 2)
-      g.fill()
+    drawCompass(g, 70, SIZE - 120, 1, UI.carte.titre, SIZE, SIZE)
+  }
+
+  const revealed = (d: DistrictId) => {
+    const domes = gp.progress().domes
+    if (d === 'hauts') return domes.length >= 4
+    if (d === 'proue') return ctx.state.act >= 3 || domes.length >= 6
+    return domes.some((id) => DOME_DISTRICT[id] === d)
+  }
+
+  const drawDistrict = (d: (typeof DISTRICTS)[number], k: number) => {
+    const a = toPlan(d.x0, d.z0)
+    const b = toPlan(d.x1, d.z1)
+    const accent = `#${d.accent.toString(16).padStart(6, '0')}`
+    lg.save()
+    if (k <= 0) {
+      lg.setLineDash([6, 8])
+      lg.strokeStyle = 'rgba(74,59,44,0.25)'
+      lg.lineWidth = 1.5
+      lg.strokeRect(a.x + 3, a.y + 3, b.x - a.x - 6, b.y - a.y - 6)
+      lg.setLineDash([])
+      lg.font = `italic 15px ${HAND}`
+      lg.fillStyle = 'rgba(74,59,44,0.35)'
+      lg.textAlign = 'center'
+      lg.fillText(UI.carte.vierge, (a.x + b.x) / 2, (a.y + b.y) / 2 + 30)
+      lg.restore()
+      return
     }
+    lg.globalAlpha = Math.min(1, k)
+    const cx = (a.x + b.x) / 2
+    const cy = (a.y + b.y) / 2
+    const r = Math.hypot(b.x - a.x, b.y - a.y) * 0.6 * Math.min(1, k)
+    lg.beginPath()
+    lg.arc(cx, cy, r, 0, Math.PI * 2)
+    lg.clip()
+    lg.fillStyle = `${accent}22`
+    lg.fillRect(a.x + 2, a.y + 2, b.x - a.x - 4, b.y - a.y - 4)
+    const rr = seeded(d.id.length * 997 + d.x0 * 13 + 7)
+    lg.strokeStyle = INK
+    lg.lineWidth = 1.1
+    for (let x = d.x0 + 6; x <= d.x1 - 6; x += d.id === 'hauts' ? 24 : 12) {
+      let z = d.z0 + 2 + rr() * 4
+      while (z < d.z1 - 8) {
+        const l = d.id === 'hauts' ? 10 : [18, 24, 32, 10, 14][Math.floor(rr() * 5)]!
+        if (z + l > d.z1 - 2) break
+        const inVoid = d.id === 'nef' && x > NEF_VOID.x0 && x < NEF_VOID.x1 && z + l > NEF_VOID.z0 && z < NEF_VOID.z1
+        const inQuarter = d.id === 'ecluse' && x > -48 && x < 52 && z + l > 42
+        if (!inVoid && !inQuarter) {
+          const p = toPlan(x - 3.3, z)
+          lg.fillStyle = rr() < 0.5 ? `${accent}55` : 'rgba(239,227,196,0.9)'
+          lg.beginPath()
+          lg.roundRect(p.x, p.y, 6.6 * PPM, l * PPM, 10)
+          lg.fill()
+          lg.stroke()
+          lg.beginPath()
+          lg.moveTo(p.x + 3.3 * PPM, p.y + 6)
+          lg.lineTo(p.x + 3.3 * PPM, p.y + l * PPM - 6)
+          lg.strokeStyle = 'rgba(74,59,44,0.35)'
+          lg.stroke()
+          lg.strokeStyle = INK
+        }
+        z += l + 2.5 + rr() * 2
+      }
+    }
+    if (d.id === 'nef') {
+      const v0 = toPlan(NEF_VOID.x0, NEF_VOID.z0)
+      const v1 = toPlan(NEF_VOID.x1, NEF_VOID.z1)
+      lg.strokeStyle = INK
+      lg.lineWidth = 2
+      lg.strokeRect(v0.x, v0.y, v1.x - v0.x, v1.y - v0.y)
+      lg.strokeRect(v0.x + 16, v0.y + 16, v1.x - v0.x - 32, v1.y - v0.y - 32)
+      const m = toPlan(0, 0)
+      lg.beginPath()
+      lg.arc(m.x, m.y, 2.2 * PPM, 0, Math.PI * 2)
+      lg.fillStyle = '#d9b48f'
+      lg.fill()
+      lg.stroke()
+    }
+    if (d.id === 'ecluse') {
+      const rooms: [number, number, number, number][] = [
+        [10, 26, 56, 72], [10, 18, 48, 56], [-40, -26, 54, 70], [-14, 10, 60.8, 63.2], [-9, -5, 63.2, 67.2], [-9, -3, 55, 60.8],
+        [36, 44, 57, 67], [-3, 3, 63.2, 73.5], [-26, -14, 61, 63], [26, 36, 61, 63], [-26, -9, 56.5, 58.5],
+      ]
+      lg.fillStyle = 'rgba(239,227,196,0.95)'
+      lg.lineWidth = 1.6
+      for (const [x0, x1, z0, z1] of rooms) {
+        const p = toPlan(x0, z0)
+        const q = toPlan(x1, z1)
+        lg.fillRect(p.x, p.y, q.x - p.x, q.y - p.y)
+        lg.strokeRect(p.x, p.y, q.x - p.x, q.y - p.y)
+      }
+      const gv = toPlan(13, 72)
+      lg.strokeStyle = SEA_INK
+      lg.lineWidth = 4
+      lg.beginPath()
+      lg.moveTo(gv.x, gv.y)
+      lg.lineTo(toPlan(23, 72).x, gv.y)
+      lg.stroke()
+    }
+    lg.restore()
+    lg.save()
+    lg.globalAlpha = Math.min(1, k)
+    lg.font = `italic 19px ${SERIF}`
+    lg.fillStyle = INK
+    lg.textAlign = 'center'
+    lg.fillText(DISTRICT_NAMES[d.id], (a.x + b.x) / 2, d.id === 'hauts' ? a.y + 22 : (a.y + b.y) / 2 + (d.id === 'nef' ? -NEF_VOID.z1 * PPM - 10 : 4))
+    lg.restore()
+  }
+
+  const icons: { kind: 'tube'; id: string; name: string; x: number; y: number }[] = []
+
+  const composePlan = () => {
+    lg.drawImage(planPaper, 0, 0)
+    const order: DistrictId[] = ['hauts', 'machines', 'marche', 'serres', 'ateliers', 'scellees', 'nef', 'proue', 'ecluse']
+    for (const id of order) {
+      if (id === 'hauts') continue
+      const d = DISTRICT_BY_ID[id]
+      const anim = reveal.get(id)
+      drawDistrict(d, anim !== undefined ? anim : revealed(id) ? 1 : 0)
+    }
+    lg.font = `italic 14px ${HAND}`
+    const site = gp.sites.get()
+    const spot = (id: string, list: { id: string; at: { x: number; z: number } }[]) => list.find((x) => x.id === id)?.at ?? PLAN_FALLBACK[id] ?? null
+    for (const id of MAP_DOMES) {
+      const at = spot(id, site.domes)
+      if (!at) continue
+      const p = toPlan(at.x, at.z)
+      const on = gp.progress().domes.includes(id)
+      lg.beginPath()
+      lg.arc(p.x, p.y, 10, Math.PI, 0)
+      lg.lineTo(p.x + 10, p.y + 6)
+      lg.lineTo(p.x - 10, p.y + 6)
+      lg.closePath()
+      lg.fillStyle = on ? '#e3b95f' : 'rgba(111,168,216,0.85)'
+      lg.strokeStyle = INK
+      lg.lineWidth = 1.5
+      lg.fill()
+      lg.stroke()
+      if (on || revealed(DOME_DISTRICT[id]!)) {
+        lg.fillStyle = INK_SOFT
+        lg.textAlign = 'center'
+        lg.fillText(DOME_NAMES[id] ?? '', p.x, p.y + 22)
+      }
+    }
+    for (const id of SCELLEES) {
+      const at = spot(id, site.scellees)
+      if (!at) continue
+      const district = ctx.services.drift?.districtAt({ x: at.x, y: 0, z: at.z })
+      if (district && !revealed(district)) continue
+      const p = toPlan(at.x, at.z)
+      const done = gp.scellees.done(id)
+      lg.save()
+      lg.translate(p.x, p.y)
+      lg.rotate(Math.PI / 4)
+      lg.fillStyle = done ? '#f2eeff' : 'rgba(216,100,78,0.85)'
+      lg.strokeStyle = INK
+      lg.fillRect(-7, -7, 14, 14)
+      lg.strokeRect(-7, -7, 14, 14)
+      lg.restore()
+      lg.fillStyle = INK_SOFT
+      lg.textAlign = 'center'
+      lg.fillText(SCELLEE_TEXT[id]?.nom ?? id, p.x, p.y + 22)
+    }
+    icons.length = 0
+    for (const t of gp.travel.stations()) {
+      if (!t.open) continue
+      const p = toPlan(t.at.x, t.at.z)
+      lg.beginPath()
+      lg.arc(p.x, p.y, 9, 0, Math.PI * 2)
+      lg.fillStyle = '#2f6b78'
+      lg.fill()
+      lg.strokeStyle = '#efe3c4'
+      lg.lineWidth = 2
+      lg.stroke()
+      lg.fillStyle = '#efe3c4'
+      lg.font = `bold 11px ${SERIF}`
+      lg.textAlign = 'center'
+      lg.fillText('T', p.x, p.y + 4)
+      icons.push({ kind: 'tube', id: t.id, name: t.name, x: p.x, y: p.y })
+    }
+    lg.textAlign = 'start'
+    drawCompass(lg, PW - 70, 110, 0.75, UI.carte.plan, PW - 40, PH)
   }
 
   const drawOverlay = () => {
     if (!overlay) return
     const o = overlay
     const st = ctx.state
-    o.clearRect(0, 0, SIZE, SIZE)
-    const d = toChart(st.drift.position.x, st.drift.position.z)
+    const w = side === 'mer' ? SIZE : PW
+    const hh = side === 'mer' ? SIZE : PH
+    o.clearRect(0, 0, w, hh)
+    const pulse = 1 + 0.25 * Math.sin(performance.now() / 260)
+    if (side === 'mer') {
+      const d = toChart(st.drift.position.x, st.drift.position.z)
+      o.save()
+      o.translate(d.x, d.y)
+      o.rotate(st.drift.heading)
+      o.fillStyle = '#c46a4a'
+      o.strokeStyle = INK
+      o.lineWidth = 1.5
+      o.beginPath()
+      o.ellipse(0, 0, 9, 15, 0, 0, Math.PI * 2)
+      o.fill()
+      o.stroke()
+      o.restore()
+      o.font = `italic 16px ${HAND}`
+      o.fillStyle = INK
+      o.fillText(UI.carte.drift, d.x + 14, d.y + 4)
+      return
+    }
+    const hl = gp.heroLocal()
+    const p = toPlan(hl.x, hl.z)
     o.save()
-    o.translate(d.x, d.y)
-    o.rotate(st.drift.heading)
-    o.fillStyle = '#c46a4a'
-    o.strokeStyle = INK
-    o.lineWidth = 1.5
-    o.beginPath()
-    o.ellipse(0, 0, 9, 15, 0, 0, Math.PI * 2)
-    o.fill()
-    o.stroke()
-    o.restore()
-    o.font = `italic 16px ${HAND}`
-    o.fillStyle = INK
-    o.fillText(UI.carte.drift, d.x + 14, d.y + 4)
-    const hp = toChart(st.hero.position.x, st.hero.position.z)
-    const pulse = 1 + 0.25 * Math.sin(ctx.clock.elapsed * 4 + performance.now() / 300)
-    o.save()
-    o.translate(hp.x, hp.y)
-    o.rotate(st.hero.yaw)
+    o.translate(p.x, p.y)
+    o.rotate(st.hero.yaw - st.drift.heading)
     o.scale(pulse, pulse)
     o.fillStyle = HERO_INK
     o.strokeStyle = '#fff8ee'
     o.lineWidth = 2
     o.beginPath()
-    o.moveTo(0, -11)
-    o.lineTo(8, 8)
+    o.moveTo(0, -12)
+    o.lineTo(9, 9)
     o.lineTo(0, 4)
-    o.lineTo(-8, 8)
+    o.lineTo(-9, 9)
     o.closePath()
     o.stroke()
     o.fill()
     o.restore()
+    o.font = `italic 16px ${HAND}`
+    o.fillStyle = HERO_INK
+    o.fillText(UI.carte.toi, p.x + 14, p.y - 8)
   }
 
-  const travelTo = async (sondeId: string) => {
-    const top = gp.sondes.topOf(sondeId)
-    if (!top) return
-    api.close()
-    gp.lock.count++
-    await gp.cine.fade('black', 0.6)
-    const hero = ctx.services.hero
-    const p = { x: top.x + 3, y: top.y + 1.5, z: top.z + 3 }
-    if (hero) hero.teleport(p)
-    else ctx.state.hero.position = p
-    await gp.cine.wait(0.4)
-    await gp.cine.fade(null, 0.8)
-    gp.lock.count--
-  }
-
-  drawPaper()
+  paperOn(pg, SIZE, SIZE, rng)
+  paperOn(ppg, PW, PH, rng)
   try {
     drawInk()
   } catch (err) {
     console.error('[gameplay] carte', err)
   }
-  compose()
+  composeSea()
+
+  const peek = async (canvas: HTMLCanvasElement, until: () => boolean, hold: number) => {
+    const el = h('div', 'gp-chart peek', undefined, root)
+    const sheet = h('div', 'sheet', undefined, el)
+    sheet.appendChild(canvas)
+    while (!until()) await gp.cine.wait(0.05)
+    await gp.cine.wait(hold)
+    el.style.transition = 'opacity .9s'
+    el.style.opacity = '0'
+    await gp.cine.wait(0.9)
+    el.remove()
+  }
+
+  const build = () => {
+    if (!openEl) return
+    openEl.textContent = ''
+    const wrap = openEl
+    h('div', 'title', UI.carte.titre, wrap)
+    const tabs = h('div', 'gp-tabs gp-chart-tabs', undefined, wrap)
+    for (const [k, label] of [['plan', UI.carte.plan], ['mer', UI.carte.mer]] as const) {
+      button(label, () => {
+        side = k
+        build()
+      }, tabs, `gp-tab${side === k ? ' on' : ''}`)
+    }
+    const sheet = h('div', `sheet ${side}`, undefined, wrap)
+    const src = side === 'mer' ? out : plan
+    sheet.appendChild(src)
+    const [ov, og] = canvas2d(src.width, src.height)
+    overlay = og
+    overlayCanvas = ov
+    sheet.appendChild(ov)
+    if (side === 'plan') {
+      ov.style.cursor = 'pointer'
+      const at = (e: MouseEvent) => {
+        const r = ov.getBoundingClientRect()
+        const x = ((e.clientX - r.left) / r.width) * PW
+        const y = ((e.clientY - r.top) / r.height) * PH
+        return icons.find((i) => Math.hypot(i.x - x, i.y - y) < 16) ?? null
+      }
+      ov.addEventListener('click', (e) => {
+        const hit = at(e)
+        if (!hit) return
+        api.close()
+        void gp.travel.goStation(hit.id)
+      })
+      ov.addEventListener('mousemove', (e) => {
+        const hit = at(e)
+        ov.title = hit ? UI.carte.aller(STATION_NAMES[hit.id] ?? hit.name) : ''
+      })
+    }
+    h('div', 'legend', side === 'mer' ? UI.carte.legendeMer : UI.carte.legende, wrap)
+    const row = h('div', 'side', undefined, wrap)
+    button(UI.carte.cabine, () => {
+      api.close()
+      void gp.travel.returnToCabin()
+    }, row)
+    button(`${UI.carte.fermer} (${ctx.input.keyLabel('map')})`, () => api.close(), row, 'gp-btn primary')
+  }
 
   const api: Chart = {
     canvas: out,
-    async reveal(sondeId) {
-      anim.set(sondeId, 0)
-      const peek = h('div', 'gp-chart peek', undefined, root)
-      const sheet = h('div', 'sheet', undefined, peek)
-      sheet.appendChild(out)
-      while ((anim.get(sondeId) ?? 1) < 1) await gp.cine.wait(0.05)
-      anim.delete(sondeId)
-      dirty = true
-      await gp.cine.wait(1.6)
-      peek.style.transition = 'opacity .8s'
-      peek.style.opacity = '0'
-      await gp.cine.wait(0.8)
-      peek.remove()
+    plan,
+    async reveal(domeId) {
+      const d = DOME_DISTRICT[domeId]
+      if (!d) return
+      reveal.set(d, 0)
+      planDirty = true
+      gp.sfx('paper')
+      await peek(plan, () => (reveal.get(d) ?? 1) >= 1, 1.6)
+      reveal.delete(d)
+      planDirty = true
     },
     async drawLine() {
       lineProgress = 0
-      const peek = h('div', 'gp-chart peek', undefined, root)
-      const sheet = h('div', 'sheet', undefined, peek)
-      sheet.appendChild(out)
-      while (lineProgress >= 0 && lineProgress < 1) await gp.cine.wait(0.05)
+      gp.sfx('stylo')
+      await peek(out, () => lineProgress >= 1, 2.4)
       lineProgress = -1
       dirty = true
-      await gp.cine.wait(2.4)
-      peek.style.transition = 'opacity 1.2s'
-      peek.style.opacity = '0'
-      await gp.cine.wait(1.2)
-      peek.remove()
     },
     redraw() {
       dirty = true
+      planDirty = true
     },
     isOpen: () => openEl !== null,
-    open() {
+    open(s) {
       if (openEl) return
+      if (s) side = s
       dirty = true
-      const wrap = h('div', 'gp-chart gp-interactive', undefined, root)
-      openEl = wrap
-      h('div', 'title', UI.carte.titre, wrap)
-      const sheet = h('div', 'sheet', undefined, wrap)
-      sheet.appendChild(out)
-      const [ov, og] = canvas2d()
-      overlay = og
-      sheet.appendChild(ov)
-      ov.style.cursor = 'pointer'
-      ov.addEventListener('click', (e) => {
-        const r = ov.getBoundingClientRect()
-        const x = ((e.clientX - r.left) / r.width) * SIZE
-        const y = ((e.clientY - r.top) / r.height) * SIZE
-        for (const s of SONDES) {
-          if (!ctx.state.chart.sondes.includes(s.id)) continue
-          const p = toChart(s.x, s.z)
-          if (Math.hypot(p.x - x, p.y - y) < 22) {
-            void travelTo(s.id)
-            return
-          }
-        }
-      })
-      ov.addEventListener('mousemove', (e) => {
-        const r = ov.getBoundingClientRect()
-        const x = ((e.clientX - r.left) / r.width) * SIZE
-        const y = ((e.clientY - r.top) / r.height) * SIZE
-        const hit = SONDES.find((s) => ctx.state.chart.sondes.includes(s.id) && Math.hypot(toChart(s.x, s.z).x - x, toChart(s.x, s.z).y - y) < 22)
-        ov.title = hit ? UI.carte.voyager(SONDE_NAMES[hit.id] ?? hit.id) : ''
-      })
-      h('div', 'legend', UI.carte.legende, wrap)
-      const side = h('div', 'side', undefined, wrap)
-      button(UI.carte.ecluse, () => {
-        api.close()
-        void gp.indoor.returnToLock()
-      }, side)
-      button(`${UI.carte.fermer} (${ctx.input.keyLabel('map')})`, () => api.close(), side, 'gp-btn primary')
+      planDirty = true
+      composePlan()
+      openEl = h('div', 'gp-chart gp-interactive', undefined, root)
+      build()
+      gp.sfx('paper')
       ctx.bus.emit('ui:menu', { open: 'carte' })
       ctx.bus.emit('game:paused', { paused: true })
       if (document.pointerLockElement) document.exitPointerLock()
@@ -593,31 +681,35 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       openEl.remove()
       openEl = null
       overlay = null
+      overlayCanvas = null
       ctx.bus.emit('ui:menu', { open: null })
       ctx.bus.emit('game:paused', { paused: false })
     },
     update(dt) {
       let animating = false
-      for (const [id, t] of anim) {
+      for (const [id, t] of reveal) {
         if (t < 1) {
-          anim.set(id, Math.min(1, t + dt / 3.2))
+          reveal.set(id, Math.min(1, t + dt / 3.2))
           animating = true
         }
       }
       if (lineProgress >= 0 && lineProgress < 1) {
-        lineProgress = Math.min(1, lineProgress + dt / 3.5)
-        animating = true
+        lineProgress = Math.min(1, lineProgress + dt / 4)
+        composeSea()
       }
-      if (animating || dirty) {
+      if (dirty) {
         dirty = false
-        compose()
+        composeSea()
       }
-      if (openEl) drawOverlay()
+      if (animating || planDirty) {
+        planDirty = false
+        composePlan()
+      }
+      if (openEl && overlayCanvas) drawOverlay()
     },
   }
-
-  ctx.bus.on('sonde:activated', () => {
-    dirty = true
+  ctx.bus.on('collectible:found', () => {
+    planDirty = true
   })
   return api
 }

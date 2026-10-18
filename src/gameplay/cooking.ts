@@ -11,7 +11,7 @@ const shell = (b: Bag) => n(b, 'moule') + n(b, 'crevette') + n(b, 'oursin')
 // Order is the priority: the first match wins, anything else is a « Plat raté ».
 const RECIPES: readonly Recipe[] = [
   { dish: 'pain-du-cuistot', test: (b) => n(b, 'mie-du-cuistot') >= 1 && n(b, 'poisson') >= 1 },
-  { dish: 'soupe-chaude', test: (b) => n(b, 'sel-de-cheminee') >= 1 && (n(b, 'poisson') >= 1 || shell(b) >= 1) },
+  { dish: 'soupe-chaude', test: (b) => n(b, 'sel-de-machine') >= 1 && (n(b, 'poisson') >= 1 || shell(b) >= 1) },
   { dish: 'galette-de-plancton', test: (b, size) => n(b, 'plancton') >= 2 || (n(b, 'plancton') >= 1 && algae(b) >= 1 && size <= 3) },
   { dish: 'brochette', test: (b) => shell(b) >= 1 && algae(b) >= 1 },
   { dish: 'brochette', test: (b, size) => n(b, 'poisson') >= 2 && size === n(b, 'poisson') },
@@ -27,7 +27,7 @@ export function cookDish(ingredients: readonly string[]): string {
 
 export function eatDish(gp: Gp, dish: string): boolean {
   if (!gp.inv.take(dish)) return false
-  const b = gp.breath
+  const b = gp.endurance
   switch (dish) {
     case 'soupe-chaude':
       b.addBuff('regen', 180)

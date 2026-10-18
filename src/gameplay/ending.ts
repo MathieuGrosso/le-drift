@@ -1,27 +1,19 @@
-import { CEILING_Y } from '../core/layout'
-import type { Vec3 } from '../core/types'
 import type { Ending, Gp } from './context'
 import { DIALOGUES } from './text/fr'
 
-const RISE_SECONDS = 6
-
+// The last measurement: at the Dôme de Proue's lunette, in the rain, the first line drawn in the white.
 export function createEnding(gp: Gp): Ending {
   const ctx = gp.ctx
   let playing = false
-  let rise: { from: Vec3; to: Vec3; t: number } | null = null
   let rippleTimer = 0
-  let handPulse = 0
-  let shot: 'below' | 'hand' | null = null
+  let t = 0
 
-  const teleport = (p: Vec3) => {
-    if (ctx.services.hero) ctx.services.hero.teleport(p)
-    else ctx.state.hero.position = { ...p }
-  }
+  let cc = { x: 0, y: 16, z: -70 }
 
   const api: Ending = {
     playing: () => playing,
     async play() {
-      if (playing || ctx.state.flags['postgame']) return
+      if (playing) return
       playing = true
       const st = ctx.state
       st.flags['ending'] = true
@@ -31,72 +23,55 @@ export function createEnding(gp: Gp): Ending {
       gp.heroMode('cutscene')
       gp.cue('rain')
       gp.weather.set({ rain: 1 })
-      shot = 'below'
+      t = 0
+      cc = gp.sites.where('lunette-vigie') ?? gp.sites.where('lunette-dome-proue') ?? gp.heroLocal()
       try {
-        await gp.dialogue.play(DIALOGUES.fin.slice(0, 2))
-        await gp.dialogue.play(DIALOGUES.fin.slice(2, 4))
-        const from = { ...st.hero.position }
-        rise = { from, to: { x: from.x, y: CEILING_Y - 1.1, z: from.z }, t: 0 }
-        while (rise && rise.t < 1) await gp.cine.wait(0.05)
-        shot = 'hand'
-        await gp.dialogue.play(DIALOGUES.fin.slice(4))
-        handPulse = 3
-        await gp.cine.wait(3)
-        await gp.cine.fade('white', 3)
-        shot = null
+        await gp.dialogue.play(DIALOGUES.fin.slice(0, 3))
+        gp.sfx('stylo')
+        await gp.dialogue.play(DIALOGUES.fin.slice(3, 5))
+        await gp.cine.wait(1.5)
+        await gp.dialogue.play(DIALOGUES.fin.slice(5), 'grand-pere')
+        await gp.cine.wait(2)
         await gp.chart.drawLine()
+        await gp.cine.fade('white', 3)
+        gp.camera.set(null)
         await gp.cine.credits()
         st.flags['postgame'] = true
-        st.quests['a3-seuil'] = 'done'
-        ctx.bus.emit('quest:step', { questId: 'a3-seuil', step: 'done' })
-        ctx.bus.emit('quest:completed', { questId: 'a3-seuil' })
-        const p = st.hero.position
-        teleport({ x: p.x, y: CEILING_Y - 6, z: p.z })
-        gp.camera.set(null)
+        st.quests['a3-ligne'] = 'done'
+        ctx.bus.emit('quest:step', { questId: 'a3-ligne', step: 'done' })
+        ctx.bus.emit('quest:completed', { questId: 'a3-ligne' })
         gp.heroMode('idle')
         await gp.cine.fade(null, 2.5)
+        await gp.dialogue.play(DIALOGUES.postGame)
       } finally {
         st.flags['ending'] = false
-        rise = null
-        shot = null
         gp.camera.set(null)
         gp.hud.showHud(true)
         gp.lock.count--
         playing = false
         gp.cue('explore')
+        ctx.save.write()
       }
     },
     update(dt) {
       if (!playing) return
-      const p = ctx.state.hero.position
+      t += dt
+      const p = ctx.state.drift.position
       rippleTimer -= dt
       if (rippleTimer <= 0) {
-        rippleTimer = 0.07
+        rippleTimer = 0.06
         const a = Math.random() * Math.PI * 2
-        const r = 4 + Math.random() * 70
+        const r = 4 + Math.random() * 120
         const x = p.x + Math.cos(a) * r
         const z = p.z + Math.sin(a) * r
         ctx.services.render?.addRipple(x, z, 0.5 + Math.random() * 0.5)
         ctx.bus.emit('ceiling:ripple', { x, z, strength: 0.6 })
+        if (Math.random() < 0.3) gp.sfx('rain-drop')
       }
-      if (handPulse > 0) {
-        const before = Math.floor(handPulse * 3)
-        handPulse -= dt
-        if (Math.floor(handPulse * 3) !== before) {
-          ctx.services.render?.addRipple(p.x, p.z, 1.6)
-          ctx.bus.emit('ceiling:ripple', { x: p.x, z: p.z, strength: 1.6 })
-        }
-      }
-      if (rise) {
-        rise.t = Math.min(1, rise.t + dt / RISE_SECONDS)
-        const e = rise.t * rise.t * (3 - 2 * rise.t)
-        teleport({ x: rise.from.x, y: rise.from.y + (rise.to.y - rise.from.y) * e, z: rise.from.z })
-      }
-      if (shot === 'below') {
-        gp.camera.set({ position: { x: p.x + 5, y: p.y - 2.5, z: p.z + 5 }, target: { x: p.x, y: p.y + 7, z: p.z }, fov: 58 })
-      } else if (shot === 'hand') {
-        gp.camera.set({ position: { x: p.x + 2.2, y: p.y - 1.4, z: p.z + 2.6 }, target: { x: p.x, y: CEILING_Y, z: p.z }, fov: 62 })
-      }
+      const k = Math.min(1, t / 14)
+      const eye = gp.toWorld({ x: cc.x + 1.4 - k * 0.8, y: cc.y + 1.3 + k * 1.2, z: cc.z + 2.2 - k * 1.2 })
+      const look = gp.toWorld({ x: cc.x, y: cc.y + 4 + k * 30, z: cc.z - 40 - k * 20 })
+      gp.camera.set({ position: eye, target: look, fov: 60 + k * 6 })
     },
   }
   return api

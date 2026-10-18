@@ -1,6 +1,10 @@
-import type { GameContext, GameEvents, MusicCue, Vec3 } from '../core/types'
+import type { GameContext, GameEvents, GameState, MusicCue, Vec3 } from '../core/types'
+import type { Gather } from './world/gather'
+import type { Proue } from './world/proue'
+import type { Sites } from './world/sites'
+import type { Scrub } from './scrub'
 
-export type InteractKind = GameEvents['interact']['kind']
+export type InteractKind = GameEvents['interact']['kind'] | 'zip' | 'tube' | 'valve' | 'pump' | 'lever' | 'ring' | 'lunette' | 'hammock'
 export type Line = readonly [speaker: string | null, text: string]
 
 export interface Candidate {
@@ -9,6 +13,7 @@ export interface Candidate {
   label: string
   key: 'interact' | 'scrub'
   dist: number
+  hold?: boolean
   run(): void
 }
 
@@ -21,6 +26,8 @@ export interface Hud {
   placeName(title: string, sub?: string): void
   showHud(v: boolean): void
   flashNacre(): void
+  counter(owner: string, text: string | null): void
+  card(title: string, sub: string, seconds?: number): void
 }
 
 export interface Dialogue {
@@ -34,8 +41,9 @@ export interface Menus {
   inventory(): void
   sleep(): void
   board(): void
-  market(): void
-  cook(opts?: { tutorial?: boolean }): Promise<string | null>
+  market(stallId?: string): void
+  cook(opts?: { tutorial?: boolean; title?: string }): Promise<string | null>
+  choose(title: string, options: { label: string; run: () => void }[], sub?: string): void
   active(): boolean
   close(): void
   update(dt: number): void
@@ -43,10 +51,11 @@ export interface Menus {
 
 export interface Chart {
   readonly canvas: HTMLCanvasElement
-  reveal(sondeId: string): Promise<void>
+  readonly plan: HTMLCanvasElement
+  reveal(domeId: string): Promise<void>
   drawLine(): Promise<void>
   redraw(): void
-  open(): void
+  open(side?: 'mer' | 'plan'): void
   close(): void
   isOpen(): boolean
   update(dt: number): void
@@ -73,13 +82,14 @@ export interface Inventory {
   addNacreUpgrade(): void
 }
 
-export interface Breath {
+export interface Endurance {
   spend(cost: number): boolean
   drain(ratePerSec: number, dt: number): boolean
   canAct(): boolean
   refill(amount?: number): void
   addBuff(id: 'regen' | 'sprint' | 'bonus', seconds: number): void
   buffs(): { id: string; left: number }[]
+  recentlyUsed(): boolean
   update(dt: number): void
 }
 
@@ -87,6 +97,8 @@ export interface Weather {
   morning(): void
   set(env: Partial<GameContext['state']['env']>): void
   forecastText(): string
+  gite(): { roll: number; pitch: number }
+  condensation(): boolean
   update(dt: number): void
 }
 
@@ -98,31 +110,41 @@ export interface Quests {
   talk(npcId: string): void
   chartTable(): void
   setAct(act: 1 | 2 | 3, announce?: boolean): void
-  repere(shallowId: string): void
   candidates(out: Candidate[]): void
   update(dt: number): void
 }
 
-export interface Sondes {
-  candidates(out: Candidate[]): void
-  topOf(id: string): Vec3 | null
-  update(dt: number): void
-  lateUpdate(dt: number): void
-  dispose(): void
+export interface Domes {
+  activated(id: string): boolean
+  count(excludeTutorial?: boolean): number
 }
 
-export interface Shallows {
-  candidates(out: Candidate[]): void
-  scrubTargets(out: ScrubTarget[]): void
-  heroInBubble(): boolean
+export interface ScelleeView { water: number; air: number; valve: boolean; lever: number; pos: number; timer: number; open: boolean; solved: boolean }
+
+export interface Scellees {
+  done(id: string): boolean
+  view(id: string): ScelleeView | null
+  count(): number
   update(dt: number): void
-  dispose(): void
 }
 
 export interface Collectibles {
   candidates(out: Candidate[]): void
+}
+
+export interface Travel {
+  stationOpen(id: string): boolean
+  openStations(): string[]
+  stations(): { id: string; at: Vec3; name: string; open: boolean }[]
+  goStation(id: string): Promise<void>
+  returnToCabin(): Promise<void>
+}
+
+export interface Tours {
+  boardLines(): string[]
+  target(): number
+  scrubbed(): number
   update(dt: number): void
-  dispose(): void
 }
 
 export interface Indoor {
@@ -130,19 +152,6 @@ export interface Indoor {
   airlock(dir: 'in' | 'out'): Promise<void>
   returnToLock(): Promise<void>
   update(dt: number): void
-}
-
-export interface ScrubTarget {
-  id: string
-  dist: number
-  coat: number
-  scrub(amount: number): number
-}
-
-export interface Scrub {
-  update(dt: number): void
-  active(): boolean
-  best(): ScrubTarget | null
 }
 
 export interface Ending {
@@ -158,21 +167,27 @@ export interface CameraDriver {
 
 export interface Gp {
   ctx: GameContext
+  sites: Sites
+  toWorld(local: Vec3): Vec3
   hud: Hud
   dialogue: Dialogue
   menus: Menus
   chart: Chart
   cine: Cine
   inv: Inventory
-  breath: Breath
+  endurance: Endurance
   weather: Weather
   quests: Quests
-  sondes: Sondes
-  shallows: Shallows
+  domes: Domes
+  scellees: Scellees
   collect: Collectibles
+  travel: Travel
+  tours: Tours
   indoor: Indoor
-  scrub: Scrub
   ending: Ending
+  scrub: Scrub
+  proue: Proue
+  gather: Gather
   camera: CameraDriver
   lock: { count: number }
   busy(): boolean
@@ -182,9 +197,30 @@ export interface Gp {
   heroPos(): Vec3
   headPos(): Vec3
   heroForward(): Vec3
+  heroLocal(): Vec3
   heroMode(m: GameContext['state']['hero']['mode']): void
   driftLock(): Vec3
   sleepUntil(hour: number): Promise<void>
+  say(lines: readonly Line[], npc?: string): Promise<void>
+  emit(name: string, payload: unknown): void
+  progress(): Progress
+}
+
+// v2 save fields the bible names (chart.domes, scellees, tubes); core state does not declare them yet.
+export interface Progress {
+  domes: string[]
+  scellees: string[]
+  tubes: string[]
+  requests: Record<string, string>
+}
+
+export function progressOf(state: GameState): Progress {
+  const s = state as unknown as { chart: { domes?: string[] }; scellees?: string[]; tubes?: string[]; requests?: Record<string, string> }
+  s.chart.domes ??= []
+  s.scellees ??= []
+  s.tubes ??= []
+  s.requests ??= {}
+  return { domes: s.chart.domes, scellees: s.scellees, tubes: s.tubes, requests: s.requests }
 }
 
 export function dist3(a: Vec3, b: Vec3): number {

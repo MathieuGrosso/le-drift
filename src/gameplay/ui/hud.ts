@@ -65,6 +65,14 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
   const miniCtx = miniCanvas.getContext('2d')
   let miniTimer = 0
 
+  const giteRow = h('div', 'row', undefined, info)
+  const giteSvg = svg('svg', { width: 18, height: 18, viewBox: '-10 -10 20 20' }, giteRow)
+  const giteBar = svg('path', { d: 'M-8,0 L8,0 M0,0 L0,-5', stroke: '#cfefe3', 'stroke-width': 2, fill: 'none', 'stroke-linecap': 'round' }, giteSvg)
+  const giteText = h('span', '', '', giteRow)
+  giteRow.style.display = 'none'
+  const counterEl = h('div', 'gp-counter', '', hud)
+  const counters = new Map<string, string | null>()
+
   const v = new THREE.Vector3()
 
   const showToast = (text: string) => {
@@ -78,24 +86,16 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
   const drawMini = () => {
     if (!miniCtx) return
     const st = ctx.state
-    const src = gp.chart.canvas
-    const px = (st.hero.position.x + 1024) / 2
-    const pz = (st.hero.position.z + 1024) / 2
-    const half = 75
+    const src = gp.chart.plan
+    const hl = gp.heroLocal()
+    const px = (hl.x + 130) * 4
+    const pz = (hl.z + 80) * 4
+    const half = 110
     miniCtx.clearRect(0, 0, 300, 300)
     miniCtx.drawImage(src, px - half, pz - half, half * 2, half * 2, 0, 0, 300, 300)
-    const d = st.drift.position
-    const dx = 150 + ((d.x + 1024) / 2 - px) * 2
-    const dz = 150 + ((d.z + 1024) / 2 - pz) * 2
-    if (dx > 0 && dx < 300 && dz > 0 && dz < 300) {
-      miniCtx.fillStyle = '#c46a4a'
-      miniCtx.beginPath()
-      miniCtx.ellipse(dx, dz, 14, 9, st.drift.heading, 0, Math.PI * 2)
-      miniCtx.fill()
-    }
     miniCtx.save()
     miniCtx.translate(150, 150)
-    miniCtx.rotate(st.hero.yaw)
+    miniCtx.rotate(st.hero.yaw - st.drift.heading)
     miniCtx.fillStyle = '#e8674a'
     miniCtx.strokeStyle = '#fff8ee'
     miniCtx.lineWidth = 3
@@ -114,12 +114,11 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
     update(dt) {
       const st = ctx.state
       const hero = st.hero
-      const indoors = hero.medium === 'air'
       const max = Math.max(hero.breathMax, 0.01)
       const notFull = hero.breath < max - 0.001 || hero.exhausted
-      if (notFull && !indoors) wheelHideTimer = 1
+      if (notFull) wheelHideTimer = 1
       else wheelHideTimer -= dt
-      const showWheel = wheelHideTimer > 0 && !indoors
+      const showWheel = wheelHideTimer > 0 && !gp.dialogue.active()
       const head = gp.headPos()
       v.set(head.x, head.y, head.z).project(ctx.camera)
       const onScreen = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
@@ -179,7 +178,17 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       curText.textContent = speed < 0.05 ? UI.from.calme : `${speed.toFixed(1)} m/s`
       br.style.display = st.settings.minimap ? '' : 'none'
       br.style.opacity = gp.dialogue.active() ? '0' : '1'
-      const hasChart = st.chart.sondes.length > 0
+      const g = gp.weather.gite()
+      const deg = (Math.hypot(g.roll, g.pitch) * 180) / Math.PI
+      giteRow.style.display = deg > 1 ? '' : 'none'
+      if (deg > 1) {
+        giteText.textContent = UI.gite(deg)
+        giteBar.setAttribute('transform', `rotate(${(g.roll * 180) / Math.PI * 4})`)
+      }
+      const live = [...counters.values()].find((t) => t !== null) ?? null
+      counterEl.textContent = live ?? ''
+      counterEl.classList.toggle('show', !!live)
+      const hasChart = gp.progress().domes.length > 0
       mini.style.display = hasChart ? '' : 'none'
       if (hasChart) {
         miniTimer -= dt
@@ -189,7 +198,7 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
         }
       }
 
-      const buffs = gp.breath.buffs()
+      const buffs = gp.endurance.buffs()
       if (buffsEl.childElementCount !== buffs.length || buffs.length > 0) {
         buffsEl.textContent = ''
         for (const b of buffs) {
@@ -228,6 +237,15 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
     },
     showHud(vis) {
       hud.classList.toggle('gp-hidden', !vis)
+    },
+    counter(owner, text) {
+      counters.set(owner, text)
+    },
+    card(title, sub, seconds = 3) {
+      placeT.textContent = title
+      placeS.textContent = sub
+      place.classList.add('show')
+      placeTimer = seconds
     },
     flashNacre() {
       const n = gp.inv.count('nacre') % 4

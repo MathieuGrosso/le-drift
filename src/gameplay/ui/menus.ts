@@ -2,17 +2,26 @@ import type { ButtonAction } from '../../core/types'
 import { cookDish, eatDish } from '../cooking'
 import type { Gp, Menus } from '../context'
 import { categoryOf, DISHES, INGREDIENTS, isKeyItem, itemName, type ItemCategory } from '../inventory'
-import { ITEMS, MARKET_GOSSIP, UI, trouvailleText } from '../text/fr'
+import { ITEMS, MARKET_GOSSIP, STALLS, UI, trouvailleText } from '../text/fr'
 import { button, h } from './dom'
 
 interface Trade { give: Record<string, number>; get: Record<string, number> }
 const TRADES: readonly Trade[] = [
-  { give: { poisson: 2 }, get: { 'sel-de-cheminee': 1 } },
+  { give: { poisson: 2 }, get: { 'sel-de-machine': 1 } },
   { give: { moule: 2 }, get: { crevette: 2 } },
   { give: { 'algue-rouge': 3 }, get: { 'mie-du-cuistot': 1 } },
   { give: { oursin: 1 }, get: { plancton: 2 } },
   { give: { crevette: 2 }, get: { poisson: 1 } },
+  { give: { 'algue-rouge': 2 }, get: { 'algue-doree': 1 } },
+  { give: { poisson: 1, moule: 1 }, get: { oursin: 1 } },
+  { give: { 'sel-de-machine': 1 }, get: { moule: 2 } },
 ]
+
+const stallIndex = (id: string) => {
+  let h = 0
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return h % STALLS.length
+}
 
 export function createMenus(gp: Gp, root: HTMLElement): Menus {
   const ctx = gp.ctx
@@ -47,10 +56,11 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     h('div', 't', obj ?? UI.pause.aucun, o)
     const stack = h('div', 'gp-stack', undefined, panel)
     button(UI.pause.reprendre, () => api.close(), stack, 'gp-btn primary')
-    button(UI.pause.ecluse, () => {
+    button(UI.pause.cabine, () => {
       api.close()
-      void gp.indoor.returnToLock()
+      void gp.travel.returnToCabin()
     }, stack)
+    h('p', 'gp-note', UI.pause.progres(gp.domes.count(), gp.scellees.count(), ctx.state.trouvailles.length), panel)
     button(UI.pause.reglages, () => settings(), stack)
     button(UI.pause.commandes, () => controls(), stack)
   }
@@ -148,22 +158,16 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
             render()
           }, card)
         }
-        if (tab === 'ingredients' && (id === 'poisson' || id === 'plancton') && ctx.state.hero.medium === 'water') {
-          button(UI.inventaire.nourrir, () => {
-            if (gp.inv.take(id)) ctx.services.fauna?.attractSchool(ctx.state.hero.position)
-            render()
-          }, card)
-        }
       }
     }
     render()
   }
 
-  const cook = (opts?: { tutorial?: boolean }) =>
+  const cook = (opts?: { tutorial?: boolean; title?: string }) =>
     new Promise<string | null>((resolve) => {
       let result: string | null = null
       const panel = open('pause', ['pause'], () => resolve(result))
-      title(panel, UI.cuisine.titre)
+      title(panel, opts?.title ?? UI.cuisine.titre)
       h('p', 'gp-note', opts?.tutorial ? UI.cuisine.tutoriel : UI.cuisine.aide, panel)
       const pot: string[] = []
       const potEl = h('div', 'gp-pot', undefined, panel)
@@ -240,19 +244,29 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     title(panel, UI.tableau.titre, UI.tableau.sous)
     const b = h('div', 'gp-board', undefined, panel)
     for (const part of gp.weather.forecastText().split(' · ')) h('div', '', part, b)
+    for (const line of gp.tours.boardLines()) h('div', '', line, b)
     const row = h('div', 'gp-row', undefined, panel)
     row.style.marginTop = '20px'
+    if (ctx.state.hero.room === 'sas' && ctx.state.mode === 'inside') {
+      button(UI.tableau.sortir, () => {
+        api.close()
+        void gp.indoor.airlock('out')
+      }, row)
+    }
     button(UI.tableau.fermer, () => api.close(), row, 'gp-btn primary')
   }
 
-  const market = () => {
+  const market = (stallId = 'etal') => {
     const panel = open('pause', ['pause'])
-    title(panel, UI.marche.titre, UI.marche.sous)
+    const k = stallIndex(stallId)
+    const stall = stallId === 'etal' ? { nom: UI.marche.titre, sous: UI.marche.sous } : STALLS[k]!
+    title(panel, stall.nom, stall.sous)
+    const offers = stallId === 'etal' ? TRADES.slice(0, 5) : TRADES.filter((_, i) => (i + k) % 2 === 0 || i === k)
     const list = h('div', 'gp-stack', undefined, panel)
     const note = h('p', 'gp-result', '', panel)
     const render = () => {
       list.textContent = ''
-      for (const t of TRADES) {
+      for (const t of offers) {
         const ok = Object.entries(t.give).every(([id, n]) => gp.inv.count(id) >= n)
         const label = `${Object.entries(t.give).map(([id, n]) => `${n} ${itemName(id)}`).join(' + ')}  →  ${Object.entries(t.get).map(([id, n]) => `${n} ${itemName(id)}`).join(' + ')}`
         const b = button(label, () => {
@@ -282,7 +296,19 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     button(UI.marche.fermer, () => api.close(), row, 'gp-btn primary')
   }
 
+  const choose = (t: string, options: { label: string; run: () => void }[], sub?: string) => {
+    const panel = open('pause', ['pause', 'interact'])
+    title(panel, t, sub)
+    const stack = h('div', 'gp-stack', undefined, panel)
+    options.forEach((o, i) => button(o.label, () => {
+      api.close()
+      o.run()
+    }, stack, i === 0 ? 'gp-btn primary' : 'gp-btn'))
+    button(UI.sommeil.annuler, () => api.close(), stack)
+  }
+
   const api: Menus = {
+    choose,
     pause: pauseMain,
     inventory,
     sleep,

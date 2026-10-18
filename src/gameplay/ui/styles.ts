@@ -134,6 +134,14 @@ export const GAMEPLAY_CSS = `
 .gp-chart .gp-btn:not(.primary) { background: rgba(246,242,232,.92); }
 .gp-chart.peek { background: none; pointer-events: none; }
 .gp-chart.peek .sheet { height: min(64vh, 70vw); animation: gp-rise .8s cubic-bezier(.2,.8,.2,1); }
+.gp-chart .sheet.plan { aspect-ratio: 1040 / 640; height: auto; width: min(66vw, 120vh); }
+.gp-chart.peek .sheet:has(canvas[width="1040"]) { aspect-ratio: 1040 / 640; height: auto; width: min(64vw, 110vh); }
+.gp-chart-tabs { position: absolute; top: 5vh; left: 50%; transform: translateX(-50%); border: 0; margin: 0; }
+.gp-chart-tabs .gp-tab { background: rgba(246,242,232,.92); color: #4a3b2c; border-radius: 999px; padding: 6px 18px; }
+.gp-chart-tabs .gp-tab.on { background: #4a3b2c; color: #efe3c4; }
+.gp-counter { position: absolute; top: 26px; right: 30px; padding: 7px 16px; border-radius: 999px; font-size: 15px; letter-spacing: .04em;
+  background: rgba(14,59,82,.42); border: 1px solid rgba(207,239,227,.35); opacity: 0; transition: opacity .5s; }
+.gp-counter.show { opacity: 1; }
 @keyframes gp-rise { from { transform: translateY(40px) rotate(-.6deg); opacity: 0; } }
 
 .gp-fade { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition-property: opacity; transition-timing-function: ease; }

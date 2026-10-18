@@ -1,12 +1,14 @@
 import type { GameContext, GameplayService, HeroMode, MusicCue, System, Vec3 } from '../core/types'
-import { createBreath } from './breath'
 import type { CameraDriver, Candidate, Gp } from './context'
+import { progressOf } from './context'
+import { createEndurance } from './endurance'
 import { createEnding } from './ending'
 import { createIndoor } from './indoor'
 import { createInventory } from './inventory'
 import { createQuests } from './quests'
-import { createScrub } from './scrub'
-import { ACT_CARDS, INTRO, PROMPTS } from './text/fr'
+import { DISTRICT_NAMES, INTRO, ACT_CARDS, PROMPTS, UI } from './text/fr'
+import { createTours } from './tours'
+import { createTravel } from './travel'
 import { createChart } from './ui/chart'
 import { createCine } from './ui/cine'
 import { createDialogue } from './ui/dialogue'
@@ -15,8 +17,14 @@ import { createMenus } from './ui/menus'
 import { GAMEPLAY_CSS } from './ui/styles'
 import { createWeather } from './weather'
 import { createCollectibles } from './world/collectibles'
-import { createShallows } from './world/shallows'
-import { createSondes } from './world/sondes'
+import { createDomes } from './world/domes'
+import { createScellees } from './world/scellees'
+import { createGather } from './world/gather'
+import { createScelleeProps } from './world/props'
+import { createProue } from './world/proue'
+import { createScrub } from './scrub'
+import { createSites } from './world/sites'
+import { createUses } from './world/uses'
 
 interface Runtime {
   gp: Gp
@@ -24,6 +32,8 @@ interface Runtime {
   lateUpdate(dt: number): void
   dispose(): void
 }
+
+type LooseBus = { emit(k: string, p: unknown): void }
 
 function createCameraDriver(ctx: GameContext): CameraDriver {
   let pose: { position: Vec3; target: Vec3; fov?: number } | null = null
@@ -53,14 +63,20 @@ function createRuntime(ctx: GameContext): Runtime {
   root.className = 'gp-root'
   ctx.uiRoot.appendChild(root)
 
+  const sites = createSites(ctx)
   const gp = {
     ctx,
+    sites,
+    toWorld: (l: Vec3) => ctx.services.drift?.toWorld(l) ?? l,
     lock: { count: 0 },
     camera: createCameraDriver(ctx),
     toast: (t: string) => gp.hud.toast(t),
     cue: (c: MusicCue) => ctx.services.audio?.cue(c),
     sfx: (id: string, at?: Vec3) => ctx.services.audio?.sfx(id, at),
+    emit: (name: string, payload: unknown) => (ctx.bus as unknown as LooseBus).emit(name, payload),
+    progress: () => progressOf(ctx.state),
     heroPos: () => ctx.state.hero.position,
+    heroLocal: () => ctx.state.hero.localPosition ?? ctx.services.drift?.toLocal(ctx.state.hero.position) ?? ctx.state.hero.position,
     headPos: () => {
       const h = ctx.services.hero?.headPosition()
       if (h) return h
@@ -82,50 +98,68 @@ function createRuntime(ctx: GameContext): Runtime {
       const p = ctx.state.drift.position
       return { x: p.x, y: p.y - 8, z: p.z + 82 }
     },
+    say: (lines: Parameters<Gp['say']>[0], npc?: string) => gp.dialogue.play(lines, npc),
     busy: () =>
       gp.lock.count > 0 || gp.dialogue.active() || gp.menus.active() || gp.chart.isOpen() || gp.cine.active() || gp.ending.playing(),
     async sleepUntil(hour: number) {
-      const st = ctx.state
+      const s = ctx.state
       gp.lock.count++
       try {
         await gp.cine.fade('black', 1.2)
         gp.heroMode('sleep')
-        const from = st.time.hours
+        const from = s.time.hours
         const target = ((hour % 24) + 24) % 24
-        if (target <= from) st.time.day += 1
-        st.time.hours = target
-        gp.breath.refill()
-        ctx.bus.emit('sleep:done', { fromHour: from, toHour: target, day: st.time.day })
+        if (target <= from) s.time.day += 1
+        s.time.hours = target
+        gp.endurance.refill()
+        ctx.bus.emit('sleep:done', { fromHour: from, toHour: target, day: s.time.day })
+        if (target === 6) gp.weather.morning()
         await gp.cine.wait(1.2)
         gp.heroMode('idle')
         await gp.cine.fade(null, 1.6)
+        gp.toast(UI.sommeil.sauve)
       } finally {
         gp.lock.count--
       }
     },
-  } as Gp
+  } as unknown as Gp
 
+  progressOf(ctx.state)
   gp.inv = createInventory(gp)
-  gp.breath = createBreath(gp)
+  gp.endurance = createEndurance(gp)
   gp.weather = createWeather(gp)
   gp.hud = createHud(gp, root)
   gp.chart = createChart(gp, root)
   gp.dialogue = createDialogue(gp, root)
   gp.menus = createMenus(gp, root)
   gp.cine = createCine(gp, root)
-  gp.quests = createQuests(gp)
-  gp.indoor = createIndoor(gp)
+  gp.travel = createTravel(gp)
+  const uses = createUses(gp)
+  gp.tours = createTours(gp)
+  gp.domes = createDomes(gp, uses)
+  gp.scellees = createScellees(gp, uses)
+  gp.collect = createCollectibles(gp, uses)
   gp.scrub = createScrub(gp)
+  gp.proue = createProue(gp, gp.scrub)
+  gp.gather = createGather(gp)
+  gp.quests = createQuests(gp)
+  gp.indoor = createIndoor(gp, uses)
   gp.ending = createEnding(gp)
-  gp.sondes = createSondes(gp)
-  gp.shallows = createShallows(gp)
-  gp.collect = createCollectibles(gp)
+  const props = createScelleeProps(gp, (id) => gp.scellees.view(id))
 
-  const st = ctx.state
-  if (!st.flags['meteo-initiale']) {
-    st.flags['meteo-initiale'] = true
+  const s0 = ctx.state
+  if (!s0.flags['meteo-initiale']) {
+    s0.flags['meteo-initiale'] = true
     gp.weather.morning()
   }
+
+  ctx.bus.on('district:entered', ({ district }) => {
+    if (ctx.state.mode !== 'inside' || gp.busy()) return
+    const key = `lieu:${district}:${ctx.state.time.day}`
+    if (ctx.state.flags[key]) return
+    ctx.state.flags[key] = true
+    gp.hud.placeName(DISTRICT_NAMES[district])
+  })
 
   let hintId: string | null = null
   let introState: 'waiting' | 'playing' | 'done' = 'waiting'
@@ -150,7 +184,10 @@ function createRuntime(ctx: GameContext): Runtime {
       gp.hud.showHud(true)
       gp.quests.start()
       void gp.cine.card(ACT_CARDS[1].titre, ACT_CARDS[1].sous, 3.4)
-    } else gp.quests.start()
+    } else {
+      gp.hud.showHud(true)
+      gp.quests.start()
+    }
     introState = 'done'
   }
 
@@ -164,9 +201,9 @@ function createRuntime(ctx: GameContext): Runtime {
     if (musicTimer > 0 || gp.busy()) return
     musicTimer = 2
     const s = ctx.state
-    const nearDrift = Math.hypot(s.hero.position.x - s.drift.position.x, s.hero.position.z - s.drift.position.z) < 180
     const night = s.time.hours < 5 || s.time.hours >= 19.5
-    const want: MusicCue = s.env.rain > 0.5 ? 'rain' : s.hero.medium === 'air' || nearDrift ? 'drift' : night ? 'night' : 'explore'
+    const home = s.hero.district === 'ecluse' && s.mode === 'inside'
+    const want: MusicCue = s.env.rain > 0.5 ? 'rain' : night ? 'night' : home ? 'drift' : 'explore'
     if (want !== music) {
       music = want
       gp.cue(want)
@@ -185,25 +222,29 @@ function createRuntime(ctx: GameContext): Runtime {
       gp.menus.update(dt)
       gp.chart.update(dt)
 
-      if (introState === 'waiting' && loadingGone()) void startStory()
+      if (introState === 'waiting') {
+        if (loadingGone()) void startStory()
+        else gp.hud.showHud(false)
+      }
 
       if (!paused) {
-        gp.breath.update(dt)
+        gp.endurance.update(dt)
         gp.weather.update(dt)
         gp.quests.update(dt)
-        gp.sondes.update(dt)
-        gp.shallows.update(dt)
-        gp.collect.update(dt)
+        gp.scellees.update(dt)
+        props.update(dt)
+        gp.scrub.update(dt)
+        gp.proue.update(dt)
+        gp.tours.update(dt)
         gp.indoor.update(dt)
         gp.ending.update(dt)
         updateMusic(dt)
       }
-      gp.scrub.update(dt)
 
       if (gp.chart.isOpen()) {
         if (input.pressed('map') || input.pressed('pause')) gp.chart.close()
       } else if (!wasBusy && !paused && introState === 'done') {
-        if (input.pressed('map')) gp.chart.open()
+        if (input.pressed('map')) gp.chart.open('plan')
         else if (input.pressed('inventory')) gp.menus.inventory()
         else if (input.pressed('pause')) gp.menus.pause()
       }
@@ -211,46 +252,42 @@ function createRuntime(ctx: GameContext): Runtime {
       candidates.length = 0
       const canInteract = !wasBusy && !gp.busy() && !paused && introState === 'done'
       if (canInteract) {
-        gp.sondes.candidates(candidates)
-        gp.shallows.candidates(candidates)
+        uses.candidates(candidates)
         gp.collect.candidates(candidates)
         gp.indoor.candidates(candidates)
+        gp.proue.candidates(candidates)
+        gp.gather.candidates(candidates)
         gp.quests.candidates(candidates)
       }
       let best: Candidate | null = null
       for (const c of candidates) if (!best || c.dist < best.dist) best = c
-      const scrub = canInteract || gp.scrub.active() ? gp.scrub.best() : null
-      const useScrub = !!scrub && (!best || scrub.dist <= best.dist || gp.scrub.active())
-      if (useScrub && scrub) {
+      const outsideScrub = canInteract ? gp.scrub.target() : null
+      if (outsideScrub && (!best || best.kind === 'airlock')) {
         gp.hud.prompt({ key: input.keyLabel('scrub'), label: PROMPTS.frotter })
-        gp.hud.progress(1 - Math.min(1, scrub.coat))
+        if (!gp.scrub.scrubbing()) gp.hud.progress(1 - outsideScrub.coat)
       } else if (best) {
         gp.hud.prompt({ key: input.keyLabel('interact'), label: best.label })
-        gp.hud.progress(null)
+        if (!best.hold) gp.hud.progress(null)
       } else {
         gp.hud.prompt(null)
         gp.hud.progress(null)
       }
-      const newHint = useScrub && scrub ? `frotter:${scrub.id}` : best ? best.id : null
+      const newHint = best ? best.id : null
       if (newHint !== hintId) {
         hintId = newHint
-        ctx.bus.emit('interact:hint', newHint ? { id: newHint, label: useScrub ? PROMPTS.frotter : best!.label } : null)
+        ctx.bus.emit('interact:hint', best ? { id: best.id, label: best.label } : null)
       }
-      if (best && !useScrub && canInteract && input.pressed('interact')) {
-        ctx.bus.emit('interact', { targetId: best.id, kind: best.kind })
+      if (best && !best.hold && canInteract && input.pressed('interact')) {
+        ctx.bus.emit('interact', { targetId: best.id, kind: best.kind as never })
         best.run()
       }
 
       gp.hud.update(dt)
     },
-    lateUpdate(dt) {
-      gp.sondes.lateUpdate(dt)
+    lateUpdate() {
       gp.camera.lateUpdate()
     },
     dispose() {
-      gp.sondes.dispose()
-      gp.shallows.dispose()
-      gp.collect.dispose()
       root.remove()
       style.remove()
     },
@@ -264,12 +301,13 @@ export function createGameplaySystem(): System {
     init(ctx) {
       rt = createRuntime(ctx)
       const gp = rt.gp
+      const endurance = {
+        spend: (cost: number) => gp.endurance.spend(cost),
+        drain: (rate: number, dt: number) => gp.endurance.drain(rate, dt),
+        canAct: () => gp.endurance.canAct(),
+      }
       const service: GameplayService = {
-        breath: {
-          spend: (cost) => gp.breath.spend(cost),
-          drain: (rate, dt) => gp.breath.drain(rate, dt),
-          canAct: () => gp.breath.canAct(),
-        },
+        breath: endurance,
         setAct: (act) => gp.quests.setAct(act),
         giveItem: (id, n = 1) => {
           gp.inv.give(id, n)
@@ -279,6 +317,7 @@ export function createGameplaySystem(): System {
         sleepUntil: (hour) => gp.sleepUntil(hour),
         chartCanvas: () => gp.chart.canvas,
       }
+      Object.assign(service, { endurance, planCanvas: () => gp.chart.plan })
       ctx.services.gameplay = service
       if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __gameplay: Gp }).__gameplay = gp
     },
