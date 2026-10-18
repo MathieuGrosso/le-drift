@@ -1,0 +1,241 @@
+import * as THREE from 'three'
+import { SOUFFLE } from '../../core/tuning'
+import type { Gp, Hud } from '../context'
+import { UI } from '../text/fr'
+import { h, svg } from './dom'
+
+const WHEEL_R = [22, 28.5, 35] as const
+
+export function createHud(gp: Gp, root: HTMLElement): Hud {
+  const ctx = gp.ctx
+  const hud = h('div', 'gp-hud', undefined, root)
+
+  const wheel = svg('svg', { class: 'gp-wheel', viewBox: '-40 -40 80 80' })
+  hud.appendChild(wheel)
+  const rings: { bg: SVGCircleElement; fg: SVGCircleElement }[] = WHEEL_R.map((r) => {
+    const bg = svg('circle', { r, fill: 'none', stroke: 'rgba(14,59,82,.45)', 'stroke-width': 5.5, transform: 'rotate(-90)' }, wheel)
+    const fg = svg('circle', { r, fill: 'none', stroke: '#9ee6c9', 'stroke-width': 5.5, 'stroke-linecap': 'round', transform: 'rotate(-90)' }, wheel)
+    return { bg, fg }
+  })
+  let wheelHideTimer = 0
+
+  const prompt = h('div', 'gp-prompt', undefined, hud)
+  const ring = svg('svg', { viewBox: '-20 -20 40 40' })
+  const ringCircle = svg('circle', { r: 17, fill: 'none', stroke: '#9ee6c9', 'stroke-width': 3, transform: 'rotate(-90)', 'stroke-dasharray': '0 200' }, ring)
+  const promptKey = h('span', 'gp-key', 'E', prompt)
+  const promptLabel = h('span', '', '', prompt)
+  prompt.appendChild(ring)
+
+  const toastEl = h('div', 'gp-toast', undefined, hud)
+  const toastK = h('div', 'k', '', toastEl)
+  const toastT = h('div', 't', '', toastEl)
+  const toastQueue: string[] = []
+  let toastTimer = 0
+
+  const tipEl = h('div', 'gp-tip', '', hud)
+  let tipTimer = 0
+
+  const place = h('div', 'gp-place', undefined, hud)
+  const placeT = h('div', 't', '', place)
+  h('div', 'rule', undefined, place)
+  const placeS = h('div', 's', '', place)
+  let placeTimer = 0
+
+  const nacres = h('div', 'gp-nacres', undefined, hud)
+  const nacreDots = [0, 1, 2, 3].map(() => h('div', 'gp-nacre', undefined, nacres))
+  let nacreTimer = 0
+
+  const buffsEl = h('div', 'gp-buffs', undefined, hud)
+
+  const br = h('div', 'gp-br', undefined, hud)
+  const info = h('div', 'info', undefined, br)
+  const timeRow = h('div', 'row', undefined, info)
+  const glyph = svg('svg', { width: 18, height: 18, viewBox: '-10 -10 20 20' }, timeRow)
+  const glyphSun = svg('circle', { r: 5, fill: '#ffd9a0' }, glyph)
+  const glyphMoon = svg('path', { d: 'M3,-6 A6,6 0 1,0 3,6 A4.5,4.5 0 1,1 3,-6', fill: '#9fb8e8' }, glyph)
+  const timeText = h('span', '', '', timeRow)
+  const visText = h('div', 'row', '', info)
+  const curRow = h('div', 'row', undefined, info)
+  const curSvg = svg('svg', { width: 18, height: 18, viewBox: '-10 -10 20 20' }, curRow)
+  const curArrow = svg('path', { d: 'M0,-8 L5,4 L0,1 L-5,4 Z', fill: '#cfefe3' }, curSvg)
+  const curText = h('span', '', '', curRow)
+  const mini = h('div', 'gp-mini', undefined, br)
+  const miniCanvas = h('canvas', '', undefined, mini)
+  miniCanvas.width = miniCanvas.height = 300
+  const miniCtx = miniCanvas.getContext('2d')
+  let miniTimer = 0
+
+  const v = new THREE.Vector3()
+
+  const showToast = (text: string) => {
+    const [k, t] = text.includes(' : ') ? text.split(' : ', 2) as [string, string] : ['', text]
+    toastK.textContent = k
+    toastT.textContent = t
+    toastEl.classList.add('show')
+    toastTimer = 4
+  }
+
+  const drawMini = () => {
+    if (!miniCtx) return
+    const st = ctx.state
+    const src = gp.chart.canvas
+    const px = (st.hero.position.x + 1024) / 2
+    const pz = (st.hero.position.z + 1024) / 2
+    const half = 75
+    miniCtx.clearRect(0, 0, 300, 300)
+    miniCtx.drawImage(src, px - half, pz - half, half * 2, half * 2, 0, 0, 300, 300)
+    const d = st.drift.position
+    const dx = 150 + ((d.x + 1024) / 2 - px) * 2
+    const dz = 150 + ((d.z + 1024) / 2 - pz) * 2
+    if (dx > 0 && dx < 300 && dz > 0 && dz < 300) {
+      miniCtx.fillStyle = '#c46a4a'
+      miniCtx.beginPath()
+      miniCtx.ellipse(dx, dz, 14, 9, st.drift.heading, 0, Math.PI * 2)
+      miniCtx.fill()
+    }
+    miniCtx.save()
+    miniCtx.translate(150, 150)
+    miniCtx.rotate(st.hero.yaw)
+    miniCtx.fillStyle = '#e8674a'
+    miniCtx.strokeStyle = '#fff8ee'
+    miniCtx.lineWidth = 3
+    miniCtx.beginPath()
+    miniCtx.moveTo(0, -16)
+    miniCtx.lineTo(11, 12)
+    miniCtx.lineTo(0, 6)
+    miniCtx.lineTo(-11, 12)
+    miniCtx.closePath()
+    miniCtx.stroke()
+    miniCtx.fill()
+    miniCtx.restore()
+  }
+
+  const api: Hud = {
+    update(dt) {
+      const st = ctx.state
+      const hero = st.hero
+      const indoors = hero.medium === 'air'
+      const max = Math.max(hero.breathMax, 0.01)
+      const notFull = hero.breath < max - 0.001 || hero.exhausted
+      if (notFull && !indoors) wheelHideTimer = 1
+      else wheelHideTimer -= dt
+      const showWheel = wheelHideTimer > 0 && !indoors
+      const head = gp.headPos()
+      v.set(head.x, head.y, head.z).project(ctx.camera)
+      const onScreen = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1
+      wheel.classList.toggle('show', showWheel && onScreen)
+      wheel.classList.toggle('exhausted', hero.exhausted)
+      if (onScreen) {
+        const sx = (v.x * 0.5 + 0.5) * window.innerWidth + 58
+        const sy = (-v.y * 0.5 + 0.5) * window.innerHeight - 6
+        wheel.style.left = `${sx}px`
+        wheel.style.top = `${sy}px`
+      }
+      const low = hero.breath / max < SOUFFLE.lowThreshold
+      const color = hero.exhausted ? '#e8674a' : low ? '#f2c14e' : '#9ee6c9'
+      for (let i = 0; i < rings.length; i++) {
+        const r = WHEEL_R[i]!
+        const c = 2 * Math.PI * r
+        const cap = Math.max(0, Math.min(1, max - i))
+        const fill = Math.max(0, Math.min(cap, hero.breath - i))
+        const { bg, fg } = rings[i]!
+        bg.setAttribute('stroke-dasharray', `${cap * c} ${c}`)
+        fg.setAttribute('stroke-dasharray', `${fill * c} ${c}`)
+        fg.setAttribute('stroke', color)
+        bg.style.display = cap > 0 ? '' : 'none'
+        fg.style.display = cap > 0 ? '' : 'none'
+      }
+
+      if (toastTimer > 0) {
+        toastTimer -= dt
+        if (toastTimer <= 0) toastEl.classList.remove('show')
+      } else if (toastQueue.length > 0 && !toastEl.classList.contains('show')) {
+        showToast(toastQueue.shift()!)
+      }
+      if (tipTimer > 0) {
+        tipTimer -= dt
+        if (tipTimer <= 0) tipEl.classList.remove('show')
+      }
+      if (placeTimer > 0) {
+        placeTimer -= dt
+        if (placeTimer <= 0) place.classList.remove('show')
+      }
+      if (nacreTimer > 0) {
+        nacreTimer -= dt
+        if (nacreTimer <= 0) nacres.classList.remove('show')
+      }
+
+      const hours = st.time.hours
+      const night = hours < 5 || hours >= 19.5
+      glyphSun.style.display = night ? 'none' : ''
+      glyphMoon.style.display = night ? '' : 'none'
+      const hh = Math.floor(hours)
+      const mm = Math.floor((hours - hh) * 60)
+      timeText.textContent = `${hh}h${mm < 10 ? '0' : ''}${mm}`
+      visText.textContent = UI.vis(st.env.visibility)
+      const cur = st.env.current
+      const speed = Math.hypot(cur.x, cur.z)
+      curArrow.setAttribute('transform', `rotate(${(Math.atan2(cur.x, -cur.z) * 180) / Math.PI})`)
+      curText.textContent = speed < 0.05 ? UI.from.calme : `${speed.toFixed(1)} m/s`
+      br.style.display = st.settings.minimap ? '' : 'none'
+      br.style.opacity = gp.dialogue.active() ? '0' : '1'
+      const hasChart = st.chart.sondes.length > 0
+      mini.style.display = hasChart ? '' : 'none'
+      if (hasChart) {
+        miniTimer -= dt
+        if (miniTimer <= 0) {
+          miniTimer = 0.12
+          drawMini()
+        }
+      }
+
+      const buffs = gp.breath.buffs()
+      if (buffsEl.childElementCount !== buffs.length || buffs.length > 0) {
+        buffsEl.textContent = ''
+        for (const b of buffs) {
+          const label = UI.buffs[b.id as keyof typeof UI.buffs] ?? b.id
+          const m = Math.ceil(b.left / 60)
+          h('div', 'gp-buff', `${label} · ${m} min`, buffsEl)
+        }
+      }
+    },
+    prompt(c) {
+      if (!c) {
+        prompt.classList.remove('show')
+        return
+      }
+      promptKey.textContent = c.key
+      promptLabel.textContent = c.label
+      prompt.classList.add('show')
+    },
+    progress(p) {
+      ringCircle.setAttribute('stroke-dasharray', p === null ? '0 200' : `${p * 2 * Math.PI * 17} 200`)
+    },
+    toast(text) {
+      if (toastTimer > 0) toastQueue.push(text)
+      else showToast(text)
+    },
+    tip(text, seconds = 6) {
+      tipEl.textContent = text
+      tipEl.classList.add('show')
+      tipTimer = seconds
+    },
+    placeName(title, sub) {
+      placeT.textContent = title
+      placeS.textContent = sub ?? ''
+      place.classList.add('show')
+      placeTimer = 2.6
+    },
+    showHud(vis) {
+      hud.classList.toggle('gp-hidden', !vis)
+    },
+    flashNacre() {
+      const n = gp.inv.count('nacre') % 4
+      const full = gp.inv.count('nacre') > 0 && n === 0
+      nacreDots.forEach((d, i) => d.classList.toggle('on', full || i < n))
+      nacres.classList.add('show')
+      nacreTimer = 4
+    },
+  }
+  return api
+}
