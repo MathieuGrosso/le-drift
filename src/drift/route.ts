@@ -42,7 +42,8 @@ function gateReleased(id: string, state: GameState): boolean {
   if (id === 'halte-prairie') return state.act >= 2
   if (id === 'halte-coques') {
     if (state.act >= 3) return true
-    return state.chart.sondes.filter((s) => s !== SONDES[0]!.id).length >= 3
+    const domes = ((state.chart as { domes?: string[] }).domes ?? []).filter((d) => d !== 'dome-ecluse' && d !== 'vigie' && d !== 'dome-proue')
+    return domes.length >= 3 || state.chart.sondes.filter((s) => s !== SONDES[0]!.id).length >= 3
   }
   return false
 }
@@ -62,11 +63,11 @@ export function minimumProgressForAct(state: GameState): number {
   return 0
 }
 
-export function poseAt(d: number, moving: boolean, scale: number, out: DriftPose): DriftPose {
+export function poseAt(d: number, moving: boolean, scale: number, out: DriftPose, altitude: number = DRIFT_Y): DriftPose {
   const p = pointAt(d)
   const h = headingAt(d)
   out.position.x = p.x
-  out.position.y = DRIFT_Y
+  out.position.y = altitude
   out.position.z = p.z
   out.heading = h
   const speed = moving ? METERS_PER_GAME_HOUR * scale : 0

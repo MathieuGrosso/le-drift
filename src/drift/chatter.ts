@@ -52,6 +52,8 @@ export class Chatter {
     const s = this.ctx.state
     if (npcId === 'grand-pere') return s.act >= 2 && Math.random() < 0.5 ? CHATTER['grand-pere-nord']! : CHATTER['grand-pere']!
     if (CHATTER[npcId]) return CHATTER[npcId]!
+    if (key === 'enfant') return CHATTER.enfant!
+    if (key.startsWith('ville-')) return s.act >= 2 && Math.random() < 0.25 ? CHATTER.nord! : CHATTER[key] ?? CHATTER.coursive!
     if (s.act >= 3 && Math.random() < 0.35) return CHATTER.blanc!
     if (s.act >= 2 && Math.random() < 0.3) return CHATTER.nord!
     if (key.startsWith('banc')) return dirtyWindow && Math.random() < 0.6 ? CHATTER['repas-vitre-sale']! : CHATTER.repas!

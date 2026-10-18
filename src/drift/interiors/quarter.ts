@@ -416,6 +416,10 @@ export class Quarter {
     }
   }
 
+  owned(): readonly { ownerId: string; x: number; y: number; z: number }[] {
+    return [...this.colliderSpecs, ...this.furniture.colliders].filter((c) => !!c.ownerId).map((c) => ({ ownerId: c.ownerId!, x: c.x, y: c.y, z: c.z }))
+  }
+
   partAt(l: Vec3): PartDef | null {
     for (const id of ['echelle-toit', 'sas-chambre']) {
       const p = this.parts.get(id)!.def
@@ -676,7 +680,7 @@ export class Quarter {
     this.visibleRooms.clear()
     if (room) {
       this.visibleRooms.add(room)
-      for (const n of ROOM_NEIGHBOURS[room]) this.visibleRooms.add(n)
+      for (const n of ROOM_NEIGHBOURS[room] ?? []) this.visibleRooms.add(n)
       if (room === 'rebord') this.visibleRooms.add('refectoire')
     }
     for (const p of this.parts.values()) {
@@ -804,6 +808,8 @@ const DEFAULT_DOORS: Record<string, boolean> = {
   'porte-voisins': false,
   'porte-marche': true,
   'porte-cartes': false,
+  'porte-nef': false,
+  'porte-grand-marche': false,
   'sas-interieure': true,
   'sas-exterieure': false,
   'toit-interieure': false,
@@ -811,7 +817,7 @@ const DEFAULT_DOORS: Record<string, boolean> = {
 }
 
 function inside(p: PartDef, l: Vec3): boolean {
-  return l.x > p.x0 && l.x < p.x1 && l.z > p.z0 && l.z < p.z1 && l.y > p.floorY - 0.05 && l.y < partTop(p)
+  return l.x > p.x0 && l.x < p.x1 && l.z > p.z0 && l.z < p.z1 && l.y > p.floorY - 0.3 && l.y < partTop(p)
 }
 
 function dist2(a: THREE.Vector3, b: Vec3): number {

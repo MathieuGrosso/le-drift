@@ -70,24 +70,30 @@ export const PARTS: readonly PartDef[] = [
     floor: 'metal', wall: PAL.bleuDoux, wainscot: PAL.metal, hull: PAL.teal, swayMul: 1.8 }),
   W({ id: 'passerelle-2', room: 'passerelle-2', x0: 26, x1: 36, z0: 61, z1: 63, floorY: 0, wallH: 1.9, roof: 'arch', archH: 1.0, axis: 'x',
     floor: 'metal', wall: PAL.bleuDoux, wainscot: PAL.metal, hull: PAL.teal, swayMul: 1.8 }),
+  W({ id: 'passerelle-nef', room: 'passerelle-nef' as RoomId, x0: -7, x1: -5, z0: 36, z1: 55, floorY: 0, wallH: 1.9, roof: 'arch', archH: 1.0, axis: 'z',
+    floor: 'metal', wall: PAL.bleuDoux, wainscot: PAL.metal, hull: PAL.teal, swayMul: 0 }),
   W({ id: 'salle-des-cartes', room: 'salle-des-cartes', x0: 36, x1: 44, z0: 57, z1: 67, floorY: 0, wallH: 2.8, roof: 'arch', archH: 2.0, axis: 'z',
     floor: 'tapis', wall: PAL.vertDoux, hull: PAL.rouille }),
 ]
 
 export const LINKS: readonly LinkDef[] = [
-  { a: 'sas', b: 'sas-chambre', side: 's', at: 0, width: 1.0, height: 1.85, door: 'sas-interieure' },
-  { a: 'sas-chambre', b: null, side: 's', at: 0, width: 1.0, height: 1.85, door: 'sas-exterieure' },
+  { a: 'sas', b: 'sas-chambre', side: 's', at: 0, width: 1.2, height: 1.85, door: 'sas-interieure' },
+  { a: 'sas-chambre', b: null, side: 's', at: 0, width: 1.2, height: 1.85, door: 'sas-exterieure' },
   { a: 'coursive-sud', b: 'sas', side: 's', at: 0, width: 1.3, height: 2.1 },
   { a: 'coursive-sud', b: 'refectoire', side: 'e', at: 62, width: 1.6, height: 2.15 },
   { a: 'coursive-sud', b: 'passerelle-1', side: 'w', at: 62, width: 1.4, height: 1.85 },
-  { a: 'coursive-sud', b: 'cabine', side: 's', at: -7, width: 0.95, height: 1.85, door: 'porte-cabine' },
-  { a: 'coursive-sud', b: 'cabines-voisins', side: 'n', at: -6, width: 0.95, height: 1.85, door: 'porte-voisins' },
+  { a: 'coursive-sud', b: 'cabine', side: 's', at: -7, width: 1.2, height: 1.85, door: 'porte-cabine' },
+  { a: 'coursive-sud', b: 'cabines-voisins', side: 'n', at: -6, width: 1.2, height: 1.85, door: 'porte-voisins' },
   { a: 'refectoire', b: 'cuisine', side: 'n', at: 13, width: 1.6, height: 2.2 },
   { a: 'refectoire', b: 'passerelle-2', side: 'e', at: 62, width: 1.4, height: 1.85 },
-  { a: 'passerelle-1', b: 'marche', side: 'w', at: 62, width: 1.0, height: 1.8, door: 'porte-marche' },
+  { a: 'passerelle-1', b: 'marche', side: 'w', at: 62, width: 1.2, height: 1.8, door: 'porte-marche' },
   { a: 'passerelle-3', b: 'marche', side: 'w', at: 57.5, width: 1.4, height: 1.85 },
   { a: 'passerelle-3', b: 'cabines-voisins', side: 'e', at: 57.5, width: 1.4, height: 1.85 },
-  { a: 'passerelle-2', b: 'salle-des-cartes', side: 'e', at: 62, width: 1.0, height: 1.8, door: 'porte-cartes' },
+  { a: 'passerelle-2', b: 'salle-des-cartes', side: 'e', at: 62, width: 1.2, height: 1.8, door: 'porte-cartes' },
+  { a: 'cabines-voisins', b: 'passerelle-nef', side: 'n', at: -6, width: 1.2, height: 1.85 },
+  { a: 'passerelle-nef', b: null, side: 'n', at: -6, width: 1.2, height: 1.85, door: 'porte-nef' },
+  { a: 'passerelle-nef', b: null, side: 'e', at: 44.5, width: 1.2, height: 2.2 },
+  { a: 'marche', b: null, side: 'w', at: 60.75, width: 1.2, height: 1.85, door: 'porte-grand-marche' },
 ]
 
 export const PORTHOLES: readonly PortholeDef[] = [
@@ -121,6 +127,9 @@ export const PORTHOLES: readonly PortholeDef[] = [
   { part: 'passerelle-2', side: 'n', at: 31, y: 1.25 },
   { part: 'passerelle-2', side: 's', at: 31, y: 1.25 },
   { part: 'salle-des-cartes', side: 'e', at: 62, y: 1.5 },
+  { part: 'passerelle-nef', side: 'w', at: 40, y: 1.25 },
+  { part: 'passerelle-nef', side: 'w', at: 48, y: 1.25 },
+  { part: 'passerelle-nef', side: 'e', at: 50, y: 1.25 },
   { part: 'salle-des-cartes', side: 'n', at: 40, y: 1.5 },
 ]
 
@@ -138,7 +147,7 @@ export const ROOM_NEIGHBOURS: Record<RoomId, RoomId[]> = {
   'echelle-toit': ['sas'],
   'coursive-sud': ['sas', 'refectoire', 'passerelle-1', 'cabine', 'cabines-voisins'],
   cabine: ['coursive-sud'],
-  'cabines-voisins': ['coursive-sud', 'passerelle-3'],
+  'cabines-voisins': ['coursive-sud', 'passerelle-3', 'passerelle-nef' as RoomId],
   refectoire: ['rebord', 'coursive-sud', 'cuisine', 'passerelle-2'],
   rebord: ['refectoire', 'cuisine'],
   cuisine: ['refectoire', 'rebord'],
@@ -147,6 +156,7 @@ export const ROOM_NEIGHBOURS: Record<RoomId, RoomId[]> = {
   'passerelle-3': ['marche', 'cabines-voisins'],
   'passerelle-2': ['refectoire', 'salle-des-cartes'],
   'salle-des-cartes': ['passerelle-2'],
+  ...({ 'passerelle-nef': ['cabines-voisins'] } as Record<string, RoomId[]>),
 }
 
 export const LOCK_OUTSIDE = { x: 0, y: 1.1, z: 75.2 }

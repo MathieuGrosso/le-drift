@@ -18,29 +18,29 @@ export interface HullDef {
 }
 
 export interface Gangway { a: Vec3; b: Vec3; r: number }
+export interface PlacedHull extends HullDef { inside: boolean }
+export interface Box3 { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }
 
-// The walkable v1 quarter (aft, principal deck): generated hulls stay clear of it.
-const QUARTER = { x0: -48, x1: 52, z0: 42, z1: 84, y0: -1.5, y1: 9.5 }
 const ROW = 12
 const KEEL_L = [18, 24, 32] as const
 const BARREL_L = [10, 14] as const
 const HULL_PAINT: Record<DistrictId, readonly number[]> = {
-  ecluse: [PAL.laiton, PAL.rouille, PAL.teal],
-  nef: [PAL.laiton, PAL.teal],
-  marche: [0xd8644e, PAL.laiton, 0xe3b95f],
-  serres: [0x8fbf6a, PAL.teal, PAL.laiton],
-  machines: [PAL.rouille, 0x8a6e4b],
-  ateliers: [0x6e8fb0, PAL.teal, PAL.laiton],
-  scellees: [PAL.teal, 0x52576a],
-  hauts: [0xcfefe3, PAL.laiton],
-  proue: [0xefe3c4, PAL.laiton],
+  ecluse: [PAL.laiton, PAL.creme, PAL.teal, PAL.rouille],
+  nef: [PAL.laiton, PAL.creme, PAL.teal],
+  marche: [0xd8644e, PAL.creme, 0xe3b95f],
+  serres: [0x8fbf6a, PAL.creme, 0xb9d98a],
+  machines: [PAL.rouille, 0x8a6e4b, PAL.metal],
+  ateliers: [0x6e8fb0, PAL.creme, PAL.bleuDoux],
+  scellees: [PAL.teal, 0x6f8f9a, PAL.metal],
+  hauts: [0xcfefe3, PAL.creme],
+  proue: [0xefe3c4, PAL.creme],
 }
 
 const overlaps = (a: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number }, x: number, y: number, z: number, hw: number, hh: number, hl: number) =>
   x + hw > a.x0 && x - hw < a.x1 && z + hl > a.z0 && z - hl < a.z1 && y + hh > a.y0 && y - hh < a.y1
 
 // Streets, not a heap: hulls aligned along z in rows, a few size classes, clear tiers per deck.
-export function generateHulls(rng: () => number, reserved: Partial<Record<DistrictId, number>> = {}): { hulls: HullDef[]; gangways: Gangway[] } {
+export function generateHulls(rng: () => number, reserved: Partial<Record<DistrictId, number>>, avoid: readonly Box3[]): { hulls: HullDef[]; gangways: Gangway[] } {
   const hulls: HullDef[] = []
   const gangways: Gangway[] = []
   for (const d of DISTRICTS) {
@@ -65,7 +65,7 @@ export function generateHulls(rng: () => number, reserved: Partial<Record<Distri
           const y = DECKS[deck].y + h / 2 + 0.6
           const cz = z + l / 2
           const ok = !overlaps(NEF_VOID, x, y, cz, w / 2, h / 2, l / 2)
-            && !overlaps(QUARTER, x, y, cz, w / 2, h / 2, l / 2)
+            && !avoid.some((a) => overlaps(a, x, y, cz, w / 2, h / 2, l / 2))
             && [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, 0]].every(([sx, sz]) => districtAt({ x: x + sx! * w / 2, y, z: cz + sz! * l / 2 }) === d.id)
           const gap = 2.5 + rng() * 2
           if (ok) {
@@ -207,9 +207,11 @@ export class Hulls {
   private readonly districts = new Map<DistrictId, DistrictMeshes>()
   private time = 0
 
-  constructor(private readonly ctx: GameContext, mats: Mats, parent: THREE.Object3D, pose: { position: Vec3; heading: number }) {
-    const gen = generateHulls(ctx.rng('drift-rues'), { ecluse: 12 })
-    this.defs = gen.hulls
+  constructor(private readonly ctx: GameContext, mats: Mats, parent: THREE.Object3D, pose: { position: Vec3; heading: number }, placed: readonly PlacedHull[], avoid: readonly Box3[], insideMat: THREE.Material, glowOf: (h: PlacedHull) => { glow: [number, number, number]; sky: number }) {
+    const reserved: Partial<Record<DistrictId, number>> = { ecluse: 12 }
+    for (const h of placed) reserved[h.district] = (reserved[h.district] ?? 0) + 1
+    const gen = generateHulls(ctx.rng('drift-rues'), reserved, avoid)
+    this.defs = [...placed, ...gen.hulls]
     this.gangways = gen.gangways
     this.group.name = 'drift-coques'
     parent.add(this.group)
@@ -233,9 +235,32 @@ export class Hulls {
     const tmpC = new THREE.Color()
     const accent = new THREE.Color()
     for (const d of DISTRICTS) {
-      const list = this.defs.filter((h) => h.district === d.id)
+      const all = this.defs.filter((h) => h.district === d.id)
+      const list = all.filter((h) => !(h as PlacedHull).inside)
       const meshes: THREE.Object3D[] = []
       accent.set(d.accent)
+      for (const kind of ['keel', 'barrel'] as const) {
+        const ofKind = all.filter((h) => h.kind === kind && (h as PlacedHull).inside) as PlacedHull[]
+        if (ofKind.length === 0) continue
+        const geo = (kind === 'keel' ? keelGeo : barrelGeo).clone()
+        const glow = new Float32Array(ofKind.length * 3)
+        const sky = new Float32Array(ofKind.length)
+        const im = new THREE.InstancedMesh(geo, insideMat, ofKind.length)
+        ofKind.forEach((h, i) => {
+          tmpQ.setFromAxisAngle(UP, -h.yaw)
+          tmpM.compose(new THREE.Vector3(h.x, h.y, h.z), tmpQ, new THREE.Vector3(h.w, h.h, h.l / 2))
+          im.setMatrixAt(i, tmpM)
+          im.setColorAt(i, tmpC.set(h.paint).lerp(accent, 0.12).offsetHSL(0, -0.05, (((i * 37) % 11) / 11 - 0.5) * 0.06 + 0.04))
+          const g = glowOf(h)
+          glow.set(g.glow, i * 3)
+          sky[i] = g.sky
+        })
+        geo.setAttribute('aGlow', new THREE.InstancedBufferAttribute(glow, 3))
+        geo.setAttribute('aSky', new THREE.InstancedBufferAttribute(sky, 1))
+        im.computeBoundingSphere()
+        im.name = `coques-dedans-${d.id}-${kind}`
+        meshes.push(im)
+      }
       for (const kind of ['keel', 'barrel'] as const) {
         const ofKind = list.filter((h) => h.kind === kind)
         if (ofKind.length === 0) continue
@@ -306,27 +331,13 @@ export class Hulls {
     im.computeBoundingSphere()
     im.name = 'passerelles'
     this.group.add(im)
-    const tops = this.domeTops()
     const lm = mats.water(new THREE.MeshBasicMaterial({ color: PAL.lampe }))
-    const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 8, 6), lm, lamps.length + tops.length)
+    const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.35, 8, 6), lm, Math.max(1, lamps.length))
     lamps.forEach((p, i) => bulbs.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z)))
-    tops.forEach((p, i) => bulbs.setMatrixAt(lamps.length + i, new THREE.Matrix4().compose(p, new THREE.Quaternion(), new THREE.Vector3(5, 3.5, 5))))
-    bulbs.setColorAt(0, new THREE.Color(PAL.lampe))
-    for (let i = 0; i < tops.length; i++) bulbs.setColorAt(lamps.length + i, new THREE.Color(PAL.froid))
+    bulbs.count = lamps.length
     bulbs.computeBoundingSphere()
     bulbs.name = 'lanternes'
     this.group.add(bulbs)
-  }
-
-  private domeTops(): THREE.Vector3[] {
-    const out: THREE.Vector3[] = []
-    for (const d of DISTRICTS) {
-      if (d.id === 'hauts' || d.id === 'machines') continue
-      let best: HullDef | null = null
-      for (const h of this.defs) if (h.district === d.id && (!best || h.y > best.y)) best = h
-      if (best) out.push(new THREE.Vector3(best.x, best.y + best.h / 2 + 0.8, best.z))
-    }
-    return out
   }
 
   private buildColliders(pose: { position: Vec3; heading: number }): void {

@@ -282,8 +282,8 @@ function coursive(c: Ctx): void {
 function cabine(c: Ctx): void {
   bunk(c, -5.65, 65.65, 0.9, 2.55, PAL.tissu1)
   c.b.box(-5.65, 0.75, 64.4, 0.9, 0.5, 0.06, PAL.bois)
-  col(c, 'seat', -5.65, 0.28, 65.65, 0.45, 0.28, 1.27, 'lit-cabine')
-  c.out.seats.push({ id: 'lit-cabine', part: c.part, x: -5.65, y: 0.56, z: 65.65, yaw: YAW_S, lying: true })
+  col(c, 'seat', -5.65, 0.28, 65.65, 0.45, 0.28, 1.27, 'couchette-cabine')
+  c.out.seats.push({ id: 'couchette-cabine', part: c.part, x: -5.65, y: 0.56, z: 65.65, yaw: YAW_S, lying: true })
   c.out.decals.push({ kind: 'drawings', part: c.part, x: -5.22, y: 1.45, z: 65.6, w: 1.8, h: 0.9, normal: new THREE.Vector3(-1, 0, 0), up: new THREE.Vector3(0, 1, 0) })
   table(c, -8.45, 64.3, 0.6, 1.0, 0.75)
   col(c, 'prop', -8.45, 0.38, 64.3, 0.3, 0.38, 0.5)
@@ -302,12 +302,12 @@ function cabine(c: Ctx): void {
 }
 
 function voisins(c: Ctx): void {
-  c.fade.box(-6.0, 1.15, 56.9, 0.03, 2.1, 3.4, PAL.tissu3)
-  col(c, 'prop', -6.0, 1.0, 56.9, 0.05, 1.0, 1.7)
-  bunk(c, -7.6, 55.65, 2.4, 0.9, PAL.tissu2)
-  bunk(c, -4.4, 55.65, 2.4, 0.9, PAL.tissu1)
-  col(c, 'prop', -7.6, 0.28, 55.65, 1.2, 0.28, 0.45)
-  col(c, 'prop', -4.4, 0.28, 55.65, 1.2, 0.28, 0.45)
+  c.fade.box(-6.0, 1.15, 57.5, 0.03, 2.1, 2.2, PAL.tissu3)
+  col(c, 'prop', -6.0, 1.0, 57.5, 0.05, 1.0, 1.1)
+  bunk(c, -7.7, 55.65, 2.2, 0.9, PAL.tissu2)
+  bunk(c, -4.3, 55.65, 2.2, 0.9, PAL.tissu1)
+  col(c, 'prop', -7.7, 0.28, 55.65, 1.1, 0.28, 0.45)
+  col(c, 'prop', -4.3, 0.28, 55.65, 1.1, 0.28, 0.45)
   table(c, -4.4, 57.9, 0.9, 0.7, 0.72)
   col(c, 'prop', -4.4, 0.36, 57.9, 0.45, 0.36, 0.35)
   stool(c, -3.75, 57.9)
@@ -434,7 +434,7 @@ function marche(c: Ctx): void {
     const sz = alongZ ? 3.0 : 0.8
     c.b.box(x, 0.48, z, sx, 0.96, sz, PAL.bois)
     c.b.box(x, 0.98, z, sx + 0.1, 0.05, sz + 0.1, PAL.boisClair)
-    col(c, 'prop', x, 0.48, z, sx / 2, 0.48, sz / 2, `etal:${id}`)
+    col(c, 'prop', x, 0.48, z, sx / 2, 0.48, sz / 2, `etal-marche-ecluse-${id}`)
     const ax = alongZ ? x - keeperDx * 0.4 : x
     for (const s of [-1, 1]) {
       const px = alongZ ? ax : x + s * (sx / 2)
