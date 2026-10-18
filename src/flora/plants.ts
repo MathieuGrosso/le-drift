@@ -9,6 +9,8 @@ const _q = new THREE.Quaternion()
 const _s = new THREE.Vector3()
 const _t = new THREE.Vector3()
 const UP = new THREE.Vector3(0, 1, 0)
+const KELP_ROOT = new THREE.Color(0x6f8f4e)
+const KELP_TIP = new THREE.Color(0xb9d98a)
 
 const pick = <T>(rng: Rng, list: readonly T[]): T => list[Math.floor(rng() * list.length)]!
 const col = (hex: number, jitter = 0, rng?: Rng) => {
@@ -172,7 +174,7 @@ export function kelpStalk(g: PlantGeo, rng: Rng, base: THREE.Vector3, height: nu
       bp.push(new THREE.Vector3(p.x + dx * L * u * 0.55, p.y + L * u * 0.8, p.z + dz * L * u * 0.55))
       bw.push(0.24 * L * Math.sin(Math.min(1, u * 1.2) * Math.PI) + 0.01)
       bs.push(new THREE.Vector3(-dz, 0, dx))
-      bc.push(c.clone().multiplyScalar(0.8 + 0.4 * u))
+      bc.push(c.clone().lerp(KELP_ROOT, 0.45 * (1 - u)).lerp(KELP_TIP, 0.35 * u * u).multiplyScalar(0.62 + 0.5 * u))
     }
     g.ribbon(bp, bw, bs, bc, s)
     const bulb = new THREE.IcosahedronGeometry(0.035, 0)

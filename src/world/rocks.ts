@@ -4,6 +4,7 @@ import type { GameContext } from '../core/types'
 import { valueNoise } from './noise'
 import { PAL, makeMaterial } from './surface'
 import { blancWeight, heightAt, normalAt, routeDistance, smoothstep, VENT } from './terrain'
+import { driftDeepShader } from './shade'
 
 export type RockVariant = 0 | 1 | 2
 
@@ -120,7 +121,7 @@ export class RockLayer {
   private readonly s = new THREE.Vector3()
 
   constructor(ctx: GameContext, parent: THREE.Object3D) {
-    const material = makeMaterial(ctx, { color: 0xffffff, vertexColors: true })
+    const material = makeMaterial(ctx, { color: 0xffffff, vertexColors: true, onShader: driftDeepShader })
     this.meshes = []
     this.hullPoints = []
     for (const variant of [0, 1, 2] as RockVariant[]) {

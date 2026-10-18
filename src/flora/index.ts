@@ -160,7 +160,8 @@ export function createFloraSystem(): System {
     const inMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x5e4a5c })
     glowMat = createPlantMaterial(ctx, uIn, { indoor: true, emissive: PLANT_COLORS.bio1 })
     const hullMat = createPlantMaterial(ctx, uHull, { indoor: false, rim: 0.7 })
-    materials.push(inMat, glowMat, hullMat)
+    const serreMat = createPlantMaterial(ctx, uIn, { indoor: true, shadow: 0x4a3a4e, translucent: 0.6 })
+    materials.push(inMat, glowMat, hullMat, serreMat)
     fx = createFxUniforms()
     const tank = tankMaterial(fx)
     bubbleMat = bubbleMaterial(fx)
@@ -184,7 +185,7 @@ export function createFloraSystem(): System {
 
     const serre = buildSerres(rng, level)
     serreMeshes.push(
-      add(serre.plants, inMat, 'flora-serres'),
+      add(serre.plants, serreMat, 'flora-serres'),
       add(serre.glow, glowMat, 'flora-serres-lueurs'),
       add(serre.tanks, tank, 'flora-serres-cuves', 3),
     )

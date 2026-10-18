@@ -4,7 +4,7 @@ import type { GameContext } from '../core/types'
 import { hideInstance, patchVertex } from './shared'
 
 const BUBBLES = 600
-const RINGS = 480
+const RINGS = 720
 
 /** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws. */
 export class Bubbles {
@@ -29,6 +29,26 @@ export class Bubbles {
     this.rng = ctx.rng('fauna:bubbles')
     const bMat = new THREE.MeshBasicMaterial({ color: 0xeafff8, transparent: true, opacity: 0.55, depthWrite: false })
     ctx.services.render?.patchWater(bMat)
+    patchVertex(bMat, {
+      key: 'bubble',
+      header: 'varying vec3 vBubN;',
+      vertex: `#ifdef USE_INSTANCING
+vBubN = mat3(modelViewMatrix) * mat3(instanceMatrix) * position;
+#else
+vBubN = mat3(modelViewMatrix) * position;
+#endif`,
+      fragmentHeader: 'varying vec3 vBubN;',
+      fragment: {
+        after: '#include <opaque_fragment>',
+        code: `{
+  vec3 bn = normalize(vBubN);
+  float bEdge = smoothstep(0.5, 0.92, 1.0 - abs(bn.z));
+  float bHi = 1.0 - smoothstep(0.12, 0.24, length(bn.xy - vec2(-0.36, 0.42)));
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.96, 1.0, 0.98), bHi * 0.8);
+  gl_FragColor.a *= min(1.6, 0.18 + bEdge * 1.3 + bHi * 1.5);
+}`,
+      },
+    })
     this.bubbleMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), bMat, BUBBLES)
     this.bubbleMesh.frustumCulled = false
     this.bubbleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
@@ -95,7 +115,12 @@ export class Bubbles {
       this.rainAcc -= 1
       const a = this.rng() * Math.PI * 2
       const d = Math.sqrt(this.rng()) * radius
-      this.ring(x + Math.cos(a) * d, z + Math.sin(a) * d, 1.2 + this.rng() * 1.8, 1.1 + this.rng() * 0.8)
+      const rx = x + Math.cos(a) * d
+      const rz = z + Math.sin(a) * d
+      const big = 1.2 + this.rng() * 1.8
+      const dur = 1.1 + this.rng() * 0.8
+      this.ring(rx, rz, big, dur)
+      this.ring(rx, rz, big * 0.55, dur * 0.8, 0.16)
     }
   }
 

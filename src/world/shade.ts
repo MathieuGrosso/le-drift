@@ -7,8 +7,18 @@ export const driftShadeUniform = { value: new THREE.Vector4(0, 0, 0, -1000) }
 const HALF_X = (DRIFT_BOUNDS.x1 - DRIFT_BOUNDS.x0) / 2 - 12
 const HALF_Z = (DRIFT_BOUNDS.z1 - DRIFT_BOUNDS.z0) / 2 - 12
 
-const SHADE_GLSL = /* glsl */ `
+const DEEP_GLSL = /* glsl */ `
 uniform vec4 uWdDrift;
+vec3 wd_deep(vec3 col, vec3 W) {
+  float below = max(uWdDrift.w + 8.0 - W.y, 0.0);
+  float k = (1.0 - exp(-below / (rdHazeDist * 0.18))) * 0.92;
+  vec3 dv = W - cameraPosition;
+  vec3 deep = rd_hazeColor(dv / max(length(dv), 1e-4), W.y) * mix(0.62, 0.8, rdDay);
+  return mix(col, deep, k);
+}
+`
+
+const SHADE_GLSL = /* glsl */ `
 vec3 wd_driftShade(vec3 W) {
   float h = uWdDrift.w - W.y;
   if (h <= 0.0) return vec3(1.0);
@@ -50,17 +60,24 @@ vec3 wd_bio(vec3 W) {
 }
 `
 
-// The Drift's street-striped shadow on the floor, its lit windows pooling warm light at night, and the
-// bioluminescent specks that wake on the floor after dark (brighter on plankton nights).
+// The Drift's striped shadow and night window pools on the floor, the bioluminescent specks after dark, and
+// the water column under the keel swallowing the floor until visibility opens up.
 export function driftShadeShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
   shader.uniforms.uWdDrift = driftShadeUniform
   shader.fragmentShader = shader.fragmentShader
-    .replace('void main() {', `${SHADE_GLSL}\nvoid main() {`)
+    .replace('void main() {', `${DEEP_GLSL}${SHADE_GLSL}\nvoid main() {`)
     .replace('outgoingLight = rd_cel(outgoingLight,', 'outgoingLight = rd_cel(outgoingLight * wd_driftShade(vRdW),')
-    .replace('#include <opaque_fragment>', 'outgoingLight += wd_bio(vRdW);\n#include <opaque_fragment>')
+    .replace('#include <opaque_fragment>', 'outgoingLight = wd_deep(outgoingLight, vRdW) + wd_bio(vRdW);\n#include <opaque_fragment>')
 }
 
 export function updateDriftShade(state: GameState): void {
   const d = state.drift
   driftShadeUniform.value.set(d.position.x, d.position.z, d.heading, d.position.y + DRIFT_BOUNDS.y0)
+}
+
+export function driftDeepShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
+  shader.uniforms.uWdDrift = driftShadeUniform
+  shader.fragmentShader = shader.fragmentShader
+    .replace('void main() {', `${DEEP_GLSL}\nvoid main() {`)
+    .replace('#include <opaque_fragment>', 'outgoingLight = wd_deep(outgoingLight, vRdW);\n#include <opaque_fragment>')
 }

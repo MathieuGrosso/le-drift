@@ -3,6 +3,7 @@ import { DRIFT_ROUTE, REGIONS } from '../core/layout'
 import type { GameContext } from '../core/types'
 import { valueNoise } from './noise'
 import { heightAt } from './terrain'
+import { driftDeepShader } from './shade'
 
 const PAINTS = [0xc46a4a, 0xd9b48f, 0x4f6d7a, 0x6e8fb0, 0xd8644e, 0x8a6e4b]
 const COAT = 0x5f8a52
@@ -155,7 +156,7 @@ export class Wrecks {
     this.group.name = 'world-epaves'
     const rng = ctx.rng('world:epaves')
     const mat = ctx.services.render
-      ? ctx.services.render.cel({ color: 0xffffff, vertexColors: true, caustics: true, side: THREE.DoubleSide, rim: 0.5 })
+      ? ctx.services.render.cel({ color: 0xffffff, vertexColors: true, caustics: true, side: THREE.DoubleSide, rim: 0.5, onShader: driftDeepShader })
       : new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, side: THREE.DoubleSide })
     this.materials.push(mat)
     const all = placements(rng)

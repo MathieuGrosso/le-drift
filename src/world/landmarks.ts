@@ -7,6 +7,7 @@ import { rockColor } from './rocks'
 import { PAL, makeMaterial } from './surface'
 import { blancWeight, heightAt, smoothstep, VENT } from './terrain'
 import { SEABED_COLLIDERS } from './chunks'
+import { driftDeepShader } from './shade'
 
 interface ArchDef { id: string; x: number; z: number; radius: number; tube: number; yaw: number }
 
@@ -116,7 +117,7 @@ export class Landmarks {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
     geo.setIndex(indices)
     geo.computeBoundingSphere()
-    const mat = makeMaterial(this.ctx, { color: 0xffffff, vertexColors: true })
+    const mat = makeMaterial(this.ctx, { color: 0xffffff, vertexColors: true, onShader: driftDeepShader })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.name = 'world-arches'
     mesh.castShadow = true
@@ -139,7 +140,7 @@ export class Landmarks {
     }
     geo.computeVertexNormals()
     const tipGeo = new THREE.IcosahedronGeometry(1, 1)
-    const mat = makeMaterial(this.ctx, { color: PAL.fumee.getHex() })
+    const mat = makeMaterial(this.ctx, { color: PAL.fumee.getHex(), onShader: driftDeepShader })
     const tipMat = makeMaterial(this.ctx, { color: 0xff8a4c, emissive: 0xff8a4c })
     const mesh = new THREE.InstancedMesh(geo, mat, SMOKER_COUNT)
     const tips = new THREE.InstancedMesh(tipGeo, tipMat, SMOKER_COUNT)

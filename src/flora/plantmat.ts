@@ -91,6 +91,18 @@ export interface PlantMaterialOptions {
   side?: THREE.Side
   rim?: number
   shadow?: number
+  translucent?: number
+}
+
+function injectTranslucency(shader: THREE.WebGLProgramParametersWithUniforms, k: number): void {
+  shader.fragmentShader = shader.fragmentShader.replace('#include <opaque_fragment>', /* glsl */ `{
+    vec3 plV = normalize(vRdW - cameraPosition);
+    float plBack = pow(max(dot(plV, normalize(rdSunDir)), 0.0), 2.0);
+    float plSky = smoothstep(-0.1, 0.7, plV.y);
+    vec3 plTint = diffuseColor.rgb * vec3(1.0, 1.08, 0.72);
+    outgoingLight += plTint * rdSunColor * rdSunI * (plBack * 0.7 + plSky * 0.18) * ${k.toFixed(2)} * mix(0.35, 1.0, rdDay);
+  }
+  #include <opaque_fragment>`)
 }
 
 export function createPlantMaterial(ctx: GameContext, u: PlantUniforms, opts: PlantMaterialOptions): THREE.Material {
@@ -106,7 +118,10 @@ export function createPlantMaterial(ctx: GameContext, u: PlantUniforms, opts: Pl
       rim: opts.rim ?? 0.5,
       ...(opts.emissive !== undefined ? { emissive: opts.emissive } : {}),
       ...(opts.shadow !== undefined ? { shadowColor: opts.shadow } : {}),
-      onShader: (shader) => inject(shader, u),
+      onShader: (shader) => {
+        inject(shader, u)
+        if (opts.translucent) injectTranslucency(shader, opts.translucent)
+      },
     })
     mat.userData.flora = true
     return mat

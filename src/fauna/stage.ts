@@ -96,9 +96,12 @@ export class Stage {
     if (this.kind === 'sortie') {
       const h = ctx.state.hero.position
       this.pos.set(h.x, h.y + 0.9, h.z)
-      this.normal.set(h.x - this.frame.origin.x, 0, h.z - this.frame.origin.z)
-      if (this.normal.lengthSq() < 1e-4) this.normal.set(0, 0, 1)
-      this.normal.normalize()
+      const l = this.frame.toLocal(h, this.tmp)
+      const b = DRIFT_BOUNDS
+      const ex = l.x / ((b.x1 - b.x0) / 2)
+      const ez = l.z / ((b.z1 - b.z0) / 2)
+      const face = Math.abs(ex) > Math.abs(ez) ? this.tmp2.set(Math.sign(ex), 0, 0) : this.tmp2.set(0, 0, Math.sign(ez) || 1)
+      this.frame.dirToWorld(face, this.normal)
     } else if (this.kind !== 'free') {
       this.frame.toWorld(this.localPos, this.pos)
       this.frame.dirToWorld(this.localNormal, this.normal)

@@ -3,6 +3,7 @@ import { DRIFT_ROUTE } from '../core/layout'
 import type { GameContext } from '../core/types'
 import { makeMaterial } from './surface'
 import { heightAt } from './terrain'
+import { driftDeepShader } from './shade'
 
 type Kind = 'caisse' | 'tonneau' | 'jarre'
 
@@ -34,7 +35,7 @@ export class RouteDebris {
   constructor(ctx: GameContext) {
     this.group.name = 'world-debris'
     const rng = ctx.rng('world:debris')
-    this.material = makeMaterial(ctx, { color: 0xffffff })
+    this.material = makeMaterial(ctx, { color: 0xffffff, onShader: driftDeepShader })
     const items: Record<Kind, { m: THREE.Matrix4; c: THREE.Color }[]> = { caisse: [], tonneau: [], jarre: [] }
     const q = new THREE.Quaternion()
     const e = new THREE.Euler()
