@@ -19,7 +19,7 @@ interface Rule {
 
 const bar = (v: number, n = 8) => {
   const k = Math.round(THREE.MathUtils.clamp(v, 0, 1) * n)
-  return '▮'.repeat(k) + '▯'.repeat(n - k)
+  return '●'.repeat(k) + '○'.repeat(n - k)
 }
 
 export function createScellees(gp: Gp, uses: Uses): Scellees {

@@ -149,6 +149,7 @@ export const GAMEPLAY_CSS = `
 .gp-card-act.show { opacity: 1; }
 .gp-card-act .t { font-family: var(--gp-serif); font-size: clamp(20px, 2vw, 26px); letter-spacing: .5em; text-transform: uppercase; opacity: .85; }
 .gp-card-act .s { font-family: var(--gp-serif); font-size: clamp(48px, 7vw, 96px); font-weight: 500; margin-top: 6px; text-shadow: 0 4px 40px rgba(6,24,38,.6); }
+.gp-card-act .s.long { font-size: clamp(26px, 3vw, 40px); font-style: italic; max-width: 70vw; text-align: center; }
 .gp-narrate { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12vw; pointer-events: auto;
   background: radial-gradient(ellipse at 50% 0%, rgba(207,239,227,.25), rgba(14,59,82,.92) 60%, rgba(8,30,46,.98)); transition: opacity 1.4s ease; }
 .gp-narrate .p { font-family: var(--gp-serif); font-size: clamp(22px, 2.3vw, 32px); line-height: 1.55; text-align: center; max-width: 900px; opacity: 0; transition: opacity 1.2s ease; }

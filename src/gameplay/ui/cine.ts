@@ -41,6 +41,7 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
       busy++
       cardT.textContent = title
       cardS.textContent = sub ?? ''
+      cardS.classList.toggle('long', (sub ?? '').length > 28)
       card.classList.add('show')
       await wait(seconds)
       card.classList.remove('show')

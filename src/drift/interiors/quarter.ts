@@ -792,6 +792,7 @@ export class Quarter {
         /* world may be gone */
       }
     }
+    this.parts.clear()
     this.root.traverse((o) => {
       const m = o as THREE.Mesh
       if (m.geometry) m.geometry.dispose()

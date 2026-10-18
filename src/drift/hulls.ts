@@ -414,6 +414,7 @@ export class Hulls {
         /* world may be gone */
       }
     }
+    this.districts.clear()
     this.group.removeFromParent()
   }
 }

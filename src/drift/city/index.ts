@@ -487,7 +487,7 @@ export class City {
       d.t = open ? 1 : 0
       this.poseDoor(d)
       this.syncDoor(d)
-    } else this.sfx(d.spec.style === 'grate' ? 'gate' : 'hatch-wheel', d.spec)
+    } else this.sfx(d.spec.style === 'grate' ? 'lock-clang' : 'hatch-wheel', d.spec)
   }
 
   doorSpecs(): DoorSpec[] {
@@ -906,6 +906,7 @@ export class City {
         /* world may be gone */
       }
     }
+    this.districts.clear()
     for (const off of this.offs.splice(0)) off()
     this.crowd.dispose()
     this.folk.dispose()

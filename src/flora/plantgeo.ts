@@ -96,11 +96,11 @@ export class PlantGeo {
 
   merge(other: PlantGeo): void {
     const off = this.vertexCount
-    this.pos.push(...other.pos)
-    this.nor.push(...other.nor)
-    this.col.push(...other.col)
-    this.sw.push(...other.sw)
-    this.sw2.push(...other.sw2)
+    for (const v of other.pos) this.pos.push(v)
+    for (const v of other.nor) this.nor.push(v)
+    for (const v of other.col) this.col.push(v)
+    for (const v of other.sw) this.sw.push(v)
+    for (const v of other.sw2) this.sw2.push(v)
     for (const i of other.idx) this.idx.push(i + off)
   }
 

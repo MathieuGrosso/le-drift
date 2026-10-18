@@ -259,7 +259,9 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     }
 
     let last = performance.now()
+    let unloading = false
     const frame = (now: number) => {
+      if (unloading) return
       requestAnimationFrame(frame)
       const rawDt = Math.max(0, (now - last) / 1000)
       last = now
@@ -489,6 +491,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     })
 
     window.addEventListener('beforeunload', () => {
+      unloading = true
       save.write()
       modes.dispose()
       for (const s of [...systems].reverse()) {

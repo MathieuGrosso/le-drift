@@ -3,7 +3,7 @@ import type { GameContext, Vec3 } from '../core/types'
 import type { Line } from './text'
 
 const CSS = `
-.eg-root { position: absolute; inset: 0; pointer-events: none; font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif; color: #f6f2e8; }
+.eg-root { position: absolute; inset: 0; pointer-events: none !important; font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', system-ui, sans-serif; color: #f6f2e8; }
 .eg-prompt { position: absolute; left: 50%; bottom: 13%; transform: translateX(-50%) translateY(6px); display: flex; align-items: center; gap: 10px;
   opacity: 0; transition: opacity .2s, transform .2s; font-size: 17px; text-shadow: 0 2px 10px rgba(14,59,82,.7); }
 .eg-prompt.show { opacity: 1; transform: translateX(-50%); }

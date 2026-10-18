@@ -114,7 +114,10 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     const tag = hit?.tag
     if (!hit || !tag) return
     const owner = tag.ownerId ?? ''
-    if (tag.kind === 'door' && owner && !ZIP.test(owner) && !TUBE.test(owner)) {
+    const outer = owner === 'sas-exterieure' ? 'sas' : owner === 'toit-exterieure' ? 'echelle-toit' : null
+    if (outer && ctx.state.hero.medium === 'air') {
+      out.push({ id: owner, kind: 'airlock', label: PROMPTS.sortir, key: 'interact', dist: hit.distance, run: () => void airlock('out', outer) })
+    } else if (tag.kind === 'door' && owner && !ZIP.test(owner) && !TUBE.test(owner)) {
       const open = !!ctx.state.drift.doors[owner]
       out.push({ id: owner, kind: 'door', label: open ? PROMPTS.fermer : PROMPTS.ouvrir, key: 'interact', dist: hit.distance, run: () => ctx.services.drift?.openDoor(owner, !open) })
     } else if (tag.kind === 'ladder') {
