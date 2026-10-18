@@ -77,5 +77,6 @@ export function makeMesh(geometry: THREE.InstancedBufferGeometry, material: THRE
   mesh.receiveShadow = false
   mesh.matrixAutoUpdate = false
   mesh.userData.flora = true
+  mesh.userData.noShadow = true
   return mesh
 }
