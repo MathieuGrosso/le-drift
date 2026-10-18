@@ -1,10 +1,9 @@
-import { BLANC_SLOPE, DISTRICTS, DISTRICT_BY_ID, DRIFT_ROUTE, LANDMARKS, LANES, NEF_VOID, REGIONS, WORLD_HALF } from '../../core/layout'
+import { BLANC_SLOPE, DISTRICTS, DISTRICT_BY_ID, DRIFT_ROUTE, GRANDE_VITRE, LANDMARKS, LANES, NEF_VOID, QUARTER_ROOMS, REGIONS, WORLD_HALF } from '../../core/layout'
 import type { DistrictId, RegionId } from '../../core/types'
 import type { Chart, Gp } from '../context'
 import { DOME_DISTRICT, MAP_DOMES, PLAN_FALLBACK, SCELLEES } from '../world/sites'
 import { DISTRICT_NAMES, DOME_NAMES, SCELLEE_TEXT, STATION_NAMES, UI } from '../text/fr'
 import { button, h } from './dom'
-import { PARTS, RECT_WINDOWS } from '../../drift/interiors/layout'
 
 const SIZE = 1024
 const GRID = 256
@@ -417,7 +416,7 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
       lg.stroke()
     }
     if (d.id === 'ecluse') {
-      const rooms = PARTS.filter((r) => r.floorY === 0).map((r) => [r.x0, r.x1, r.z0, r.z1] as const)
+      const rooms = Object.values(QUARTER_ROOMS).filter((r) => r.floorY === 0).map((r) => [r.x0, r.x1, r.z0, r.z1] as const)
       lg.fillStyle = 'rgba(239,227,196,0.95)'
       lg.lineWidth = 1.6
       for (const [x0, x1, z0, z1] of rooms) {
@@ -426,8 +425,8 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
         lg.fillRect(p.x, p.y, q.x - p.x, q.y - p.y)
         lg.strokeRect(p.x, p.y, q.x - p.x, q.y - p.y)
       }
-      const vitre = RECT_WINDOWS.find((w) => w.id === 'grande-vitre')!
-      const z1 = PARTS.find((r) => r.id === vitre.part)!.z1
+      const vitre = GRANDE_VITRE
+      const z1 = QUARTER_ROOMS.refectoire!.z1
       const gv = toPlan(vitre.at - vitre.w / 2, z1)
       lg.strokeStyle = SEA_INK
       lg.lineWidth = 4

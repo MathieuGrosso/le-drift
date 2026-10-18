@@ -1,6 +1,6 @@
 import type { Vec3 } from '../core/types'
 import type { Pose } from './anim'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 export type Where = 'refectoire' | 'serres' | 'proue' | 'dodo'
 

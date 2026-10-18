@@ -12,7 +12,7 @@ import { buildFurniture, emptyFurniture } from './furniture'
 import { PARTS, RECT_WINDOWS, REBORD, ROOM_NEIGHBOURS, partTop, type PartDef } from './layout'
 import { buildShell, ceilingAt } from './shell'
 import type { ColliderSpec, DoorDef, PaneDef } from './types'
-import { quarterPoint } from './scale'
+import { quarterPoint } from '../../core/quarter'
 
 export type LockId = 'sas' | 'echelle-toit'
 

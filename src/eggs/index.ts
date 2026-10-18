@@ -9,7 +9,7 @@ import {
 import { Rebot } from './rebot'
 import { ATLAS, BRIBES, CAMP, CHEVRE, GREFFIER, JUS, OURS, PLAFOND, POSTERS, PROMPTS, REBOT, SCAN, SPEAKER, type Line } from './text'
 import { EggUi } from './ui'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 interface Spot {
   id: string
@@ -40,7 +40,7 @@ const REMISE_AT = quarterPoint({ x: -6, y: 3.7, z: 57.8 })
 const SANCTUAIRE_AT = quarterPoint({ x: 18, y: 7.9, z: 64 })
 const CAMP_AT = quarterPoint({ x: -11, y: 3.65, z: 62 })
 const ROOFS_CENTER = quarterPoint({ x: 6, y: 5, z: 63 })
-const ROOFS_VIEW = 60
+const ROOFS_VIEW = 72
 const PLAFOND_AT: Record<Exclude<keyof typeof PLAFOND.objets, 'disquette'>, Vec3> = {
   scanette: quarterPoint({ x: 2.5, y: 2.75, z: 62.2 }),
   gobelet: quarterPoint({ x: 23, y: 3.5, z: 63.5 }),

@@ -29,7 +29,7 @@ export const NEF: HallDef = {
   tiers: { n: [-6, 0, 8, 16], s: [-6, 0, 8, 16], w: [-6, 0, 8, 16], e: [-6, 0, 8, 16] },
   spring: 24, rise: 8, axis: 'z',
   openings: [
-    { side: 's', u: -6, y: 0, w: 3.2, h: 3.0 },
+    { side: 's', u: -8.9, y: 0, w: 7.8, h: 4.6 },
     { side: 's', u: 0, y: 16, w: 13, h: 7.6 },
     { side: 's', u: 20, y: -6, w: 3.2, h: 3.0 },
     { side: 'n', u: -20, y: -6, w: 3.2, h: 3.0 },

@@ -4,7 +4,7 @@ import { PROUE_PANES } from './world/proue'
 import { CHART_ROOMS } from './world/sites'
 import { ACT_CARDS, DIALOGUES, QUESTS, SIDE_QUESTS, TIPS, UI } from './text/fr'
 import { northMornings } from './weather'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 const ACT1 = ['a1-reveil', 'a1-sortie', 'a1-grande-vitre', 'a1-chose', 'a1-petit-dejeuner', 'a1-rebord', 'a1-dome', 'a1-grand-pere', 'a1-poulie'] as const
 const ORDER = [...ACT1, 'a2-domes', 'a2-lest', 'a3-matin', 'a3-pluie', 'a3-dome-proue', 'a3-ligne'] as const

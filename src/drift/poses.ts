@@ -1,7 +1,7 @@
 import type { DebugPose, DebugRegistry, GameContext, Vec3 } from '../core/types'
 import type { DriftPose } from './frame'
 import { toWorld, yawToWorld } from './frame'
-import { quarterPoint } from './interiors/scale'
+import { quarterPoint } from '../core/quarter'
 
 interface LocalPose { hour: number; from: Vec3; to: Vec3; fov?: number; place?: string; hero?: Vec3 & { yaw: number } }
 

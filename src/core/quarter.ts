@@ -1,4 +1,4 @@
-import type { Vec3 } from '../../core/types'
+import type { Vec3 } from './types'
 
 export const QUARTER_SCALE = 1.6
 export const WALL_T = 0.2
@@ -50,29 +50,35 @@ function axisMap(a0: number, a1: number, b0: number, b1: number, v: number): num
   return b0 + m + ((v - a0 - m) * (b1 - b0 - 2 * m)) / (a1 - a0 - 2 * m)
 }
 
-const sas = scaled('sas', 3.8, 0)
+const MID_Z = 60.8
+const lane = (w = 3.6): [number, number] => [MID_Z - w / 2, MID_Z + w / 2]
+
+// The sas, the coursive and the cabin go past the common scale: they are what Ilo sees first.
+const sas = F(-6, 6, 63.2, 74.8, 0, 4.2, 0, 'z')
 // The roof shaft keeps its size and rides with the sas wall it leans on.
 const shaftDx = axisMap(-3, 3, sas.x0, sas.x1, -2.3) + 2.3
 const shaftDz = axisMap(63.2, 70, sas.z0, sas.z1, 64.6) - 64.6
 
 export const FOOTPRINTS: Record<string, Footprint> = {
   'echelle-toit': F(-3 + shaftDx, -1.6 + shaftDx, 63.9 + shaftDz, 65.3 + shaftDz, sas.wallH, 3.2, 0, 'z'),
-  'sas-chambre': scaled('sas-chambre', 3.8, 0),
+  'sas-chambre': F(-2.6, 2.6, 74.8, 79.6, 0, 3.8, 0, 'z'),
   sas,
-  'coursive-sud': scaled('coursive-sud', 3.4, 1.6),
-  cabine: scaled('cabine', 3.4, 1.6),
-  'cabines-voisins': scaled('cabines-voisins', 3.4, 1.7),
+  'coursive-sud': F(sx(-14), sx(10), 58.4, 63.2, 0, 4.2, 2.2),
+  cabine: F(-14.8, -7.6, 63.2, 70.4, 0, 3.6, 1.8, 'z'),
+  'cabines-voisins': F(-22.4, -12.8, 49.0, 58.4, 0, 3.4, 1.7),
   refectoire: scaled('refectoire', 6.2, 5.0),
   // East of the cs-01 sealed hull, whose roof tops out just above the floor at x 14..26.
   cuisine: F(27, 27 + 8 * QUARTER_SCALE, sz(48), sz(56), 0, 3.8, 2.4),
-  // Pinned to the city: the marché's west door meets the petit-marché gangway, the nef gangway the Nef and the puits.
-  'passerelle-1': F(-26, sx(-14), ...band(62), 0, 2.8, 1.4),
+  // Pinned to the city: the marché's west door meets the petit-marché gangway, the galerie the Nef and the puits.
+  'passerelle-1': F(-26, sx(-14), ...lane(), 0, 2.8, 1.4),
   marche: F(-40, -26, sz(54), sz(70), 0, 4.6, 3.0, 'z'),
-  'passerelle-3': F(-26, sx(-9), ...band(57.5), 0, 2.8, 1.4),
-  'passerelle-2': F(sx(26), sx(26) + 6, ...band(62), 0, 2.8, 1.4),
-  'passerelle-nef': F(-8.6, -5, 36.5, sz(55), 0, 2.6, 1.1, 'z'),
+  'passerelle-3': F(-26, -22.4, ...band(57.5), 0, 2.8, 1.4),
+  'passerelle-2': F(sx(26), sx(26) + 6, ...lane(), 0, 2.8, 1.4),
+  'passerelle-nef': F(-12.8, -5, 36.5, 58.4, 0, 4.6, 2.4, 'z'),
   'salle-des-cartes': F(sx(26) + 6, sx(26) + 6 + 8 * QUARTER_SCALE, sz(57), sz(67), 0, 3.8, 3.0, 'z'),
 }
+
+export const GRANDE_VITRE = { at: mapX('refectoire', 18), w: 14, h: 4.48, y0: 1.0 }
 
 export function ceilingOf(p: Footprint, x: number, z: number): number {
   const top = p.floorY + p.wallH

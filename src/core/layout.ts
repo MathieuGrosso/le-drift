@@ -1,5 +1,7 @@
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from './quarter'
 import type { DeckId, DistrictId, GameMode, PlaceId, RegionId, RoomId, Vec3 } from './types'
+
+export { FOOTPRINTS as QUARTER_ROOMS, GRANDE_VITRE, quarterPoint, quarterPoints } from './quarter'
 
 export const SEED = 0x0d21f7
 export const WORLD_HALF = 1024

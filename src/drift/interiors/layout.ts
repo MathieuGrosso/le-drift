@@ -1,6 +1,6 @@
 import type { RoomId } from '../../core/types'
 import { PAL } from '../palette'
-import { FOOTPRINTS, WALL_T, mapX, mapZ, quarterPoint } from './scale'
+import { FOOTPRINTS, GRANDE_VITRE, WALL_T, mapX, mapZ, quarterPoint } from '../../core/quarter'
 
 export type Side = 'n' | 's' | 'w' | 'e'
 export type FloorKind = 'bois' | 'metal' | 'tapis' | 'carrelage' | 'none'
@@ -65,26 +65,30 @@ export const PARTS: readonly PartDef[] = [
 ]
 
 const DOOR = { width: 1.9, height: 2.4 }
+export const BALCONY = { at: -10.25, width: 4.2 }
 const LOCK_DOOR = { width: 2.2, height: 2.5 }
 const LANE = (width: number, height: number) => ({ width, height })
 const MID = mapZ('coursive-sud', 62)
+const P3 = (FOOTPRINTS['passerelle-3']!.z0 + FOOTPRINTS['passerelle-3']!.z1) / 2
 
 export const LINKS: readonly LinkDef[] = [
   { a: 'sas', b: 'sas-chambre', side: 's', at: 0, ...LOCK_DOOR, door: 'sas-interieure' },
   { a: 'sas-chambre', b: null, side: 's', at: 0, ...LOCK_DOOR, door: 'sas-exterieure' },
-  { a: 'coursive-sud', b: 'sas', side: 's', at: 0, ...LANE(3.0, 2.9) },
-  { a: 'coursive-sud', b: 'refectoire', side: 'e', at: MID, ...LANE(2.6, 2.9) },
+  { a: 'coursive-sud', b: 'sas', side: 's', at: 0, ...LANE(5.0, 3.4) },
+  { a: 'coursive-sud', b: 'refectoire', side: 'e', at: MID, ...LANE(3.2, 3.4) },
   { a: 'coursive-sud', b: 'passerelle-1', side: 'w', at: MID, ...LANE(2.6, 2.6) },
   { a: 'cabine', b: 'coursive-sud', side: 'n', at: mapX('cabine', -7), ...DOOR, door: 'porte-cabine' },
   { a: 'cabines-voisins', b: 'coursive-sud', side: 's', at: mapX('cabines-voisins', -6), ...DOOR, door: 'porte-voisins' },
   { a: 'refectoire', b: 'cuisine', side: 'n', at: 31.2, ...LANE(2.6, 3.0) },
   { a: 'refectoire', b: 'passerelle-2', side: 'e', at: MID, ...LANE(2.6, 2.6) },
   { a: 'marche', b: 'passerelle-1', side: 'e', at: MID, ...DOOR, door: 'porte-marche' },
-  { a: 'passerelle-3', b: 'marche', side: 'w', at: mapZ('cabines-voisins', 57.5), ...LANE(2.6, 2.6) },
-  { a: 'passerelle-3', b: 'cabines-voisins', side: 'e', at: mapZ('cabines-voisins', 57.5), ...LANE(2.6, 2.6) },
+  { a: 'passerelle-3', b: 'marche', side: 'w', at: P3, ...LANE(2.6, 2.6) },
+  { a: 'passerelle-3', b: 'cabines-voisins', side: 'e', at: P3, ...LANE(2.6, 2.6) },
   { a: 'salle-des-cartes', b: 'passerelle-2', side: 'w', at: MID, ...DOOR, door: 'porte-cartes' },
-  { a: 'cabines-voisins', b: 'passerelle-nef', side: 'n', at: -6.8, ...LANE(2.6, 2.5) },
-  { a: 'passerelle-nef', b: null, side: 'n', at: -6.3, ...DOOR, door: 'porte-nef' },
+  { a: 'coursive-sud', b: 'passerelle-nef', side: 'n', at: -8.9, ...LANE(7.0, 4.0) },
+  { a: 'cabines-voisins', b: 'passerelle-nef', side: 'e', at: 51.5, ...LANE(2.6, 2.6) },
+  { a: 'passerelle-nef', b: null, side: 'n', at: -6.6, ...DOOR, door: 'porte-nef' },
+  { a: 'passerelle-nef', b: null, side: 'n', at: BALCONY.at, width: BALCONY.width, height: 4.2 },
   { a: 'passerelle-nef', b: null, side: 'e', at: 44.5, ...DOOR },
   { a: 'marche', b: null, side: 'w', at: 60.75, ...DOOR, door: 'porte-grand-marche' },
 ]
@@ -112,14 +116,10 @@ const LEGACY_PORTHOLES: readonly PortholeDef[] = [
   { part: 'marche', side: 'w', at: 58, y: 1.8 },
   { part: 'marche', side: 'w', at: 66, y: 1.8 },
   { part: 'passerelle-3', side: 'n', at: -20, y: 1.25 },
-  { part: 'passerelle-3', side: 'n', at: -14, y: 1.25 },
   { part: 'passerelle-3', side: 's', at: -20, y: 1.25 },
-  { part: 'passerelle-3', side: 's', at: -14, y: 1.25 },
   { part: 'passerelle-2', side: 'n', at: 31, y: 1.25 },
   { part: 'passerelle-2', side: 's', at: 31, y: 1.25 },
   { part: 'salle-des-cartes', side: 'e', at: 62, y: 1.5 },
-  { part: 'passerelle-nef', side: 'w', at: 40, y: 1.25 },
-  { part: 'passerelle-nef', side: 'w', at: 48, y: 1.25 },
   { part: 'passerelle-nef', side: 'e', at: 52, y: 1.25 },
   { part: 'salle-des-cartes', side: 'n', at: 40, y: 1.5 },
 ]
@@ -131,7 +131,8 @@ export const PORTHOLES: readonly PortholeDef[] = LEGACY_PORTHOLES.map((h) => ({ 
 const WINDOW_GROWTH = 1.4
 
 export const RECT_WINDOWS: readonly RectWindowDef[] = [
-  { id: 'grande-vitre', part: 'refectoire', side: 's', at: mapX('refectoire', 18), y0: 1.0, w: 10 * WINDOW_GROWTH, h: 3.2 * WINDOW_GROWTH },
+  { id: 'grande-vitre', part: 'refectoire', side: 's', ...GRANDE_VITRE },
+  { id: 'verriere-galerie', part: 'passerelle-nef', side: 'w', at: 42.6, y0: 0.9, w: 10, h: 3.0 },
   { id: 'vitre-grand-pere', part: 'salle-des-cartes', side: 's', at: mapX('salle-des-cartes', 40), y0: 0.8, w: 3 * WINDOW_GROWTH, h: 2.0 * WINDOW_GROWTH },
 ]
 
@@ -146,8 +147,8 @@ export const REBORD = {
 export const ROOM_NEIGHBOURS: Record<RoomId, RoomId[]> = {
   sas: ['coursive-sud', 'echelle-toit'],
   'echelle-toit': ['sas'],
-  'coursive-sud': ['sas', 'refectoire', 'passerelle-1', 'cabine', 'cabines-voisins'],
-  cabine: ['coursive-sud'],
+  'coursive-sud': ['sas', 'refectoire', 'passerelle-1', 'cabine', 'cabines-voisins', 'passerelle-nef' as RoomId],
+  cabine: ['coursive-sud', 'passerelle-nef' as RoomId],
   'cabines-voisins': ['coursive-sud', 'passerelle-3', 'passerelle-nef' as RoomId],
   refectoire: ['rebord', 'coursive-sud', 'cuisine', 'passerelle-2'],
   rebord: ['refectoire', 'cuisine'],
@@ -157,7 +158,7 @@ export const ROOM_NEIGHBOURS: Record<RoomId, RoomId[]> = {
   'passerelle-3': ['marche', 'cabines-voisins'],
   'passerelle-2': ['refectoire', 'salle-des-cartes'],
   'salle-des-cartes': ['passerelle-2'],
-  ...({ 'passerelle-nef': ['cabines-voisins'] } as Record<string, RoomId[]>),
+  ...({ 'passerelle-nef': ['cabines-voisins', 'coursive-sud', 'cabine'] } as Record<string, RoomId[]>),
 }
 
 export const LOCK_OUTSIDE = quarterPoint({ x: 0, y: 1.1, z: 75.2 })

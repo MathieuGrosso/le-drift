@@ -4,8 +4,8 @@ import { GeoBuilder } from '../builder'
 import { softColor } from '../figure'
 import { PAL } from '../palette'
 import { SURF, patForColor } from '../surface'
-import { REBORD } from './layout'
-import { FOOTPRINTS, QUARTER_SCALE, mapX, mapZ, partPoint } from './scale'
+import { BALCONY, REBORD } from './layout'
+import { FOOTPRINTS, QUARTER_SCALE, mapX, mapZ, partPoint } from '../../core/quarter'
 import type { ColliderSpec, LadderDef, LampDef, PendulumDef, SeatDef, Spot } from './types'
 
 export interface Decal {
@@ -688,8 +688,10 @@ function echelleToit(c: Ctx): void {
 }
 
 function coursive(c: Ctx): void {
-  pipe(c, -13.8, 9.8, 2.15, 61.2, 0.07, PAL.metal)
-  pipe(c, -13.8, 9.8, 2.28, 61.45, 0.045, PAL.laiton)
+  for (const [x0, x1] of [[-13.8, -7.9], [-2.9, 9.8]] as const) {
+    pipe(c, x0, x1, 2.15, 61.2, 0.07, PAL.metal)
+    pipe(c, x0, x1, 2.28, 61.45, 0.045, PAL.laiton)
+  }
   pipe(c, -13.8, 9.8, 0.25, 62.95, 0.05, PAL.metalSombre)
   laundry(c, -12.5, -8, 2.0, 62.0)
   laundry(c, -4.5, -1.5, 2.0, 62.0)
@@ -710,16 +712,16 @@ function cabine(c: Ctx): void {
   c.out.seats.push(put(c, { id: 'couchette-cabine', x: -5.65, y: 0.56, z: 65.65, yaw: YAW_S, lying: true }))
   c.out.decals.push(put(c, { kind: 'drawings', x: -5.22, y: 1.45, z: 65.6, w: 1.8, h: 0.9, normal: new THREE.Vector3(-1, 0, 0), up: new THREE.Vector3(0, 1, 0) }))
   rigid(c, -8.45, 0, 64.3, () => {
-    table(c, -8.45, 64.3, 0.6, 1.0, 0.75)
-    col(c, 'prop', -8.45, 0.38, 64.3, 0.3, 0.38, 0.5)
-    stool(c, -7.85, 64.4)
-    c.b.box(-8.45, 0.8, 64.0, 0.25, 0.04, 0.18, PAL.blanc)
-    c.b.cyl(-8.35, 0.84, 64.6, 0.04, 0.09, PAL.tissu3)
+    table(c, -8.45, 63.85, 0.6, 1.0, 0.75)
+    col(c, 'prop', -8.45, 0.38, 63.85, 0.3, 0.38, 0.5)
+    stool(c, -7.85, 64.0)
+    c.b.box(-8.45, 0.8, 63.55, 0.25, 0.04, 0.18, PAL.blanc)
+    c.b.cyl(-8.35, 0.84, 64.15, 0.04, 0.09, PAL.tissu3)
     c.b.box(-8.75, 1.6, 65.6, 0.25, 0.04, 1.4, PAL.bois)
     trouvailles(c, -8.72, 1.62, 65.6, 5, 1.2, true)
     scrubber(c, -7.95, 0.62, 67.05)
     c.b.cyl(-7.95, 1.3, 67.12, 0.012, 0.1, PAL.laiton, 'z')
-    c.b.sphere(-8.5, 0.82, 64.7, 0.07, 0.05, 0.07, PAL.laiton)
+    c.b.sphere(-8.5, 0.82, 64.25, 0.07, 0.05, 0.07, PAL.laiton)
   })
   rug(c, -7.2, 65.4, 1.6, 2.2, PAL.tissu3, PAL.tissu2)
   c.fade.box(-5.24, 1.4, 67.0, 0.04, 0.7, 0.18, PAL.echarpe)
@@ -1036,6 +1038,29 @@ function walkway(c: Ctx, x0: number, x1: number, z: number): void {
   lamp(c, (x0 + x1) / 2, 3.2, z, 0.3, PAL.lampe, 4)
 }
 
+function galerie(c: Ctx): void {
+  const f = FOOTPRINTS[c.part]!
+  const cx = (f.x0 + f.x1) / 2
+  placed(c, () => {
+    weave(c, cx, (f.z0 + f.z1) / 2 + 1, 2.6, f.z1 - f.z0 - 6, PAL.tissu3, PAL.tissu1)
+    for (let z = f.z0 + 3; z < f.z1 - 1; z += 5) lamp(c, cx, f.wallH + f.archH - 1.4, z, 1.2, PAL.lampe, 7)
+    for (const z of [40.2, 45.2]) {
+      c.b.box(f.x0 + 1.0, 0.43, z, 0.42, 0.07, 2.4, PAL.bois)
+      for (const dz of [-1.0, 0, 1.0]) c.b.box(f.x0 + 1.0, 0.2, z + dz, 0.36, 0.4, 0.06, PAL.boisOmbre)
+      col(c, 'seat', f.x0 + 1.0, 0.23, z, 0.21, 0.23, 1.2)
+      c.out.benchSeats.push(put(c, { x: f.x0 + 1.0, y: 0.47, z, yaw: YAW_W }))
+    }
+    for (const z of [f.z0 + 1.2, 49.6]) {
+      plantPot(c, f.x0 + 0.6, 0, z, 1.2)
+      tallPlant(c, f.x1 - 0.7, z, 1.1)
+    }
+    const rz = f.z0 + 1.0
+    c.b.with(SURF.brass, () => c.b.box(BALCONY.at, 1.0, rz, BALCONY.width + 0.3, 0.06, 0.06, PAL.laiton))
+    for (let i = 0; i <= 6; i++) c.b.box(BALCONY.at - BALCONY.width / 2 + (i * BALCONY.width) / 6, 0.5, rz, 0.05, 1.0, 0.05, PAL.metalSombre)
+    col(c, 'interior', BALCONY.at, 2.1, rz, BALCONY.width / 2 + 0.15, 2.1, 0.06)
+  })
+}
+
 function marche(c: Ctx): void {
   const stall = (id: string, x: number, z: number, alongZ: boolean, color: number, goods: (cx: number, cz: number) => void, keeperYaw: number, keeperDx: number) => {
     rigid(c, x, 0, z, () => {
@@ -1208,6 +1233,7 @@ export function buildFurniture(part: string, b: GeoBuilder, fade: GeoBuilder, ou
     case 'passerelle-2':
     case 'passerelle-3': passerelle(c); break
     case 'marche': marche(c); break
+    case 'passerelle-nef': galerie(c); break
     case 'salle-des-cartes': salleDesCartes(c); break
   }
   b.colorPat = null

@@ -1,7 +1,7 @@
 import type { Vec3 } from '../core/types'
 import type { Gp, Travel } from './context'
 import { DOME_DISTRICT } from './world/sites'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 type Station = { id: string; at: Vec3; station: string }
 type HeroTube = { tube?(toLocal: Vec3, yaw: number): Promise<void> }

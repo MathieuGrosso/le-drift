@@ -12,7 +12,7 @@ import { makeMaterial } from './surface'
 import { heightAt, normalAt, regionAt, TRENCH } from './terrain'
 import { Wake } from './wake'
 import { Wrecks } from './wrecks'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 export type { SortieRing, SwimLimits } from './sortie'
 

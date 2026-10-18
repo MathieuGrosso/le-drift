@@ -6,7 +6,7 @@ import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
 import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, touchLooks, writeLook, type Look, type Role as Fig } from './people'
-import { mapX, mapZ } from './interiors/scale'
+import { mapX, mapZ } from '../core/quarter'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
 

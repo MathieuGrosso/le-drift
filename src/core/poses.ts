@@ -1,6 +1,6 @@
 import { PLACES } from './layout'
 import type { DebugPose, DebugRegistry, GameContext, Vec3 } from './types'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from './layout'
 
 export type PoseSource = DebugPose | ((ctx: GameContext) => DebugPose)
 

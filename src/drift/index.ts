@@ -16,7 +16,7 @@ import { registerDriftPoses } from './poses'
 import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from './route'
 import { drawingsTexture, menuTexture } from './textures'
 import { Windows } from './windows'
-import { quarterPoint, quarterPoints } from './interiors/scale'
+import { quarterPoint, quarterPoints } from '../core/quarter'
 
 export type DriftAnchor = Anchor | { kind: 'ring'; id: string; at: Vec3 }
 export type DriftSiteKind = 'dome' | 'scellee' | 'trouvaille' | 'couchette' | 'etal' | 'table-carte'
@@ -93,6 +93,7 @@ const LOCK_ANCHORS: Record<'sas' | 'echelle-toit', Vec3> = {
   sas: LOCK_OUTSIDE,
   'echelle-toit': quarterPoint({ x: -2.3, y: 6.6, z: 64.6 }),
 }
+const NEF_VIEW: ReadonlySet<RoomId> = new Set<RoomId>(['passerelle-nef' as RoomId, 'cabines-voisins', 'coursive-sud', 'cabine'])
 const ATRIUM_AIR: Partial<Record<string, number>> = { refectoire: 0.15, marche: 0.2 }
 const SEAT_ALIAS: Record<string, string> = { 'lit-cabine': 'couchette-cabine' }
 
@@ -445,9 +446,10 @@ export function createDriftSystem(): System {
     let outside = false
     let sealed = false
     if (room) {
-      sealed = room !== ('passerelle-nef' as RoomId) && room !== 'cabines-voisins'
+      const nefView = NEF_VIEW.has(room)
+      sealed = !nefView
       visibleDistricts.add('ecluse')
-      if (room === ('passerelle-nef' as RoomId) || room === 'cabines-voisins') visibleDistricts.add('nef')
+      if (nefView) visibleDistricts.add('nef')
       visible = [room]
       glassVisible = glass.has(room) ? 1 : 0
     } else if (cc) {

@@ -16,7 +16,7 @@ import { FLORA_COLORS, PLANT_COLORS } from './palette'
 import { createPlantMaterial, createPlantUniforms, setPlantEmissive, type PlantUniforms } from './plantmat'
 import { buildSerres } from './serres'
 import { ShipFrame } from './ship'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 export { SERRE_COLUMNS, SERRE_HALL, SERRE_TRELLIS } from './serres'
 

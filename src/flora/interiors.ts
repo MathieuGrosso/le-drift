@@ -3,7 +3,7 @@ import type { GameContext, QualityLevel } from '../core/types'
 import { PlantGeo } from './plantgeo'
 import { floorPlant, hangingBasket, railPlanter, shelfSprouts } from './plants'
 import type { ShapeSpec } from './ship'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from '../core/layout'
 
 interface Hang { x: number; z: number; hook: number; drop: number; r: number; vines: number; len: number }
 interface Floor { x: number; y: number; z: number; scale: number }

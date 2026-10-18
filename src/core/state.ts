@@ -1,7 +1,7 @@
 import { DRIFT_ROUTE, DRIFT_Y } from './layout'
 import { TIME } from './tuning'
 import type { DayPhase, GameState, QualityLevel } from './types'
-import { quarterPoint } from '../drift/interiors/scale'
+import { quarterPoint } from './layout'
 
 export function createInitialState(quality: QualityLevel = 'high'): GameState {
   const start = DRIFT_ROUTE[0]!
