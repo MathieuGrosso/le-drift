@@ -4,7 +4,7 @@ import type { GameContext } from '../core/types'
 import { hideInstance, patchVertex } from './shared'
 
 const BUBBLES = 600
-const RINGS = 320
+const RINGS = 480
 
 /** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws. */
 export class Bubbles {

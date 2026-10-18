@@ -3,11 +3,12 @@ import { CEILING_Y } from '../core/layout'
 import type { GameContext, Vec3 } from '../core/types'
 import type { Bubbles } from './bubbles'
 import type { FishSchools } from './fish'
+import { CeilingShadow, Pages } from './pages'
 import { buildBird, type BirdModel } from './models'
 import { PALETTE, celMaterial, clampWaterY, disposeObject } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
-type Phase = 'descend' | 'grab' | 'approach' | 'hover' | 'ascend'
+type Phase = 'circle' | 'descend' | 'grab' | 'approach' | 'hover' | 'ascend'
 interface Job { target: Vec3; close: boolean; resolve: () => void }
 
 const ABOVE = CEILING_Y + 12
@@ -25,8 +26,8 @@ function bezier(out: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE
 }
 
 /**
- * La Chose, always seen through glass. A dive: falls through the ceiling (rings, bubbles), takes one fish,
- * goes back up. A close dive (act 3) glides down to the window, hovers side-on with one eye on whoever is
+ * La Chose, always seen through glass. A dive: its shadow circles on the ceiling, it falls through
+ * (rings, bubbles), takes one fish, sheds a written page, goes back up. A close dive (act 3) glides down to the window, hovers side-on with one eye on whoever is
  * behind the glass, holding the fish like grandfather holds his pen, then leaves through the ceiling.
  */
 export class Chose {
@@ -63,6 +64,16 @@ export class Chose {
   private spread = 0.2
   private trail = 0
   private readonly rng: () => number
+  private readonly circleC = new THREE.Vector3()
+  private circleR = 20
+  private circleA0 = 0
+  private circleSweep = 0
+  private blinkIn = 3
+  private blinkT = -1
+  private tilt = 0
+  private shedHover = false
+  readonly shadow: CeilingShadow
+  readonly pages: Pages
   lastDiveElapsed = -Infinity
   onRipple: (x: number, z: number, strength: number) => void = (x, z, strength) => this.ctx.bus.emit('ceiling:ripple', { x, z, strength })
 
@@ -81,6 +92,8 @@ export class Chose {
     )
     this.group.add(this.bird.root)
     this.group.visible = false
+    this.shadow = new CeilingShadow(ctx)
+    this.pages = new Pages(ctx)
   }
 
   get busy(): boolean {
@@ -124,13 +137,19 @@ export class Chose {
     const reach = job.close ? 45 : 28
     this.b0.set(this.preyPos.x + cx * reach, ABOVE, this.preyPos.z + cz * reach)
     this.b1.copy(this.b0).add(this.tmp.set(0, -16, 0))
-    this.pos.copy(this.b0)
-    this.prevPos.copy(this.b0)
-    this.fwd.set(-cx * 0.4, -1, -cz * 0.4).normalize()
+    this.circleC.set(this.preyPos.x, ABOVE, this.preyPos.z)
+    this.circleR = reach
+    const laps = job.close ? 1.4 : 1.1
+    const dir = this.rng() < 0.5 ? 1 : -1
+    this.circleSweep = laps * Math.PI * 2 * dir
+    this.circleA0 = Math.atan2(cz, cx) - this.circleSweep
+    this.pos.set(this.circleC.x + Math.cos(this.circleA0) * reach, ABOVE, this.circleC.z + Math.sin(this.circleA0) * reach)
+    this.prevPos.copy(this.pos)
+    this.fwd.set(-Math.sin(this.circleA0) * dir, 0, Math.cos(this.circleA0) * dir)
     this.bird.heldFish.visible = false
     this.group.visible = true
-    this.enter('descend', job.close ? 7.5 : 3.4)
-    ctx.bus.emit('chose:dive', { position: { x: this.preyPos.x, y: this.preyPos.y, z: this.preyPos.z }, phase: 'descend' })
+    this.shedHover = false
+    this.enter('circle', job.close ? 6 : 4.5)
     ctx.bus.emit('audio:cue', { cue: 'wonder' })
   }
 
@@ -178,6 +197,7 @@ export class Chose {
     const job = this.job
     this.job = null
     this.group.visible = false
+    this.shadow.hide()
     this.bird.heldFish.visible = false
     this.fish.setThreat(null, 0)
     job?.resolve()
@@ -196,7 +216,22 @@ export class Chose {
     this.prevPos.copy(this.pos)
     let lookSide = false
 
-    if (this.phase === 'descend') {
+    if (this.phase === 'circle') {
+      const e = u * (2 - u) * 0.5 + u * 0.5
+      const a = this.circleA0 + this.circleSweep * e
+      const r = this.circleR * (1.25 - 0.25 * u)
+      this.pos.set(this.circleC.x + Math.cos(a) * r, ABOVE + (1 - u) * 6, this.circleC.z + Math.sin(a) * r)
+      this.spread = 1
+      this.beatAmp = 0.12
+      this.beatFreq = 0.5
+      if (u >= 1) {
+        this.b0.copy(this.pos)
+        this.b1.copy(this.pos).addScaledVector(this.tmp.subVectors(this.pos, this.prevPos).setY(0).normalize(), 10).add(this.want.set(0, -16, 0))
+        this.fwd.set(-Math.cos(a) * 0.4, -1, -Math.sin(a) * 0.4).normalize()
+        this.enter('descend', job.close ? 7.5 : 3.4)
+        this.ctx.bus.emit('chose:dive', { position: { x: this.preyPos.x, y: this.preyPos.y, z: this.preyPos.z }, phase: 'descend' })
+      }
+    } else if (this.phase === 'descend') {
       if (this.prey >= 0) this.fish.fishPosition(this.prey, this.preyPos)
       this.b3.copy(this.preyPos)
       this.b2.copy(this.preyPos).add(this.tmp.set(0, 7, 0)).addScaledVector(this.fwd, -4)
@@ -225,7 +260,7 @@ export class Chose {
       this.beatAmp = 0.45
       this.beatFreq = 0.45
       lookSide = u > 0.5
-      if (u >= 1) this.enter('hover', 9)
+      if (u >= 1) this.enter('hover', 11)
     } else if (this.phase === 'hover') {
       this.followDrift()
       this.pos.copy(this.hover)
@@ -235,6 +270,10 @@ export class Chose {
       this.beatAmp = 0.55
       this.beatFreq = 0.3
       lookSide = true
+      if (!this.shedHover && this.t > 3.5) {
+        this.shedHover = true
+        this.pages.drop(this.pos.x + this.side.x * 1.5, this.pos.y + 1.6, this.pos.z + this.side.z * 1.5)
+      }
       if (u >= 1) this.startAscend(8, 34)
     } else {
       const e = job.close ? u * u * (3 - 2 * u) : u
@@ -251,6 +290,10 @@ export class Chose {
     const crossedDown = this.prevPos.y >= CEILING_Y && this.pos.y < CEILING_Y
     const crossedUp = this.prevPos.y < CEILING_Y && this.pos.y >= CEILING_Y
     if (crossedDown || crossedUp) this.splash(this.pos.x, this.pos.z, crossedDown)
+    const above = this.pos.y - CEILING_Y
+    const dayLight = this.stage.night ? 0.25 : 1
+    const shadowIn = this.phase === 'circle' ? Math.min(1, this.t / 1.5) : 1
+    this.shadow.set(this.pos.x, CEILING_Y, this.pos.z, Math.atan2(this.fwd.x, this.fwd.z), above, this.spread, shadowIn * dayLight)
     const under = this.pos.y < CEILING_Y
     this.fish.setThreat(under ? this.pos : null, job.close ? 8 : 15)
     if (under) {
@@ -266,6 +309,7 @@ export class Chose {
   private startGrab(): void {
     const job = this.job
     if (!job) return
+    if (!job.close && this.rng() < 0.6) this.pages.drop(this.pos.x, this.pos.y + 1, this.pos.z)
     this.enter('grab', job.close ? 0.9 : 0.6)
     if (this.prey >= 0) {
       this.fish.fishColor(this.prey, this.color)
@@ -334,9 +378,39 @@ export class Chose {
     }
     b.neck.rotation.y += (turn - b.neck.rotation.y) * Math.min(1, dt * 1.5)
     b.neck.rotation.x = this.phase === 'descend' && !this.job?.close ? 0.25 : 0
+
+    const tiltWant = delicate ? Math.sin(this.t * 0.37) * 0.32 + (Math.sin(this.t * 0.11) > 0.6 ? 0.25 : 0) : 0
+    this.tilt += (tiltWant - this.tilt) * Math.min(1, dt * 2.2)
+    b.neck.rotation.z = this.tilt
+
+    this.blinkIn -= dt
+    if (this.blinkIn <= 0 && this.blinkT < 0) {
+      this.blinkT = 0
+      this.blinkIn = delicate ? 2.2 + this.rng() * 3.5 : 1.5 + this.rng() * 2
+    }
+    let lid = 0.05
+    if (this.blinkT >= 0) {
+      this.blinkT += dt
+      lid = Math.max(0.05, Math.sin(Math.min(1, this.blinkT / 0.22) * Math.PI))
+      if (this.blinkT > 0.22) this.blinkT = -1
+    }
+    for (const m of b.lids) {
+      m.visible = lid > 0.06
+      m.scale.y = lid
+    }
+    if (delicate && this.bird.heldFish.visible) {
+      const flick = Math.max(0, Math.sin(this.t * 0.9) - 0.85) * 6
+      this.bird.heldFish.rotation.y = 0.35 + Math.sin(this.t * 14) * 0.12 * flick
+    }
+  }
+
+  updatePages(dt: number): void {
+    this.pages.update(dt, (x, z) => this.ctx.services.world?.heightAt(x, z) ?? -Infinity)
   }
 
   dispose(): void {
+    this.shadow.dispose()
+    this.pages.dispose()
     for (const j of this.jobs) j.resolve()
     this.jobs.length = 0
     this.job?.resolve()

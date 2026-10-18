@@ -83,7 +83,16 @@ export function whaleGeometry(): THREE.BufferGeometry {
   for (let i = -3; i <= 3; i++) {
     grooves.push(paint(new THREE.BoxGeometry(0.05, 0.03, 4.2).translate(i * 0.32, -1.68, 5.0), 0xb9cfcb))
   }
-  return merge([bodyP, flukeP, finL, finR, dorsal, eyeL, eyeR, ...grooves])
+  const barnacles: THREE.BufferGeometry[] = []
+  const spots: [number, number, number, number][] = [
+    [0.9, 0.9, 6.6, 0.26], [1.15, 0.55, 6.2, 0.18], [-0.7, 1.05, 6.9, 0.22], [-1.2, 0.4, 6.0, 0.2],
+    [0.2, 1.35, 5.7, 0.16], [1.6, -0.6, 4.6, 0.2], [-1.65, -0.5, 4.3, 0.17], [0.4, -1.4, 6.8, 0.24],
+    [0.0, 1.6, 0.4, 0.14], [1.2, 1.2, -1.8, 0.12],
+  ]
+  for (const [x, y, z, r] of spots) {
+    barnacles.push(paint(ellipsoid(r, r * 0.45, r * 1.1, 6, 4).translate(x, y, z), 0xdfe3d4))
+  }
+  return merge([bodyP, flukeP, finL, finR, dorsal, eyeL, eyeR, ...grooves, ...barnacles])
 }
 
 /** Manta, 5.2 m span on x, head at +z, top dark / belly pale. */
@@ -155,6 +164,7 @@ export interface BirdModel {
   neck: THREE.Group
   talon: THREE.Group
   heldFish: THREE.Mesh
+  lids: THREE.Mesh[]
   materials: THREE.Material[]
 }
 
@@ -206,6 +216,16 @@ export function buildBird(mk: (opts: { vertexColors: true; double: boolean }) =>
   const glintR = paint(ellipsoid(0.045, 0.045, 0.045, 6, 4).translate(-0.55, 1.12, 1.56), 0xfff1c9)
   const crest = pages(0.9, 0.35, 5, 0.5, 0.4).rotateZ(Math.PI / 2).rotateX(-0.9).translate(0, 1.3, 0.9)
   neck.add(new THREE.Mesh(merge([neckG, head, beak, eyeL, eyeR, glintL, glintR, crest]), bodyMat))
+  const lids: THREE.Mesh[] = []
+  for (const x of [0.45, -0.45]) {
+    const lid = new THREE.Mesh(paint(new THREE.SphereGeometry(0.17, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), PALETTE.blancOmbre), bodyMat)
+    lid.position.set(x, 1.05, 1.5)
+    lid.rotation.z = x > 0 ? -1.2 : 1.2
+    lid.scale.set(1, 0.05, 1)
+    lid.visible = false
+    neck.add(lid)
+    lids.push(lid)
+  }
 
   const talon = new THREE.Group()
   talon.position.set(-0.35, -1.55, -0.3)
@@ -245,5 +265,28 @@ export function buildBird(mk: (opts: { vertexColors: true; double: boolean }) =>
     body.add(inner)
     wings.push({ inner, outer, side })
   }
-  return { root, body, wings, tail, neck, talon, heldFish, materials: [bodyMat, wingMat] }
+  return { root, body, wings, tail, neck, talon, heldFish, lids, materials: [bodyMat, wingMat] }
+}
+
+/** A round, big-eyed reef fish (~0.5 m), nose at +z: the body takes the instance tint, the eyes do not. */
+export function curiousBodyGeometry(): THREE.BufferGeometry {
+  const body = paintGradientY(ellipsoid(0.13, 0.19, 0.24, 12, 9), 0xc9d3d4, 0xffffff, -0.15, 0.15)
+  const belly = paint(ellipsoid(0.1, 0.1, 0.17, 8, 6).translate(0, -0.08, 0.03), 0xf4f1e6)
+  const tail = paint(finTriangle([0, 0, -0.2], [0, 0.17, -0.42], [0, -0.17, -0.42]), 0xe2e8e8)
+  const dorsal = paint(finTriangle([0, 0.17, 0.08], [0, 0.31, -0.1], [0, 0.14, -0.18]), 0xd8e0e2)
+  const anal = paint(finTriangle([0, -0.16, 0.0], [0, -0.26, -0.14], [0, -0.13, -0.16]), 0xd8e0e2)
+  const finL = paint(finTriangle([0.12, -0.02, 0.06], [0.24, -0.06, -0.06], [0.12, -0.08, -0.02]), 0xe8eeee)
+  const finR = paint(finTriangle([-0.12, -0.02, 0.06], [-0.24, -0.06, -0.06], [-0.12, -0.08, -0.02]), 0xe8eeee)
+  const lips = paint(ellipsoid(0.045, 0.035, 0.04, 6, 4).translate(0, -0.03, 0.235), 0xf0b0a0)
+  return merge([body, belly, tail, dorsal, anal, finL, finR, lips])
+}
+
+export function curiousEyesGeometry(): THREE.BufferGeometry {
+  const parts: THREE.BufferGeometry[] = []
+  for (const x of [1, -1]) {
+    parts.push(paint(ellipsoid(0.06, 0.065, 0.05, 10, 8).translate(0.105 * x, 0.045, 0.13), 0xfbf8ee))
+    parts.push(paint(ellipsoid(0.034, 0.038, 0.03, 8, 6).translate(0.135 * x, 0.045, 0.145), 0x101820))
+    parts.push(paint(ellipsoid(0.011, 0.011, 0.01, 5, 4).translate(0.152 * x, 0.06, 0.15), 0xffffff))
+  }
+  return merge(parts)
 }

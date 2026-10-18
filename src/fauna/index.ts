@@ -3,6 +3,7 @@ import { CHOSE_DIVE_HOURS, DRIFT_ROUTE } from '../core/layout'
 import type { FaunaService, GameContext, System, Vec3 } from '../core/types'
 import { Bubbles } from './bubbles'
 import { Chose } from './chose'
+import { Curious } from './curious'
 import { FishSchools } from './fish'
 import { Jellyfish } from './jellyfish'
 import { Manta } from './manta'
@@ -30,6 +31,7 @@ interface Parts {
   turtle: Turtle
   chose: Chose
   motes: Motes
+  curious: Curious
 }
 
 function routeLength(from: number, to: number): number {
@@ -132,7 +134,8 @@ export function createFaunaSystem(): System {
     if (amount <= 0.01 || externalRain > 0 || !p.stage.visible) return
     const st = p.stage
     const c = st.kind === 'sortie' ? st.pos : st.point(30, 0, 0, scratch)
-    p.bubbles.rain(dt, c.x, c.z, 70, amount * 40)
+    p.bubbles.rain(dt, c.x, c.z, 70, amount * 110)
+    if (amount > 0.3) p.bubbles.rain(dt * 0.3, c.x + st.tangent.x * 90, c.z + st.tangent.z * 90, 60, amount * 110)
   }
 
   function build(ctx: GameContext): Parts {
@@ -146,12 +149,14 @@ export function createFaunaSystem(): System {
     const jelly = new Jellyfish(ctx, stage, frame)
     const whale = new Whale(ctx, frame, bubbles)
     const manta = new Manta(ctx, frame)
-    const turtle = new Turtle(ctx, stage, frame)
+    const turtle = new Turtle(ctx, stage, frame, bubbles)
     const chose = new Chose(ctx, stage, frame, bubbles, fish)
     const motes = new Motes(ctx, stage)
-    root.add(fish.group, jelly.group, whale.group, manta.group, turtle.group, chose.group, bubbles.group, motes.group)
+    const curious = new Curious(ctx, stage, bubbles)
+    root.add(fish.group, jelly.group, whale.group, manta.group, turtle.group, chose.group, bubbles.group, motes.group,
+      curious.group, chose.shadow.mesh, chose.pages.group)
     ctx.scene.add(root)
-    return { root, frame, stage, bubbles, fish, jelly, whale, manta, turtle, chose, motes }
+    return { root, frame, stage, bubbles, fish, jelly, whale, manta, turtle, chose, motes, curious }
   }
 
   return {
@@ -178,6 +183,12 @@ export function createFaunaSystem(): System {
       ctx.services.fauna = service
       unsubs.push(ctx.quality.onChange((q) => {
         if (q.fishCount !== p.fish.count) p.fish.resize(q.fishCount)
+      }))
+      unsubs.push(ctx.bus.on('interact', ({ kind }) => {
+        if (kind === 'window') p.curious.startle(null)
+      }))
+      unsubs.push(ctx.bus.on('chose:dive', ({ position, phase }) => {
+        if (phase !== 'ascend') p.curious.startle(position)
       }))
       unsubs.push(ctx.bus.on('ceiling:ripple', ({ x, z, strength }) => {
         if (ownRipple) return
@@ -208,10 +219,12 @@ export function createFaunaSystem(): System {
       p.turtle.update(dt)
       p.manta.update(dt)
       p.bubbles.update(dt)
+      p.chose.updatePages(dt)
       if (!p.stage.visible) return
       p.fish.update(dt)
       p.jelly.update(dt)
       p.motes.update(dt)
+      p.curious.update(dt)
     },
     dispose() {
       for (const u of unsubs.splice(0)) u()
@@ -226,6 +239,7 @@ export function createFaunaSystem(): System {
       p.fish.dispose()
       p.bubbles.dispose()
       p.motes.dispose()
+      p.curious.dispose()
       p.root.removeFromParent()
     },
   }

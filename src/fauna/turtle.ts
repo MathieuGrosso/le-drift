@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { GameContext } from '../core/types'
+import type { Bubbles } from './bubbles'
 import { turtleGeometry } from './models'
 import { celMaterial, clampWaterY, patchVertex, writeBasis } from './shared'
 import type { DriftFrame, Stage } from './stage'
@@ -9,7 +10,7 @@ const LOOK = 6
 const OUT = 9
 const LEAVE = 22
 
-/** « Une tortue ! Une première ! »: one turtle crossing in front of the glass, pausing to look in, then away. */
+/** « Une tortue ! Une première ! »: one turtle crossing in front of the glass, nosing the pane to look in, then away. */
 export class Turtle {
   readonly group = new THREE.Group()
   private readonly mesh: THREE.Mesh
@@ -27,8 +28,17 @@ export class Turtle {
   private readonly dir = new THREE.Vector3()
   private readonly look = new THREE.Vector3()
   private readonly basis = new Float32Array(16)
+  private readonly rng: () => number
+  private bumped = false
+  private approach = 0
 
-  constructor(private readonly ctx: GameContext, private readonly stage: Stage, private readonly frame: DriftFrame) {
+  constructor(
+    private readonly ctx: GameContext,
+    private readonly stage: Stage,
+    private readonly frame: DriftFrame,
+    private readonly bubbles: Bubbles,
+  ) {
+    this.rng = ctx.rng('fauna:tortue')
     const mat = celMaterial(ctx, { color: 0xffffff, vertexColors: true, rim: 0.6 })
     patchVertex(mat, {
       key: 'turtle',
@@ -56,7 +66,7 @@ transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
   start(): void {
     const st = this.stage
     const f = this.frame
-    const side = Math.random() < 0.5 ? 1 : -1
+    const side = this.rng() < 0.5 ? 1 : -1
     const v = this.p
     const depth = st.kind === 'sortie' ? 5 : 3.4
     const put = (out: THREE.Vector3, d: number, lat: number, h: number) => {
@@ -69,6 +79,8 @@ transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
     put(this.bL, depth + 2, 20, 1)
     put(this.awayL, depth + 30, 48, 9)
     f.dirToLocal(st.normal, this.inwardL).negate()
+    this.approach = st.kind === 'sortie' ? 0 : Math.max(0, depth - 1.75)
+    this.bumped = false
     this.local.copy(this.aL)
     this.headL.subVectors(this.mL, this.aL).normalize()
     f.toWorld(this.local, this.p)
@@ -91,6 +103,14 @@ transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
       const u = (this.t - IN) / LOOK
       this.local.copy(this.mL)
       this.local.y += Math.sin(u * Math.PI) * 0.35
+      const nose = Math.sin(Math.min(1, u * 1.4) * Math.PI)
+      this.local.addScaledVector(this.inwardL, this.approach * nose)
+      if (!this.bumped && u > 0.36) {
+        this.bumped = true
+        const head = this.look.copy(this.local).addScaledVector(this.inwardL, 1.3)
+        f.toWorld(head, head)
+        this.bubbles.burst(head.x, head.y, head.z, 6, 0.15, 0.7, 0.05)
+      }
       lookW = Math.sin(u * Math.PI)
       rate = 0.7
     } else if (this.t < IN + LOOK + OUT) {
