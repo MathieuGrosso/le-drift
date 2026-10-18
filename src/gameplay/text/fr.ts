@@ -275,6 +275,7 @@ export const UI = {
   },
   fin: 'Fin',
   continuer: 'continuer',
+  passer: 'passer',
   forecast: {
     vis: (v: number) => (v >= 999 ? 'Visibilité : beaucoup' : `Visibilité ${v} m`),
     courant: (from: string) => `Courant ${from}`,
@@ -380,12 +381,9 @@ export const SIDE_QUESTS: Record<string, QuestText> = {
 }
 
 export const INTRO: readonly string[] = [
-  'À peu près deux fois par jour, quelque chose tombe à travers le plafond, attrape un poisson, et remonte.',
-  'Personne ne sait où ça va.',
+  'À peu près deux fois par jour, quelque chose tombe à travers le plafond, attrape un poisson, et remonte. Personne ne sait où ça va.',
   'Tu essaies de le savoir depuis que tu as six ans.',
-  'Tu vis dans le Drift : quarante mille personnes dans quatre cents coques, qui vont toutes quelque part, à peu près à la vitesse d’un pas.',
-  'Tout ce qui reste immobile dans la mer se couvre d’un pelage. Le Drift a onze mille vitres. Quand tu finis la dernière, la première a déjà repoussé.',
-  'Toi, tu les laves. De l’extérieur.',
+  'Le Drift a onze mille vitres. Toi, tu les laves. De l’extérieur.',
 ]
 
 export const TIPS = {

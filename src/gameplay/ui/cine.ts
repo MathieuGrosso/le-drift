@@ -50,33 +50,41 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
     },
     async narrate(lines) {
       busy++
+      const input = ctx.input
       const wrap = h('div', 'gp-narrate', undefined, root)
       const p = h('div', 'p', '', wrap)
-      h('div', 'hint', `${ctx.input.keyLabel('interact')} · ${UI.continuer}`, wrap)
+      h('div', 'hint', `${input.keyLabel('interact')} · ${UI.continuer}    ${input.keyLabel('pause')} · ${UI.passer}`, wrap)
       let clicked = false
+      let skip = false
       wrap.addEventListener('click', () => {
         clicked = true
       })
       for (const line of lines) {
+        if (skip) break
         p.textContent = line
         p.classList.add('show')
+        const auto = Math.min(5.5, Math.max(2.6, 1.4 + line.length * 0.035))
         let t = 0
         await new Promise<void>((resolve) => {
           tick = (dt) => {
             t += dt
             const go = advancePressed() || clicked
+            if (input.pressed('pause')) skip = true
+            input.consume('interact', 'up', 'pause')
             clicked = false
-            if ((go && t > 0.9) || t > 7.5) {
+            if ((go && t > 0.35) || t > auto || skip) {
               tick = null
               resolve()
             }
           }
         })
         p.classList.remove('show')
-        await wait(0.9)
+        await wait(skip ? 0 : 0.45)
       }
+      tick = () => input.consume('interact', 'up', 'pause')
       wrap.style.opacity = '0'
-      await wait(1.4)
+      await wait(0.6)
+      tick = null
       wrap.remove()
       busy--
     },

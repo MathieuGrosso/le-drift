@@ -151,10 +151,10 @@ export const GAMEPLAY_CSS = `
 .gp-card-act .s { font-family: var(--gp-serif); font-size: clamp(48px, 7vw, 96px); font-weight: 500; margin-top: 6px; text-shadow: 0 4px 40px rgba(6,24,38,.6); }
 .gp-card-act .s.long { font-size: clamp(26px, 3vw, 40px); font-style: italic; max-width: 70vw; text-align: center; }
 .gp-narrate { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12vw; pointer-events: auto;
-  background: radial-gradient(ellipse at 50% 0%, rgba(207,239,227,.25), rgba(14,59,82,.92) 60%, rgba(8,30,46,.98)); transition: opacity 1.4s ease; }
-.gp-narrate .p { font-family: var(--gp-serif); font-size: clamp(22px, 2.3vw, 32px); line-height: 1.55; text-align: center; max-width: 900px; opacity: 0; transition: opacity 1.2s ease; }
+  background: radial-gradient(ellipse at 50% 40%, rgba(14,59,82,.45), rgba(8,30,46,.78) 75%); transition: opacity .6s ease; }
+.gp-narrate .p { font-family: var(--gp-serif); font-size: clamp(22px, 2.3vw, 32px); line-height: 1.55; text-align: center; max-width: 900px; opacity: 0; transition: opacity .45s ease; text-shadow: 0 2px 18px rgba(6,24,38,.9); }
 .gp-narrate .p.show { opacity: 1; }
-.gp-narrate .hint { position: absolute; bottom: 7vh; font-size: 13px; letter-spacing: .25em; text-transform: uppercase; opacity: .55; }
+.gp-narrate .hint { position: absolute; bottom: 7vh; white-space: pre; font-size: 13px; letter-spacing: .25em; text-transform: uppercase; opacity: .55; }
 .gp-credits { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--gp-abysse); pointer-events: none; }
 .gp-credits .c { opacity: 0; transition: opacity 1.6s ease; position: absolute; }
 .gp-credits .c.show { opacity: 1; }
