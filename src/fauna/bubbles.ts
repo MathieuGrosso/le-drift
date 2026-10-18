@@ -4,9 +4,9 @@ import type { GameContext } from '../core/types'
 import { hideInstance, patchVertex } from './shared'
 
 const BUBBLES = 600
-const RINGS = 96
+const RINGS = 320
 
-/** Bubble bursts and expanding rings under the ceiling. Two instanced draws. */
+/** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws. */
 export class Bubbles {
   readonly group = new THREE.Group()
   private readonly bubbleMesh: THREE.InstancedMesh
@@ -22,6 +22,7 @@ export class Bubbles {
   private readonly rDur = new Float32Array(RINGS)
   private readonly rMax = new Float32Array(RINGS)
   private rNext = 0
+  private rainAcc = 0
   private readonly rng: () => number
 
   constructor(ctx: GameContext) {
@@ -85,6 +86,17 @@ export class Bubbles {
   rings(x: number, z: number, strength: number): void {
     const n = Math.round(3 + strength * 4)
     for (let k = 0; k < n; k++) this.ring(x, z, (6 + k * 2.5) * strength + 2, 2.6 + k * 0.35, k * 0.28)
+  }
+
+  /** Raindrops seen from below: small rings scattered over a patch of ceiling, `rate` per second. */
+  rain(dt: number, x: number, z: number, radius: number, rate: number): void {
+    this.rainAcc += dt * rate
+    while (this.rainAcc >= 1) {
+      this.rainAcc -= 1
+      const a = this.rng() * Math.PI * 2
+      const d = Math.sqrt(this.rng()) * radius
+      this.ring(x + Math.cos(a) * d, z + Math.sin(a) * d, 1.2 + this.rng() * 1.8, 1.1 + this.rng() * 0.8)
+    }
   }
 
   update(dt: number): void {

@@ -5,6 +5,7 @@ import type { Bubbles } from './bubbles'
 import type { FishSchools } from './fish'
 import { buildBird, type BirdModel } from './models'
 import { PALETTE, celMaterial, clampWaterY, disposeObject } from './shared'
+import type { DriftFrame, Stage } from './stage'
 
 type Phase = 'descend' | 'grab' | 'approach' | 'hover' | 'ascend'
 interface Job { target: Vec3; close: boolean; resolve: () => void }
@@ -24,8 +25,9 @@ function bezier(out: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3, c: THREE
 }
 
 /**
- * La Chose. A dive: falls through the ceiling (rings, bubbles), takes one fish, goes back up.
- * A close dive (act 3) glides down to a window, hovers side-on so one eye faces the viewer, then leaves.
+ * La Chose, always seen through glass. A dive: falls through the ceiling (rings, bubbles), takes one fish,
+ * goes back up. A close dive (act 3) glides down to the window, hovers side-on with one eye on whoever is
+ * behind the glass, holding the fish like grandfather holds his pen, then leaves through the ceiling.
  */
 export class Chose {
   readonly group = new THREE.Group()
@@ -47,6 +49,8 @@ export class Chose {
   private readonly b2 = new THREE.Vector3()
   private readonly b3 = new THREE.Vector3()
   private readonly hover = new THREE.Vector3()
+  private readonly hoverLocal = new THREE.Vector3()
+  private readonly sideLocal = new THREE.Vector3()
   private readonly viewer = new THREE.Vector3()
   private readonly side = new THREE.Vector3()
   private readonly tmp = new THREE.Vector3()
@@ -60,8 +64,15 @@ export class Chose {
   private trail = 0
   private readonly rng: () => number
   lastDiveElapsed = -Infinity
+  onRipple: (x: number, z: number, strength: number) => void = (x, z, strength) => this.ctx.bus.emit('ceiling:ripple', { x, z, strength })
 
-  constructor(private readonly ctx: GameContext, private readonly bubbles: Bubbles, private readonly fish: FishSchools) {
+  constructor(
+    private readonly ctx: GameContext,
+    private readonly stage: Stage,
+    private readonly frame: DriftFrame,
+    private readonly bubbles: Bubbles,
+    private readonly fish: FishSchools,
+  ) {
     this.rng = ctx.rng('fauna:chose')
     this.heldMat = celMaterial(ctx, { color: PALETTE.corail1, vertexColors: true, rim: 0.5 })
     this.bird = buildBird(
@@ -99,13 +110,23 @@ export class Chose {
     else this.preyPos.copy(guess)
     this.preyPos.y = clampWaterY(ctx, this.preyPos.x, this.preyPos.y, this.preyPos.z, 2, 6)
 
-    const a = this.rng() * Math.PI * 2
+    let cx: number, cz: number
+    const st = this.stage
+    const nh = Math.hypot(st.normal.x, st.normal.z)
+    if (st.kind !== 'sortie' && nh > 0.5) {
+      const th = (0.15 + this.rng() * 0.7) * Math.PI
+      cx = st.tangent.x * Math.cos(th) + st.normal.x / nh * Math.sin(th)
+      cz = st.tangent.z * Math.cos(th) + st.normal.z / nh * Math.sin(th)
+    } else {
+      const a = this.rng() * Math.PI * 2
+      cx = Math.cos(a); cz = Math.sin(a)
+    }
     const reach = job.close ? 45 : 28
-    this.b0.set(this.preyPos.x + Math.cos(a) * reach, ABOVE, this.preyPos.z + Math.sin(a) * reach)
+    this.b0.set(this.preyPos.x + cx * reach, ABOVE, this.preyPos.z + cz * reach)
     this.b1.copy(this.b0).add(this.tmp.set(0, -16, 0))
     this.pos.copy(this.b0)
     this.prevPos.copy(this.b0)
-    this.fwd.set(-Math.cos(a) * 0.4, -1, -Math.sin(a) * 0.4).normalize()
+    this.fwd.set(-cx * 0.4, -1, -cz * 0.4).normalize()
     this.bird.heldFish.visible = false
     this.group.visible = true
     this.enter('descend', job.close ? 7.5 : 3.4)
@@ -115,22 +136,36 @@ export class Chose {
 
   private setupHover(target: Vec3): void {
     const ctx = this.ctx
-    const win = ctx.services.drift?.nearestWindow(target, 8) ?? null
-    let nx: number, nz: number
+    const st = this.stage
+    const win = ctx.services.drift?.nearestWindow(target, 14) ?? null
+    let px: number, py: number, pz: number, nx: number, nz: number
     if (win) {
+      px = win.position.x; py = win.position.y; pz = win.position.z
       nx = win.normal.x; nz = win.normal.z
+    } else if (st.kind !== 'sortie' && st.kind !== 'free') {
+      px = st.pos.x; py = st.pos.y; pz = st.pos.z
+      nx = st.normal.x; nz = st.normal.z
     } else {
-      const d = ctx.services.drift?.pose().position ?? ctx.state.drift.position
+      const d = this.frame.origin
+      px = target.x; py = target.y; pz = target.z
       nx = target.x - d.x; nz = target.z - d.z
     }
     const nl = Math.hypot(nx, nz) || 1
     nx /= nl; nz /= nl
-    this.hover.set(target.x + nx * 10, target.y + 1.5, target.z + nz * 10)
+    const eye = st.viewer
+    const hy = Math.hypot(eye.x - px, eye.z - pz) < 25 ? eye.y : py
+    this.hover.set(px + nx * 6.5, hy - 0.7, pz + nz * 6.5)
     this.hover.y = clampWaterY(ctx, this.hover.x, this.hover.y, this.hover.z, 4, 6)
-    const head = ctx.services.hero?.headPosition()
-    if (head && Math.hypot(head.x - target.x, head.z - target.z) < 25) this.viewer.set(head.x, head.y, head.z)
-    else this.viewer.set(target.x, target.y, target.z)
+    this.frame.toLocal(this.hover, this.hoverLocal)
     this.side.set(-nz, 0, nx)
+    this.frame.dirToLocal(this.side, this.sideLocal)
+    this.viewer.copy(st.viewer)
+  }
+
+  private followDrift(): void {
+    this.frame.toWorld(this.hoverLocal, this.hover)
+    this.frame.dirToWorld(this.sideLocal, this.side)
+    this.viewer.copy(this.stage.viewer)
   }
 
   private enter(p: Phase, dur: number): void {
@@ -183,6 +218,7 @@ export class Chose {
         } else this.startAscend(4.2, 22)
       }
     } else if (this.phase === 'approach') {
+      this.followDrift()
       const e = u * u * (3 - 2 * u)
       this.pos.lerpVectors(this.b0, this.hover, e)
       this.spread = 1
@@ -191,8 +227,10 @@ export class Chose {
       lookSide = u > 0.5
       if (u >= 1) this.enter('hover', 9)
     } else if (this.phase === 'hover') {
+      this.followDrift()
       this.pos.copy(this.hover)
       this.pos.y += Math.sin(this.t * 0.9) * 0.6
+      this.pos.addScaledVector(this.side, Math.sin(this.t * 0.45) * 0.8)
       this.spread = 1
       this.beatAmp = 0.55
       this.beatFreq = 0.3
@@ -255,7 +293,7 @@ export class Chose {
   private splash(x: number, z: number, down: boolean): void {
     this.bubbles.rings(x, z, 1.3)
     this.bubbles.burst(x, CEILING_Y - 1.2, z, 90, 4, down ? -3.5 : 1.2, 0.2)
-    this.ctx.bus.emit('ceiling:ripple', { x, z, strength: 1 })
+    this.onRipple(x, z, 1)
   }
 
   private pose(dt: number, lookSide: boolean): void {
@@ -284,7 +322,10 @@ export class Chose {
       w.outer.rotation.set(0.05 * fold, s * fold * 1.75, s * (lag * 0.8 - fold * 0.05))
     }
     b.tail.rotation.set(-0.15 + Math.sin(this.beatPhase) * 0.08 * this.beatAmp, 0, 0)
-    b.talon.rotation.x = this.bird.heldFish.visible ? -0.5 : 0.3
+    const delicate = this.phase === 'hover' || this.phase === 'approach'
+    const talonX = this.bird.heldFish.visible ? (delicate ? -1.2 : -0.5) : 0.3
+    b.talon.rotation.x += (talonX - b.talon.rotation.x) * Math.min(1, dt * 3)
+    b.talon.rotation.z = delicate ? Math.sin(this.t * 0.6) * 0.08 : 0
 
     let turn = 0
     if (lookSide) {

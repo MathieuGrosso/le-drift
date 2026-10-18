@@ -1,20 +1,20 @@
 import * as THREE from 'three'
-import { DRIFT_Y, VISTA, WORLD_HALF } from '../core/layout'
+import { DRIFT_Y } from '../core/layout'
 import type { GameContext, Vec3 } from '../core/types'
 import { fishGeometry } from './models'
-import { PALETTE, celMaterial, clampWaterY, currentAt, floorAt, heroInWater, hideInstance, patchVertex, writeBasis } from './shared'
+import { PALETTE, celMaterial, clampWaterY, currentAt, heroInWater, hideInstance, patchVertex, writeBasis } from './shared'
+import type { DriftFrame, Stage } from './stage'
 
-interface Species { color: number; scale: number; speed: number; weight: number }
-const SPECIES: readonly Species[] = [
-  { color: 0xdfe9ec, scale: 0.8, speed: 4.2, weight: 4 },
-  { color: PALETTE.corail1, scale: 1.0, speed: 3.6, weight: 2 },
-  { color: PALETTE.corail2, scale: 1.15, speed: 3.4, weight: 2 },
-  { color: PALETTE.clair, scale: 0.9, speed: 4.0, weight: 2 },
-  { color: PALETTE.corail3, scale: 1.1, speed: 3.2, weight: 1 },
-  { color: 0xc8b48a, scale: 2.4, speed: 2.4, weight: 1 },
-]
+interface Species { color: number; scale: number; speed: number; weight: number; swirl: number; spread: number }
+const SARDINE: Species = { color: 0xdfe9ec, scale: 0.75, speed: 4.4, weight: 4, swirl: 1.1, spread: 1.5 }
+const CORAIL: Species = { color: PALETTE.corail1, scale: 1.0, speed: 3.6, weight: 2, swirl: 0.3, spread: 1.3 }
+const DORE: Species = { color: PALETTE.corail2, scale: 1.15, speed: 3.4, weight: 2, swirl: 0.2, spread: 1 }
+const MENTHE: Species = { color: PALETTE.clair, scale: 0.9, speed: 4.0, weight: 2, swirl: 0.5, spread: 0.9 }
+const MAUVE: Species = { color: PALETTE.corail3, scale: 1.1, speed: 3.2, weight: 1, swirl: 0.1, spread: 1.1 }
+const MEROU: Species = { color: 0xc8b48a, scale: 2.6, speed: 1.6, weight: 1, swirl: 0, spread: 1.6 }
+const SPECIES: readonly Species[] = [SARDINE, CORAIL, DORE, MENTHE, MAUVE, MEROU]
 
-type SchoolKind = 'wander' | 'drift'
+type SchoolKind = 'stage' | 'wander' | 'drift'
 interface School {
   kind: SchoolKind
   start: number
@@ -26,16 +26,22 @@ interface School {
   attractUntil: number
   species: Species
   radius: number
-  floor: number
+  /** For stage schools: preferred depth in front of the glass, lateral sway amplitude, phase. */
+  depth: number
+  sway: number
+  phase: number
   active: boolean
 }
 
 const K = 5
-const ACTIVE_RANGE = 220
-const RELOCATE_RANGE = 330
 const TAKEN_SECONDS = 150
+const WANDER_MIN = 28
+const WANDER_MAX = 150
 
-/** Instanced fish in boids schools (sampled-neighbour boids: separation, alignment, cohesion). One draw call. */
+/**
+ * Instanced fish in boids schools (sampled-neighbour boids: separation, alignment, cohesion), one draw call.
+ * Schools gather in front of whatever glass is being looked through; none ever sits behind it.
+ */
 export class FishSchools {
   readonly group = new THREE.Group()
   private mesh: THREE.InstancedMesh | null = null
@@ -49,15 +55,16 @@ export class FishSchools {
   private taken = new Float32Array(0)
   private n = 0
   private readonly rng: () => number
-  private frame = 0
+  private frameN = 0
+  private epoch = -1
   private readonly tmp = new THREE.Vector3()
   private threat: Vec3 | null = null
   private threatRadius = 0
 
-  constructor(private readonly ctx: GameContext, count: number) {
+  constructor(private readonly ctx: GameContext, private readonly stage: Stage, private readonly frame: DriftFrame, count: number) {
     this.rng = ctx.rng('fauna:fish')
     this.geometry = fishGeometry()
-    this.material = celMaterial(ctx, { color: 0xffffff, vertexColors: true, rim: 0.5 })
+    this.material = celMaterial(ctx, { color: 0xffffff, vertexColors: true, rim: 0.55 })
     patchVertex(this.material, {
       key: 'fish',
       header: 'attribute float aPhase;',
@@ -72,12 +79,11 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
   }
 
   resize(count: number): void {
-    const ctx = this.ctx
     if (this.mesh) {
       this.mesh.removeFromParent()
       this.mesh.dispose()
     }
-    const n = Math.max(60, Math.floor(count))
+    const n = Math.max(90, Math.floor(count))
     this.n = n
     this.pos = new Float32Array(n * 3)
     this.vel = new Float32Array(n * 3)
@@ -94,81 +100,98 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     this.mesh = mesh
 
     const r = this.rng
-    const perSchool = n < 600 ? 90 : 160
-    const schoolsN = Math.max(3, Math.round(n / perSchool))
+    const perSchool = n < 400 ? 60 : n < 900 ? 100 : 150
+    const schoolsN = Math.max(4, Math.round(n / perSchool))
+    const plan: { kind: SchoolKind; species: Species; depth: number; share: number }[] = [
+      { kind: 'stage', species: SARDINE, depth: 9, share: 1.8 },
+      { kind: 'stage', species: CORAIL, depth: 5, share: 0.8 },
+      { kind: 'drift', species: DORE, depth: 0, share: 1 },
+      { kind: 'stage', species: MEROU, depth: 14, share: 0.15 },
+      { kind: 'stage', species: MENTHE, depth: 22, share: 1 },
+    ]
+    while (plan.length < schoolsN) {
+      plan.push({ kind: 'wander', species: this.pickSpecies(), depth: 0, share: 1 })
+    }
+    plan.length = schoolsN
+    const total = plan.reduce((a, p) => a + p.share, 0)
     this.schools = []
-    const hero = ctx.state.hero.position
-    const totalW = SPECIES.reduce((a, s) => a + s.weight, 0)
     let start = 0
     const col = new THREE.Color()
-    for (let s = 0; s < schoolsN; s++) {
-      const cnt = s === schoolsN - 1 ? n - start : Math.floor(n / schoolsN)
-      let pick = r() * totalW
-      let sp = SPECIES[0]
-      for (const candidate of SPECIES) {
-        pick -= candidate.weight
-        if (pick <= 0) { sp = candidate; break }
-      }
-      const species = s === 0 ? SPECIES[1] : s === 1 ? SPECIES[0] : sp
-      const big = species.scale > 2
-      const c = new THREE.Vector3()
-      if (s === 0) c.copy(this.driftGoal(this.tmp))
-      else if (s === 1) {
-        const f = { x: Math.sin(VISTA.hero.yaw), z: -Math.cos(VISTA.hero.yaw) }
-        c.set(VISTA.hero.x + f.x * 110, 0, VISTA.hero.z + f.z * 110)
-        c.y = floorAt(ctx, c.x, c.z) + 12
-      } else this.randomNear(hero, 30, 240, c)
+    plan.forEach((p, s) => {
+      const cnt = s === plan.length - 1 ? n - start : Math.max(6, Math.floor(n * p.share / total))
+      const sp = p.species
+      const big = sp.scale > 2
+      const used = big ? Math.min(cnt, 9) : cnt
       const school: School = {
-        kind: s === 0 ? 'drift' : 'wander',
-        start, count: big ? Math.min(cnt, 24) : cnt,
-        c, v: new THREE.Vector3((r() - 0.5) * 2, 0, (r() - 0.5) * 2),
-        goal: c.clone(), goalUntil: 0, attractUntil: 0,
-        species, radius: (big ? 3 : 2) + Math.cbrt(cnt) * 0.7 * species.scale,
-        floor: floorAt(ctx, c.x, c.z), active: false,
-      }
-      if (s === 1) {
-        school.goal.set(c.x + 200, c.y, c.z + 40)
-        school.goalUntil = 90
+        kind: p.kind, start, count: used,
+        c: new THREE.Vector3(), v: new THREE.Vector3((r() - 0.5) * 2, 0, (r() - 0.5) * 2),
+        goal: new THREE.Vector3(), goalUntil: 0, attractUntil: 0,
+        species: sp, radius: ((big ? 3.5 : 1.6) + Math.cbrt(used) * 0.55 * sp.scale) * sp.spread,
+        depth: p.depth, sway: 6 + r() * 10, phase: r() * Math.PI * 2, active: false,
       }
       this.schools.push(school)
       for (let i = start; i < start + cnt; i++) {
         phase[i] = r()
-        this.scale[i] = species.scale * (0.8 + r() * 0.4)
-        col.setHex(species.color).offsetHSL((r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.08)
+        this.scale[i] = sp.scale * (0.8 + r() * 0.4)
+        col.setHex(sp.color).offsetHSL((r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.08)
         mesh.setColorAt(i, col)
-        for (let k = 0; k < K; k++) this.nbr[i * K + k] = start + Math.floor(r() * school.count)
-        if (i >= start + school.count) this.taken[i] = Number.POSITIVE_INFINITY
+        for (let k = 0; k < K; k++) this.nbr[i * K + k] = start + Math.floor(r() * used)
+        if (i >= start + used) this.taken[i] = Number.POSITIVE_INFINITY
       }
-      this.snapSchool(school)
       start += cnt
-    }
+    })
     const arr = mesh.instanceMatrix.array as Float32Array
     for (let i = 0; i < n; i++) hideInstance(arr, i * 16)
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     this.group.add(mesh)
+    this.epoch = -1
   }
 
-  private randomNear(p: Vec3, minR: number, maxR: number, out: THREE.Vector3): THREE.Vector3 {
-    const a = this.rng() * Math.PI * 2
-    const d = minR + this.rng() * (maxR - minR)
-    const lim = WORLD_HALF - 60
-    out.x = THREE.MathUtils.clamp(p.x + Math.cos(a) * d, -lim, lim)
-    out.z = THREE.MathUtils.clamp(p.z + Math.sin(a) * d, -lim, lim)
-    const floor = floorAt(this.ctx, out.x, out.z)
-    out.y = clampWaterY(this.ctx, out.x, Math.max(p.y, floor + 4 + this.rng() * 22), out.z, 3)
+  private pickSpecies(): Species {
+    const totalW = SPECIES.reduce((a, s) => a + s.weight, 0)
+    let pick = this.rng() * totalW
+    for (const s of SPECIES) {
+      pick -= s.weight
+      if (pick <= 0) return s
+    }
+    return SARDINE
+  }
+
+  private stageGoal(s: School, now: number, out: THREE.Vector3): THREE.Vector3 {
+    const st = this.stage
+    const night = st.night
+    const d = s.depth * (night ? 0.55 : 1) + Math.sin(now * 0.05 + s.phase) * s.depth * 0.25
+    const lat = Math.sin(now * 0.07 + s.phase * 1.7) * s.sway
+    const h = Math.sin(now * 0.09 + s.phase) * 2.2 + (s.species === SARDINE ? 1.2 : -0.6)
+    st.point(Math.max(2 + s.radius, d), lat, h, out)
+    out.y = clampWaterY(this.ctx, out.x, out.y, out.z, 2 + s.radius * 0.6, 4)
+    return out
+  }
+
+  private wanderGoal(out: THREE.Vector3): THREE.Vector3 {
+    const r = this.rng
+    const d = WANDER_MIN + r() * (WANDER_MAX - WANDER_MIN)
+    this.stage.point(d, (r() - 0.5) * d * 1.4, (r() - 0.5) * Math.min(30, d * 0.5), out)
+    out.y = clampWaterY(this.ctx, out.x, out.y, out.z, 4, 5)
     return out
   }
 
   private driftGoal(out: THREE.Vector3): THREE.Vector3 {
-    const drift = this.ctx.services.drift?.pose() ?? this.ctx.state.drift
-    const h = drift.heading
+    const f = this.frame
     const t = this.ctx.clock.elapsed * 0.05
-    out.set(
-      drift.position.x + Math.sin(h) * 95 + Math.cos(h) * Math.sin(t) * 40,
-      DRIFT_Y - 6 + Math.sin(t * 1.7) * 5,
-      drift.position.z - Math.cos(h) * 95 + Math.sin(h) * Math.sin(t) * 40,
-    )
+    const lx = 150 * Math.sin(t * 0.6), lz = 105 * Math.cos(t * 0.6)
+    f.toWorld({ x: lx, y: DRIFT_Y - f.origin.y + Math.sin(t * 1.7) * 6, z: lz }, out)
+    out.y = clampWaterY(this.ctx, out.x, out.y, out.z, 4, 5)
     return out
+  }
+
+  private place(s: School, now: number): void {
+    if (s.kind === 'stage') this.stageGoal(s, now, s.c)
+    else if (s.kind === 'wander') this.wanderGoal(s.c)
+    else this.driftGoal(s.c)
+    s.goal.copy(s.c)
+    s.goalUntil = 0
+    this.snapSchool(s)
   }
 
   private snapSchool(s: School): void {
@@ -183,40 +206,46 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       this.vel[k + 1] = (r() - 0.5) * 0.3
       this.vel[k + 2] = s.v.z + (r() - 0.5)
     }
+    s.active = true
   }
 
-  /** A predator the fish scatter from this frame (La Chose, the whale). */
+  /** A predator the fish scatter from this frame (La Chose). */
   setThreat(p: Vec3 | null, radius: number): void {
     this.threat = p
     this.threatRadius = radius
   }
 
+  /** Crumbs through a feeding hatch: the nearest schools come to `p` for a while. */
   attract(p: Vec3): void {
     const now = this.ctx.clock.elapsed
-    let best: School | null = null
-    let bestD = 160 * 160
-    for (const s of this.schools) {
-      if (s.kind === 'drift') continue
-      const d = s.c.distanceToSquared(this.tmp.set(p.x, p.y, p.z))
-      if (d < bestD) { bestD = d; best = s }
-      if (d < 50 * 50) { s.goal.set(p.x, p.y, p.z); s.attractUntil = now + 25 }
-    }
-    if (best) { best.goal.set(p.x, p.y, p.z); best.attractUntil = now + 25 }
-  }
-
-  /** Moves the nearest wandering school next to `p` if none is within `r`, so a scripted predator always finds prey. */
-  ensureNear(p: Vec3, r: number): void {
+    const at = this.tmp.set(p.x, p.y, p.z)
+    if (this.stage.kind !== 'sortie' && this.stage.depth(at) < 2) this.stage.point(3, 0, 0, at)
     let best: School | null = null
     let bestD = Infinity
     for (const s of this.schools) {
-      const d = s.c.distanceTo(this.tmp.set(p.x, p.y, p.z))
-      if (d < r) return
-      if (s.kind === 'wander' && d < bestD) { bestD = d; best = s }
+      if (s.kind === 'drift') continue
+      const d = s.c.distanceToSquared(at)
+      if (d < bestD) { bestD = d; best = s }
+      if (d < 60 * 60) { s.goal.copy(at); s.attractUntil = now + 25 }
+    }
+    if (best) { best.goal.copy(at); best.attractUntil = now + 25 }
+  }
+
+  /** Moves a school next to `p` if none is within `r`, so a scripted predator always finds prey. */
+  ensureNear(p: Vec3, r: number): void {
+    let best: School | null = null
+    let bestD = Infinity
+    const at = this.tmp.set(p.x, p.y, p.z)
+    for (const s of this.schools) {
+      const d = s.c.distanceTo(at)
+      if (d < r && s.active) return
+      if (s.kind !== 'drift' && s.species !== MEROU && d < bestD) { bestD = d; best = s }
     }
     if (!best) return
     best.c.set(p.x, clampWaterY(this.ctx, p.x, p.y, p.z, 3), p.z)
     best.goal.copy(best.c)
-    best.goalUntil = this.ctx.clock.elapsed + 8
+    best.goalUntil = this.ctx.clock.elapsed + 10
+    best.attractUntil = this.ctx.clock.elapsed + 10
     this.snapSchool(best)
   }
 
@@ -224,9 +253,10 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     let best = -1
     let bestD = maxDist * maxDist
     const now = this.ctx.clock.elapsed
+    const at = this.tmp.set(p.x, p.y, p.z)
     for (const s of this.schools) {
-      const dc = s.c.distanceTo(this.tmp.set(p.x, p.y, p.z))
-      if (dc - s.radius * 2 > maxDist) continue
+      if (s.species === MEROU) continue
+      if (s.c.distanceTo(at) - s.radius * 2 > maxDist) continue
       for (let i = s.start; i < s.start + s.count; i++) {
         if (this.taken[i] > now) continue
         const k = i * 3
@@ -239,7 +269,7 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
   }
 
   fishPosition(i: number, out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.pos[i * 3], this.pos[i * 3 + 1], this.pos[i * 3 + 2])
+    return out.set(this.pos[i * 3]!, this.pos[i * 3 + 1]!, this.pos[i * 3 + 2]!)
   }
 
   fishColor(i: number, out: THREE.Color): THREE.Color {
@@ -256,66 +286,64 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     if (!mesh) return
     const ctx = this.ctx
     const now = ctx.clock.elapsed
+    const st = this.stage
+    const sortie = st.kind === 'sortie'
     const hero = ctx.state.hero.position
     const heroWater = heroInWater(ctx)
     const arr = mesh.instanceMatrix.array as Float32Array
     const r = this.rng
-    this.frame++
+    this.frameN++
+    const jumped = st.epoch !== this.epoch
+    this.epoch = st.epoch
     for (const s of this.schools) {
-      const dHero = Math.hypot(s.c.x - hero.x, s.c.z - hero.z)
-      if (s.kind === 'wander' && dHero > RELOCATE_RANGE) {
-        this.randomNear(hero, 170, 240, s.c)
-        s.goal.copy(s.c)
-        s.goalUntil = 0
-        s.active = false
+      if (jumped || !s.active) {
+        this.place(s, now)
+      } else if (s.kind === 'wander' && (st.depth(s.c) < 8 || s.c.distanceTo(st.pos) > WANDER_MAX * 1.6)) {
+        this.wanderGoal(s.goal)
+        if (st.depth(s.c) < -4) this.place(s, now)
       }
-      if (s.kind === 'drift') {
-        this.driftGoal(s.goal)
-      } else if (now > s.attractUntil && (now > s.goalUntil || s.c.distanceTo(s.goal) < 8)) {
-        this.randomNear(s.c, 50, 120, s.goal)
-        s.goalUntil = now + 40 + r() * 40
-      }
-      if (this.frame % 10 === 0) s.floor = floorAt(ctx, s.c.x, s.c.z)
       const attracted = now < s.attractUntil
-      const speed = s.species.speed * (attracted ? 0.75 : 0.4)
+      if (!attracted) {
+        if (s.kind === 'stage') this.stageGoal(s, now, s.goal)
+        else if (s.kind === 'drift') this.driftGoal(s.goal)
+        else if (now > s.goalUntil || s.c.distanceTo(s.goal) < 8) {
+          this.wanderGoal(s.goal)
+          s.goalUntil = now + 30 + r() * 40
+        }
+      }
+      const speed = s.species.speed * (attracted ? 0.8 : s.kind === 'stage' ? 0.5 : 0.4)
       const desired = this.tmp.copy(s.goal).sub(s.c)
       const dl = desired.length()
       if (dl > 0.01) desired.multiplyScalar(Math.min(speed, dl * 0.5) / dl)
       s.v.lerp(desired, Math.min(1, dt * 0.6))
       const cur = currentAt(ctx, s.c)
-      s.c.x += (s.v.x + cur.x * 0.5) * dt
+      s.c.x += (s.v.x + cur.x * 0.4) * dt
       s.c.y += s.v.y * dt
-      s.c.z += (s.v.z + cur.z * 0.5) * dt
+      s.c.z += (s.v.z + cur.z * 0.4) * dt
       s.c.y = clampWaterY(ctx, s.c.x, s.c.y, s.c.z, Math.max(2.5, s.radius * 0.6), 4)
-
-      const near = dHero < ACTIVE_RANGE || s.kind === 'drift'
-      if (!near) {
-        if (s.active) {
-          for (let i = s.start; i < s.start + s.count; i++) hideInstance(arr, i * 16)
-          s.active = false
-        }
-        continue
+      if (!sortie) {
+        const dc = st.depth(s.c) - (1.5 + s.radius)
+        if (dc < 0) s.c.addScaledVector(st.normal, -dc)
       }
-      if (!s.active) {
-        this.snapSchool(s)
-        s.active = true
-      }
-      this.stepSchool(s, dt, now, hero, heroWater, arr)
+      this.stepSchool(s, dt, now, hero, heroWater, sortie, arr)
     }
     mesh.instanceMatrix.needsUpdate = true
   }
 
-  private stepSchool(s: School, dt: number, now: number, hero: Vec3, heroWater: boolean, arr: Float32Array): void {
+  private stepSchool(s: School, dt: number, now: number, hero: Vec3, heroWater: boolean, sortie: boolean, arr: Float32Array): void {
     const pos = this.pos, vel = this.vel, nbr = this.nbr
     const sp = s.species.speed
     const sepR2 = (0.7 * s.species.scale) ** 2
     const rad = s.radius
-    const floorY = s.floor + 0.8
+    const swirl = s.species.swirl
     const threat = this.threat
     const tr = this.threatRadius
+    const st = this.stage
+    const nx = st.normal.x, ny = st.normal.y, nz = st.normal.z
+    const gx = st.pos.x, gy = st.pos.y, gz = st.pos.z
     for (let i = s.start; i < s.start + s.count; i++) {
       const o = i * 16
-      if (this.taken[i] > now) {
+      if (this.taken[i]! > now) {
         hideInstance(arr, o)
         continue
       }
@@ -324,18 +352,18 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
         this.taken[i] = 0
         pos[k] = s.c.x; pos[k + 1] = s.c.y; pos[k + 2] = s.c.z
       }
-      if ((i + this.frame) % 40 === 0) nbr[i * K + (this.frame % K)] = s.start + Math.floor(this.rng() * s.count)
-      const px = pos[k], py = pos[k + 1], pz = pos[k + 2]
-      let vx = vel[k], vy = vel[k + 1], vz = vel[k + 2]
+      if ((i + this.frameN) % 40 === 0) nbr[i * K + (this.frameN % K)] = s.start + Math.floor(this.rng() * s.count)
+      const px = pos[k]!, py = pos[k + 1]!, pz = pos[k + 2]!
+      let vx = vel[k]!, vy = vel[k + 1]!, vz = vel[k + 2]!
       let sx = 0, sy = 0, sz = 0, ax = 0, ay = 0, az = 0, cx = 0, cy = 0, cz = 0
       for (let q = 0; q < K; q++) {
-        const j = nbr[i * K + q]
+        const j = nbr[i * K + q]!
         if (j === i) continue
         const jk = j * 3
-        const dx = pos[jk] - px, dy = pos[jk + 1] - py, dz = pos[jk + 2] - pz
+        const dx = pos[jk]! - px, dy = pos[jk + 1]! - py, dz = pos[jk + 2]! - pz
         const d2 = dx * dx + dy * dy + dz * dz + 1e-4
         if (d2 < sepR2) { sx -= dx / d2; sy -= dy / d2; sz -= dz / d2 }
-        ax += vel[jk]; ay += vel[jk + 1]; az += vel[jk + 2]
+        ax += vel[jk]!; ay += vel[jk + 1]!; az += vel[jk + 2]!
         cx += dx; cy += dy; cz += dz
       }
       const inv = 1 / K
@@ -348,6 +376,10 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       fx += ox * pull + (s.v.x - vx) * 0.4
       fy += oy * pull * 1.4
       fz += oz * pull + (s.v.z - vz) * 0.4
+      if (swirl > 0) {
+        fx += -oz * swirl * 0.9
+        fz += ox * swirl * 0.9
+      }
       let flee = false
       if (heroWater) {
         const hx = px - hero.x, hy = py - (hero.y + 0.9), hz = pz - hero.z
@@ -369,7 +401,11 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
           flee = true
         }
       }
-      if (py < floorY) fy += (floorY - py) * 6
+      let depth = Infinity
+      if (!sortie) {
+        depth = (px - gx) * nx + (py - gy) * ny + (pz - gz) * nz
+        if (depth < 1.2) { const f = (1.2 - depth) * 8; fx += nx * f; fy += ny * f; fz += nz * f }
+      }
       if (py > 116) fy -= (py - 116) * 6
       vx += fx * dt; vy += fy * dt; vz += fz * dt
       const vmax = sp * (flee ? 2.4 : 1)
@@ -382,7 +418,8 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       pos[k] = px + vx * dt
       pos[k + 1] = py + vy * dt
       pos[k + 2] = pz + vz * dt
-      writeBasis(arr, o, pos[k], pos[k + 1], pos[k + 2], vx, vy * 0.6, vz, this.scale[i])
+      if (depth < 0.25) hideInstance(arr, o)
+      else writeBasis(arr, o, pos[k]!, pos[k + 1]!, pos[k + 2]!, vx, vy * 0.6, vz, this.scale[i]!)
     }
   }
 

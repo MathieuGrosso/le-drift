@@ -2,24 +2,33 @@ import * as THREE from 'three'
 import type { GameContext } from '../core/types'
 import { turtleGeometry } from './models'
 import { celMaterial, clampWaterY, patchVertex, writeBasis } from './shared'
+import type { DriftFrame, Stage } from './stage'
 
-const PASS_SECONDS = 16
-const LEAVE_SECONDS = 25
+const IN = 9
+const LOOK = 6
+const OUT = 9
+const LEAVE = 22
 
-/** « Une tortue ! Une première ! »: one turtle crossing in front of the big window, then away. */
+/** « Une tortue ! Une première ! »: one turtle crossing in front of the glass, pausing to look in, then away. */
 export class Turtle {
   readonly group = new THREE.Group()
   private readonly mesh: THREE.Mesh
   private readonly stroke = { value: 0 }
   private t = -1
-  private readonly a = new THREE.Vector3()
-  private readonly b = new THREE.Vector3()
-  private readonly away = new THREE.Vector3()
+  private readonly aL = new THREE.Vector3()
+  private readonly mL = new THREE.Vector3()
+  private readonly bL = new THREE.Vector3()
+  private readonly awayL = new THREE.Vector3()
+  private readonly inwardL = new THREE.Vector3()
+  private readonly headL = new THREE.Vector3()
+  private readonly local = new THREE.Vector3()
   private readonly p = new THREE.Vector3()
   private readonly prev = new THREE.Vector3()
+  private readonly dir = new THREE.Vector3()
+  private readonly look = new THREE.Vector3()
   private readonly basis = new Float32Array(16)
 
-  constructor(private readonly ctx: GameContext) {
+  constructor(private readonly ctx: GameContext, private readonly stage: Stage, private readonly frame: DriftFrame) {
     const mat = celMaterial(ctx, { color: 0xffffff, vertexColors: true, rim: 0.6 })
     patchVertex(mat, {
       key: 'turtle',
@@ -32,56 +41,81 @@ transformed.y += sin(uTurtlePhase) * 0.35 * tFront * (tx - 0.4);
 transformed.z += cos(uTurtlePhase) * 0.18 * tFront * (tx - 0.4);
 transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
     })
-    this.mesh = new THREE.Mesh(turtleGeometry().scale(1.2, 1.2, 1.2), mat)
+    this.mesh = new THREE.Mesh(turtleGeometry().scale(1.25, 1.25, 1.25), mat)
     this.mesh.matrixAutoUpdate = false
+    this.mesh.frustumCulled = false
     this.mesh.name = 'fauna-tortue'
     this.group.add(this.mesh)
     this.group.visible = false
   }
 
+  get active(): boolean {
+    return this.t >= 0
+  }
+
   start(): void {
-    const ctx = this.ctx
-    const hero = ctx.state.hero.position
-    const win = ctx.services.drift?.nearestWindow(hero, 60) ?? null
-    let cx: number, cy: number, cz: number, nx: number, nz: number
-    if (win) {
-      const nl = Math.hypot(win.normal.x, win.normal.z) || 1
-      nx = win.normal.x / nl; nz = win.normal.z / nl
-      cx = win.position.x + nx * 6; cy = win.position.y + 0.5; cz = win.position.z + nz * 6
-    } else {
-      const yaw = ctx.state.hero.yaw
-      nx = -Math.sin(yaw); nz = Math.cos(yaw)
-      cx = hero.x - nx * 7; cy = hero.y + 1.5; cz = hero.z - nz * 7
+    const st = this.stage
+    const f = this.frame
+    const side = Math.random() < 0.5 ? 1 : -1
+    const v = this.p
+    const depth = st.kind === 'sortie' ? 5 : 3.4
+    const put = (out: THREE.Vector3, d: number, lat: number, h: number) => {
+      st.point(d, lat * side, h, v)
+      v.y = clampWaterY(this.ctx, v.x, v.y, v.z, 1.5)
+      f.toLocal(v, out)
     }
-    cy = clampWaterY(ctx, cx, cy, cz, 1.5)
-    const sx = -nz, sz = nx
-    this.a.set(cx - sx * 20, cy - 1, cz - sz * 20)
-    this.b.set(cx + sx * 20, cy + 1, cz + sz * 20)
-    this.away.set(cx + sx * 45 + nx * 30, cy + 8, cz + sz * 45 + nz * 30)
-    this.p.copy(this.a)
+    put(this.aL, depth + 3, -22, -1.2)
+    put(this.mL, depth, 0, 0.3)
+    put(this.bL, depth + 2, 20, 1)
+    put(this.awayL, depth + 30, 48, 9)
+    f.dirToLocal(st.normal, this.inwardL).negate()
+    this.local.copy(this.aL)
+    this.headL.subVectors(this.mL, this.aL).normalize()
+    f.toWorld(this.local, this.p)
     this.t = 0
     this.group.visible = true
   }
 
   update(dt: number): void {
     if (this.t < 0) return
+    const f = this.frame
     this.t += dt
-    this.stroke.value += dt * 1.6
-    this.prev.copy(this.p)
-    if (this.t < PASS_SECONDS) {
-      const u = this.t / PASS_SECONDS
-      this.p.lerpVectors(this.a, this.b, u)
-      this.p.y += Math.sin(u * Math.PI) * 0.8
-    } else if (this.t < PASS_SECONDS + LEAVE_SECONDS) {
-      const u = (this.t - PASS_SECONDS) / LEAVE_SECONDS
-      this.p.lerpVectors(this.b, this.away, u * u)
+    let rate = 1.6
+    let lookW = 0
+    this.prev.copy(this.local)
+    if (this.t < IN) {
+      const u = this.t / IN
+      const e = 1 - (1 - u) * (1 - u)
+      this.local.lerpVectors(this.aL, this.mL, e)
+    } else if (this.t < IN + LOOK) {
+      const u = (this.t - IN) / LOOK
+      this.local.copy(this.mL)
+      this.local.y += Math.sin(u * Math.PI) * 0.35
+      lookW = Math.sin(u * Math.PI)
+      rate = 0.7
+    } else if (this.t < IN + LOOK + OUT) {
+      const u = (this.t - IN - LOOK) / OUT
+      this.local.lerpVectors(this.mL, this.bL, u * u)
+    } else if (this.t < IN + LOOK + OUT + LEAVE) {
+      const u = (this.t - IN - LOOK - OUT) / LEAVE
+      this.local.lerpVectors(this.bL, this.awayL, u * u * (3 - 2 * u))
     } else {
       this.t = -1
       this.group.visible = false
       return
     }
-    const p = this.p, q = this.prev
-    writeBasis(this.basis, 0, p.x, p.y, p.z, p.x - q.x, (p.y - q.y) * 0.4, p.z - q.z, 1)
+    this.stroke.value += dt * rate
+    f.toWorld(this.local, this.p)
+    const p = this.p
+    this.look.subVectors(this.local, this.prev)
+    if (Math.hypot(this.look.x, this.look.z) > 1e-4) this.headL.set(this.look.x, this.look.y * 0.4, this.look.z).normalize()
+    f.dirToWorld(this.headL, this.dir)
+    this.dir.normalize()
+    if (lookW > 0) {
+      f.dirToWorld(this.inwardL, this.look)
+      this.dir.lerp(this.look, lookW * 0.75).normalize()
+    }
+    writeBasis(this.basis, 0, p.x, p.y, p.z, this.dir.x, this.dir.y, this.dir.z, 1)
     this.mesh.matrix.fromArray(this.basis)
     this.mesh.matrixWorldNeedsUpdate = true
   }
