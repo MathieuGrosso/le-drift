@@ -12,10 +12,13 @@ export type PublicMode = HeroMode | 'run' | 'jump' | 'land' | 'zip' | 'tube' | '
 const T = {
   sprint: 5.5,
   sprintCost: 0.1,
-  jumpHeight: 0.9,
-  carryJump: 0.45,
+  jumpHeight: 1.2,
+  carryJump: 0.5,
   coyote: 0.12,
-  buffer: 0.15,
+  buffer: 0.12,
+  riseGravity: 1.35,
+  fallGravity: 1.9,
+  cutGravity: 3.2,
   climbSpeed: 1.2,
   climbCostMoving: 0.08,
   climbCostHanging: 0.02,
@@ -183,6 +186,7 @@ export class HeroController {
   private localPos: THREE.Vector3 | null = null
   private lastHeading = 0
   private wasGrounded = false
+  private hitWall = false
   private fallSpeed = 0
   private prevVel = new THREE.Vector3()
   private wish = new THREE.Vector3()
@@ -1075,8 +1079,9 @@ export class HeroController {
       else if (this.gliding && !locked && (input.pressed('up') || input.pressed('down'))) this.gliding = false
       if (this.gliding) this.updateGlide(dt)
       else {
-        this.vel.addScaledVector(this.gravity, dt)
-        if (!input.down('up') && this.vel.y > 0 && this.jumpT < 0.4) this.vel.y -= this.vel.y * Math.min(1, dt * 9)
+        const held = !locked && input.down('up')
+        const gMul = this.vel.y > 0 ? (held || this.jumpT > 0.6 ? T.riseGravity : T.cutGravity) : T.fallGravity
+        this.vel.addScaledVector(this.gravity, dt * gMul)
         const h = Math.hypot(this.vel.x, this.vel.z)
         const len = this.wish.length()
         if (len > 1e-4) {
@@ -1137,7 +1142,7 @@ export class HeroController {
   }
 
   private jump(): void {
-    const g = this.gravity.length()
+    const g = this.gravity.length() * T.riseGravity
     const hgt = this.carrying ? T.carryJump : T.jumpHeight
     this.vel.y = Math.sqrt(2 * g * hgt)
     const h = Math.hypot(this.vel.x, this.vel.z)
@@ -1805,8 +1810,24 @@ export class HeroController {
       this.kcc.disableAutostep()
       this.kcc.disableSnapToGround()
     }
+    if (air && step > 0 && this.vel.y <= 0.1) this.liftOutOfFloor()
+    const bx = this.pos.x
+    const bz = this.pos.z
     this.moveRaw(d)
     if (this.medium === 'water') this.applyTether(dt)
+    else if (this.hitWall && dt > 1e-4 && this.activity.kind === 'none' && !this.climbing) {
+      const ax = (this.pos.x - bx) / dt
+      const az = (this.pos.z - bz) / dt
+      if (ax * ax + az * az < this.vel.x * this.vel.x + this.vel.z * this.vel.z) {
+        this.vel.x = ax
+        this.vel.z = az
+      }
+    }
+  }
+
+  private liftOutOfFloor(): void {
+    const hit = this.ctx.physics.raycast({ x: this.pos.x, y: this.pos.y + 0.45, z: this.pos.z }, { x: 0, y: -1, z: 0 }, 0.5, { excludeKinds: [...IGNORE] })
+    if (hit && hit.normal.y > 0.7 && hit.point.y > this.pos.y + 0.003) this.pos.y = hit.point.y + 0.01
   }
 
   private freeKcc(): void {
@@ -1819,17 +1840,31 @@ export class HeroController {
   private moveRaw(d: THREE.Vector3): void {
     const R = this.ctx.physics.rapier
     const c = this.collider
-    c.setTranslation({ x: this.pos.x, y: this.pos.y + CAP_CENTER, z: this.pos.z })
     let mx = d.x
     let my = d.y
     let mz = d.z
-    try {
-      this.kcc.computeColliderMovement(c, { x: d.x, y: d.y, z: d.z }, R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.filter)
+    const attempt = (lift: number) => {
+      c.setTranslation({ x: this.pos.x, y: this.pos.y + CAP_CENTER + lift, z: this.pos.z })
+      this.kcc.computeColliderMovement(c, { x: d.x, y: d.y - lift, z: d.z }, R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.filter)
       const m = this.kcc.computedMovement()
+      this.hitWall = false
+      for (let i = this.kcc.numComputedCollisions() - 1; i >= 0; i--) {
+        const k = this.kcc.computedCollision(i)
+        if (k && Math.abs(k.normal1.y) < 0.5) {
+          this.hitWall = true
+          break
+        }
+      }
       mx = m.x
-      my = m.y
+      my = m.y + lift
       mz = m.z
-      this.grounded = this.kcc.computedGrounded()
+      this.grounded = this.kcc.computedGrounded() && !(this.vel.y > 0.5 && this.jumpT < 0.3)
+    }
+    try {
+      attempt(0)
+      const want = Math.hypot(d.x, d.z)
+      // Rapier can stall a capsule resting exactly at its offset on a flat floor; a tiny lift frees it.
+      if (want > 0.004 && Math.hypot(mx, mz) < want * 0.25 && !this.hitWall && this.medium === 'air') attempt(0.02)
     } catch {
       this.grounded = false
     }

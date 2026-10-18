@@ -75,6 +75,8 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
   let prevDown = new Set<ButtonAction>()
   let curDown = new Set<ButtonAction>()
   let latchedPressesFrame = new Set<ButtonAction>()
+  const swallowed = new Set<ButtonAction>()
+  let prevRaw = new Set<ButtonAction>()
   let mouseDX = 0
   let mouseDY = 0
   let enabled = false
@@ -88,6 +90,13 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
     down: (a) => curDown.has(a),
     pressed: (a) => (curDown.has(a) && !prevDown.has(a)) || latchedPressesFrame.has(a),
     released: (a) => !curDown.has(a) && prevDown.has(a),
+    consume(...actions) {
+      for (const a of actions) {
+        latchedPressesFrame.delete(a)
+        curDown.delete(a)
+        swallowed.add(a)
+      }
+    },
     device: 'kbm',
     pointerLocked: false,
     keyLabel(a) {
@@ -191,6 +200,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
           const mb = MOUSE_BINDINGS[a]
           if (mb !== undefined && mouseButtons.has(mb)) curDown.add(a)
         }
+        const raw = new Set(curDown)
         const pads = navigator.getGamepads?.() ?? []
         for (const pad of pads) {
           if (!pad || !pad.connected) continue
@@ -211,8 +221,17 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
           const rate = INPUT.stickRadiansPerSecond * settings.sensitivity * dt
           lx += rx * rate
           ly += ry * rate * invert
+          for (const a of ACTIONS) if (PAD_BINDINGS[a].some((i) => pad.buttons[i]?.pressed)) raw.add(a)
           break
         }
+        for (const a of swallowed) {
+          if (!raw.has(a) || !prevRaw.has(a)) swallowed.delete(a)
+          else {
+            curDown.delete(a)
+            latchedPressesFrame.delete(a)
+          }
+        }
+        prevRaw = raw
       } else {
         mx = my = lx = ly = 0
         latchedPressesFrame.clear()

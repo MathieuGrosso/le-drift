@@ -98,6 +98,8 @@ export interface Input {
   down(a: ButtonAction): boolean
   pressed(a: ButtonAction): boolean
   released(a: ButtonAction): boolean
+  /** Eats this frame's press and keeps the action up until it is physically released. */
+  consume(...a: ButtonAction[]): void
   device: 'kbm' | 'gamepad'
   pointerLocked: boolean
   keyLabel(a: ButtonAction): string
