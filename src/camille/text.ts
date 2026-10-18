@@ -18,10 +18,11 @@ export const RENCONTRE: readonly Line[] = [
   [C, 'Tu gouttes.'],
   [C, 'Non, c’est bien. Ça veut dire que tu viens de dehors.'],
   [C, 'Moi c’est Camille. Je fais pousser le varech, aux Serres. Enfin, il pousse tout seul. Moi je lui parle.'],
+  [null, 'Elle te regarde à travers sa mèche, les paupières à moitié baissées, comme si tu étais une plante qui pousse de travers.'],
   [C, 'Toi, tu es celui qui frotte. Je te vois passer derrière la grande vitre, le matin. Tu fais des ronds.'],
   [I, 'Des ronds ?'],
   [C, 'Avec ta brosse. C’est très joli, des ronds. Bon. Je vais t’appeler Frottoir.'],
-  [null, 'Elle repart avec son bol avant que tu trouves quoi répondre. Ses tresses font un petit bruit de corde.'],
+  [null, 'Elle repart en aspirant bruyamment son café de varech glacé, avant que tu trouves quoi répondre.'],
 ]
 
 export const PLAFOND_SOIR: readonly Line[] = [
@@ -43,6 +44,7 @@ export const TALK: Record<'refectoire' | 'serres' | 'proue' | 'ailleurs', Record
   refectoire: {
     1: [
       'Je mange debout. D’ici je vois par-dessus les têtes. Toi tu es toujours servi le dernier. On fait une bonne équipe.',
+      'C’est un café de varech glacé. Non, tu ne goûtes pas. Bon. Une gorgée. … Voilà. Tu fais la même tête que tout le monde.',
       'Le Cuistot dit que son pain est du pain. Moi je dis que c’est du varech qui a reçu une bonne éducation.',
       'Tu as encore une goutte au bout du nez. Non, l’autre côté. Voilà. Bravo.',
     ],
@@ -61,7 +63,7 @@ export const TALK: Record<'refectoire' | 'serres' | 'proue' | 'ailleurs', Record
       'Les algues penchent toutes vers le nord. Comme quand on attend quelqu’un à la porte.',
       'Nour dit que je parle trop aux plantes. Je lui ai dit que je parlais exactement assez. Les plantes n’ont pas protesté.',
       'Tu sens ? C’est l’odeur du vert. Personne ne me croit, mais le vert a une odeur.',
-      'Mon sécateur s’appelle Monsieur Clac. Il est très poli. Il ne coupe que ce qu’on lui demande.',
+      'Mon sécateur s’appelle Monsieur Clac. Il habite dans ma poche de manteau. Il ne coupe que ce qu’on lui demande.',
     ],
     3: [
       'Les feuilles sont devenues toutes pâles, du côté du blanc. Elles ont peur, ou elles se maquillent.',
@@ -128,7 +130,7 @@ export const EXCHANGES: readonly Exchange[] = [
     id: 'frottoir', drawing: 'frottoir',
     intro: 'Un petit bonhomme avec une brosse trois fois plus grande que lui. C’est toi. La ressemblance est terrible.',
     replies: [
-      { label: 'La dessiner, avec son sécateur', draw: 'camille', mood: 'shy', reaction: 'Elle met les mains sur ses joues. Puis elle rallonge les tresses. Beaucoup.' },
+      { label: 'La dessiner, avec son sécateur', draw: 'camille', mood: 'shy', reaction: 'Elle hausse un sourcil. Puis elle te dessine une mèche rebelle, à toi aussi. Pour être quittes.' },
       { label: 'Agrandir encore la brosse', draw: 'grande-brosse', mood: 'laugh', reaction: 'Elle fait non, non, là c’est exagéré. Puis elle l’agrandit encore.' },
       { label: 'Écrire MERCI', draw: 'merci', mood: 'wave', reaction: 'Elle écrit DE RIEN. Dans le bon sens, cette fois. Elle a dû s’entraîner.' },
     ],

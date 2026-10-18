@@ -106,7 +106,7 @@ export class Vitre {
       case 'dessine':
         r.hers.paint(r.t / 3.6)
         if (r.t > 3.8 && !this.host.blocked()) {
-          this.go('repond', 'idle')
+          this.go('repond', 'pockets')
           void this.host.talk([[null, r.ex.intro]])
         }
         break
@@ -254,7 +254,7 @@ export class Vitre {
     this.parent.add(hers.mesh, his.mesh)
 
     this.rdv = { windowId: w.id, glass: g, n: { x: n.x, y: 0, z: n.z }, ex, phase: 'attend', t: 0, hers, his }
-    this.host.stand(local, faceDir(n.x, n.z), 'idle')
+    this.host.stand(local, faceDir(n.x, n.z), 'pockets')
     this.ui.toast(VITRE.kicker, VITRE.arrive)
     if (w.coat < 0.12) this.begin()
   }

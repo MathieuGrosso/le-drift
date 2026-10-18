@@ -50,7 +50,7 @@ export function createCamilleSystem(): System {
   let path: Vec3[] = []
   let ptIndex = 0
   let dwell = 0
-  let restPose: Pose = 'idle'
+  let restPose: Pose = 'pockets'
   let talking = false
   let faceHero = 0
   let gpHint = false
@@ -180,7 +180,7 @@ export function createCamilleSystem(): System {
       return
     }
     dwell -= dt
-    if (restPose === 'prune' && Math.random() < dt * 0.03) anim.pose = anim.pose === 'look-up' ? 'prune' : 'look-up'
+    if (restPose !== 'look-up' && Math.random() < dt * 0.03) anim.pose = anim.pose === 'look-up' ? restPose : 'look-up'
     if (dwell <= 0) {
       ptIndex = (ptIndex + 1 + Math.floor(Math.random() * (SERRES_PTS.length - 1))) % SERRES_PTS.length
       path = routeTo(SERRES_PTS[ptIndex]!.at)
@@ -504,7 +504,13 @@ export function createCamilleSystem(): System {
       let dy = yaw - model.root.rotation.y
       dy = Math.atan2(Math.sin(dy), Math.cos(dy))
       model.root.rotation.y += dy * Math.min(1, dt * 6)
-      if (shown) anim.update(dt)
+      if (shown) {
+        const evening = kind === 'refectoire' || kind === 'proue' || kind === 'finale' || kind === 'vigie-finale'
+        model.setOutfit(evening ? 'soir' : 'jour')
+        const p = anim.pose
+        model.hold(p === 'look-hand' ? 'feuille' : evening && (p === 'sip' || p === 'talk' || p === 'shy') && finaleStage < 2 ? 'gobelet' : null)
+        anim.update(dt)
+      }
       if (matFn) deliver(ctx, matFn)
 
       if (blocked(ctx) || vitre?.active()) {

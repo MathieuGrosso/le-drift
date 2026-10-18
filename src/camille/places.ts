@@ -10,7 +10,7 @@ export const FACE_AFT = Math.PI
 export const FACE_FORE = 0
 export const faceDir = (dx: number, dz: number) => Math.atan2(-dx, -dz)
 
-export const REFECTOIRE: Spot = { at: { x: 18.0, y: 0, z: 67.3 }, yaw: FACE_AFT, pose: 'eat' }
+export const REFECTOIRE: Spot = { at: { x: 18.0, y: 0, z: 67.3 }, yaw: FACE_AFT, pose: 'sip' }
 export const FINALE_SOL: Spot = { at: { x: 18.25, y: 0, z: 67.6 }, yaw: FACE_AFT, pose: 'talk' }
 export const FINALE_VITRE: Spot = { at: { x: 18.4, y: 0.6, z: 71.3 }, yaw: FACE_AFT, pose: 'hand-on-glass' }
 
@@ -18,8 +18,8 @@ export const FINALE_VITRE: Spot = { at: { x: 18.4, y: 0.6, z: 71.3 }, yaw: FACE_
 export const SERRES_PTS: readonly Spot[] = [
   { at: { x: 86, y: 0, z: 10 }, yaw: -Math.PI / 2, pose: 'prune' },
   { at: { x: 86, y: 0, z: 30 }, yaw: Math.PI / 2, pose: 'prune' },
-  { at: { x: 93, y: 0, z: 45.4 }, yaw: faceDir(1, -1.4), pose: 'idle' },
-  { at: { x: 94, y: 0, z: 20 }, yaw: FACE_FORE, pose: 'look-up' },
+  { at: { x: 93, y: 0, z: 45.4 }, yaw: faceDir(1, -1.4), pose: 'look-hand' },
+  { at: { x: 94, y: 0, z: 20 }, yaw: FACE_FORE, pose: 'pockets' },
   { at: { x: 86, y: 0, z: 56 }, yaw: -Math.PI / 2, pose: 'prune' },
 ]
 export const POUSSE: Vec3 = { x: 94, y: 0, z: 44 }
