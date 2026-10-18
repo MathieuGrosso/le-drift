@@ -1,0 +1,17 @@
+export const PALETTE = {
+  abysse: 0x0e3b52,
+  profond: 0x1b5e73,
+  milieu: 0x3a8c98,
+  clair: 0x7cc6bf,
+  plafond: 0xcfefe3,
+  soleilAube: 0xffc98a,
+  soleilJour: 0xfff1c9,
+  soleilSoir: 0xff9a6b,
+  lune: 0x9fb8e8,
+  nuit: 0x12305a,
+  sable: 0xe9ddb8,
+  rocheOmbre: 0x45507a,
+  plancton: 0xa9c86a,
+  interieurOmbre: 0x3e3a5a,
+  blanc: 0xf4f1e6,
+} as const
