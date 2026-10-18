@@ -1,9 +1,9 @@
 import * as THREE from 'three'
 import { BLOOM_HAZE_MUL, HAZE_BY_VISIBILITY } from '../core/tuning'
 import type { DayPhase, GameContext, RenderService, System, Vec3 } from '../core/types'
-import { createCelFactory, createPatchWater } from './cel'
+import { createCelFactory, createPatchWater, type CelParams } from './cel'
 import { createEnvironment, FX_LAYER, type Environment } from './environment'
-import { createGlassFactory, type GlassParams } from './glass'
+import { createGlassFactory, createGlassPassUniforms, GLASS_LAYER, type GlassParams } from './glass'
 import { GlassLights, type GlassLight } from './glasslights'
 import { PALETTE } from './palette'
 import { createPost, type Post } from './post'
@@ -13,8 +13,11 @@ import { computeSun, createSunState, phaseAt } from './sun'
 import { createInternalUniforms, createPublicUniforms, MAX_RIPPLES, MAX_WIPES, shaderUniforms, type PublicUniforms } from './uniforms'
 
 export type { GlassLight, GlassParams }
+export type { CelParams } from './cel'
+export { GLASS_LAYER }
 
 export interface RenderServiceV2 extends RenderService {
+  cel(params: CelParams): THREE.Material
   readonly uniforms: PublicUniforms
   glass(params?: GlassParams): THREE.Material
   setGlassLights(lights: GlassLight[] | null): void
@@ -61,6 +64,11 @@ export function createRenderSystem(): System {
   let wipeIdx = 0
   const glassLights = new GlassLights(int)
   let seaVis = true
+  const glassPass = createGlassPassUniforms()
+  let glassSeenFrame = -1000
+  let frameNo = 0
+  let lastDt = 1 / 60
+  let snapFrame = true
 
   const addRipple = (x: number, z: number, strength: number) => {
     const r = int.rdRipples.value[rippleIdx]!
@@ -73,7 +81,9 @@ export function createRenderSystem(): System {
   const service: RenderServiceV2 = {
     cel: createCelFactory(shared),
     patchWater: createPatchWater(shared),
-    glass: createGlassFactory(shared),
+    glass: createGlassFactory(shared, glassPass, () => {
+      glassSeenFrame = frameNo
+    }),
     setGlassLights: (lights) => glassLights.set(lights),
     wipeGlass(p) {
       int.rdWipes.value[wipeIdx]!.set(p.x, p.y, p.z, int.rdHours.value)
@@ -110,9 +120,27 @@ export function createRenderSystem(): System {
         int.rdShadowOn.value = 0
       }
 
+      const layerMask = camera.layers.mask
+      camera.layers.disable(GLASS_LAYER)
       renderer.setRenderTarget(post.sceneTarget)
       renderer.clear(true, true, true)
       renderer.render(scene, camera)
+
+      let color: THREE.Texture = post.sceneTarget.texture
+      if (frameNo - glassSeenFrame < 30) {
+        const merged = post.prepareGlass(renderer, glassPass)
+        glassPass.rgLive.value = 1
+        camera.layers.set(GLASS_LAYER)
+        const autoClearG = renderer.autoClear
+        renderer.autoClear = false
+        renderer.setRenderTarget(merged)
+        renderer.render(scene, camera)
+        renderer.autoClear = autoClearG
+        glassPass.rgLive.value = 0
+        color = merged.texture
+      }
+      camera.layers.mask = layerMask
+      frameNo++
 
       const st = post.shaftTarget
       const inside = pub.uIndoor.value > 0.01
@@ -127,7 +155,8 @@ export function createRenderSystem(): System {
       renderer.autoClear = autoClear
       renderer.setClearColor(int.rdAbysse.value, 1)
 
-      post.finish(renderer, camera, pub.uSunDir.value, sun.warm, sun.night)
+      post.finish(renderer, camera, { sunDir: pub.uSunDir.value, warm: sun.warm, night: sun.night, dt: lastDt, snap: snapFrame, color })
+      snapFrame = false
       renderer.setRenderTarget(null)
       lastMs = performance.now() - t0
     },
@@ -138,6 +167,7 @@ export function createRenderSystem(): System {
 
   const updateEnvironment = (dt: number, ctx: GameContext) => {
     const s = ctx.state
+    lastDt = dt
     pub.uTime.value = ctx.clock.elapsed
     const c = s.env.current
     pub.uCurrent.value.set(c.x, c.y, c.z)
@@ -169,6 +199,7 @@ export function createRenderSystem(): System {
     const locked = s.debug.cameraLocked
     const snap = locked !== wasLocked
     wasLocked = locked
+    if (snap || locked) snapFrame = true
     const target = hazeForVisibility(s.env.visibility) * (1 - (1 - BLOOM_HAZE_MUL) * plank)
     if (!hazeInit || snap) {
       pub.uHazeDist.value = target

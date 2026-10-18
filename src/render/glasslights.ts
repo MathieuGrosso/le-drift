@@ -27,7 +27,7 @@ interface Pane {
 interface Slot { key: string; strength: number; target: number; pane: Pane | null; clean: number; round: number }
 
 const SCAN_EVERY = 2
-const RANGE = 22
+const RANGE = 42
 
 const _m = new THREE.Matrix4()
 const _p = new THREE.Vector3()

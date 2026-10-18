@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { QualitySettings } from '../core/types'
+import type { GlassPassUniforms } from './glass'
 import type { InternalUniforms, PublicUniforms } from './uniforms'
 
 const QUAD_VS = /* glsl */ `
@@ -81,12 +82,137 @@ void main() {
 }
 `
 
+const COPY_FS = /* glsl */ `
+uniform sampler2D tSrc;
+varying vec2 vUv;
+void main() { gl_FragColor = vec4(texture2D(tSrc, vUv).rgb, 1.0); }
+`
+
+const SOFT_FS = /* glsl */ `
+uniform sampler2D tSrc;
+uniform vec2 uTexel;
+varying vec2 vUv;
+void main() {
+  vec3 c = vec3(0.0);
+  for (int y = -1; y <= 1; y++)
+    for (int x = -1; x <= 1; x++) c += texture2D(tSrc, vUv + vec2(float(x), float(y)) * uTexel * 1.5).rgb;
+  gl_FragColor = vec4(c / 9.0, 1.0);
+}
+`
+
+const AO_FS = /* glsl */ `
+uniform sampler2D tDepth;
+uniform mat4 uProjInv;
+uniform float uProjScale;
+uniform float uRadius;
+uniform vec2 uTexel;
+uniform vec2 uFull;
+varying vec2 vUv;
+vec2 snapUv(vec2 uv) { return (floor(uv / uFull) + 0.5) * uFull; }
+vec3 viewPos(vec2 uv) {
+  uv = snapUv(uv);
+  float d = texture2D(tDepth, uv).r;
+  vec4 p = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  return p.xyz / p.w;
+}
+void main() {
+  vec2 uv0 = snapUv(vUv);
+  vec3 P = viewPos(uv0);
+  float z = -P.z;
+  if (z > 90.0) { gl_FragColor = vec4(1.0); return; }
+  vec3 px = viewPos(uv0 + vec2(uFull.x, 0.0)) - P;
+  vec3 nx = P - viewPos(uv0 - vec2(uFull.x, 0.0));
+  vec3 py = viewPos(uv0 + vec2(0.0, uFull.y)) - P;
+  vec3 ny = P - viewPos(uv0 - vec2(0.0, uFull.y));
+  vec3 dx = abs(px.z) < abs(nx.z) ? px : nx;
+  vec3 dy = abs(py.z) < abs(ny.z) ? py : ny;
+  vec3 N = normalize(cross(dx, dy));
+  float rUv = uRadius * uProjScale / max(z, 0.3);
+  rUv = min(rUv, 0.12);
+  float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  float occ = 0.0;
+  const int N_S = 12;
+  for (int i = 0; i < N_S; i++) {
+    float f = (float(i) + jit) / float(N_S);
+    float a = f * 43.98 + jit * 6.283;
+    vec2 o = vec2(cos(a), sin(a)) * rUv * (0.15 + 0.85 * f * f);
+    vec3 v = viewPos(uv0 + o) - P;
+    float l2 = dot(v, v);
+    float nd = dot(N, v) * inversesqrt(l2 + 1e-4);
+    occ += max(nd - 0.1, 0.0) * (1.0 - smoothstep(0.0, uRadius * uRadius * 4.0, l2));
+  }
+  float ao = 1.0 - clamp(occ / float(N_S) * 3.2, 0.0, 1.0);
+  ao = mix(1.0, ao, 1.0 - smoothstep(50.0, 90.0, z));
+  gl_FragColor = vec4(ao, ao, ao, 1.0);
+}
+`
+
+const AO_BLUR_FS = /* glsl */ `
+uniform sampler2D tAO;
+uniform sampler2D tDepth;
+uniform vec2 uTexel;
+uniform float uNear;
+uniform float uFar;
+varying vec2 vUv;
+float viewZ(vec2 uv) {
+  float z = texture2D(tDepth, uv).r * 2.0 - 1.0;
+  return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+}
+void main() {
+  float z0 = viewZ(vUv);
+  float acc = 0.0;
+  float wsum = 0.0;
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      vec2 uv = vUv + (vec2(float(x), float(y)) - 1.5) * uTexel;
+      float w = 1.0 / (1.0 + abs(viewZ(uv) - z0) / max(z0 * 0.03, 0.02));
+      acc += texture2D(tAO, uv).r * w;
+      wsum += w;
+    }
+  }
+  float ao = acc / wsum;
+  gl_FragColor = vec4(ao, ao, ao, 1.0);
+}
+`
+
+const EXPOSURE_FS = /* glsl */ `
+uniform sampler2D tSrc;
+uniform sampler2D tPrev;
+uniform float uK;
+uniform float uIndoor;
+uniform float uNight;
+varying vec2 vUv;
+void main() {
+  float acc = 0.0;
+  float wsum = 0.0;
+  for (int y = 0; y < 7; y++) {
+    for (int x = 0; x < 7; x++) {
+      vec2 uv = (vec2(float(x), float(y)) + 0.5) / 7.0;
+      float w = 1.0 - 0.6 * length(uv - 0.5);
+      vec3 c = texture2D(tSrc, uv).rgb;
+      acc += log(max(dot(c, vec3(0.2126, 0.7152, 0.0722)), 1e-3)) * w;
+      wsum += w;
+    }
+  }
+  float avg = exp(acc / wsum);
+  float key = mix(0.36, 0.4, uIndoor);
+  float target = clamp(key / max(avg, 1e-3), mix(0.86, 0.82, uIndoor), mix(1.18, mix(1.3, 1.06, uNight), uIndoor));
+  float prev = texture2D(tPrev, vec2(0.5)).r;
+  if (prev <= 0.0) prev = 1.0;
+  float e = mix(prev, target, uK);
+  gl_FragColor = vec4(e, e, e, 1.0);
+}
+`
+
 const COMPOSITE_FS = /* glsl */ `
 uniform sampler2D tScene;
 uniform sampler2D tDepth;
 uniform sampler2D tBloom;
 uniform sampler2D tShafts;
 uniform sampler2D tRadial;
+uniform sampler2D tAO;
+uniform sampler2D tExposure;
+uniform float uAO;
 uniform vec2 uTexel;
 uniform float uNear;
 uniform float uFar;
@@ -155,6 +281,14 @@ void main() {
   float edge = smoothstep(0.06, 0.2, lap) * (1.0 - smoothstep(40.0, 220.0, dc));
   col = mix(col, col * 0.55 + uProfond * 0.45, edge * 0.4);
 #endif
+  if (uAO > 0.0) {
+    float ao = texture2D(tAO, vUv).r;
+    vec3 plum = uInterieur / max(max(uInterieur.r, uInterieur.g), uInterieur.b);
+    vec3 aoTint = mix(vec3(1.0), mix(uShadowTone / max(max(uShadowTone.r, uShadowTone.g), uShadowTone.b), plum, uIndoor), 0.55);
+    float d = (1.0 - ao) * uAO * mix(0.6, 1.0, uIndoor);
+    col *= mix(vec3(1.0), aoTint, d) * (1.0 - 0.6 * d);
+  }
+  col *= texture2D(tExposure, vec2(0.5)).r;
   col += texture2D(tShafts, vUv).rgb;
 #ifdef RADIAL
   col += texture2D(tRadial, vUv).rgb * 0.9 * (1.0 - uIndoor);
@@ -167,7 +301,7 @@ void main() {
   col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.06, uIndoor));
   col += uInterieur * 0.035 * uIndoor * (1.0 - smoothstep(0.0, 0.25, l));
   l = luma(col);
-  col = mix(vec3(l), col, 1.06 + 0.05 * uIndoor - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
+  col = mix(vec3(l), col, 1.06 - 0.08 * uIndoor - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
   float m = max(col.r, max(col.g, col.b));
   if (m > 0.82) col *= (0.82 + 0.18 * (1.0 - exp(-(m - 0.82) / 0.18))) / m;
 
@@ -193,10 +327,22 @@ export interface Post {
   sceneTarget: THREE.WebGLRenderTarget
   shaftTarget: THREE.WebGLRenderTarget
   begin(renderer: THREE.WebGLRenderer): void
-  finish(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, sunDir: THREE.Vector3, warm: number, night: number): void
+  prepareGlass(renderer: THREE.WebGLRenderer, pass: GlassPassUniforms): THREE.WebGLRenderTarget
+  finish(renderer: THREE.WebGLRenderer, camera: THREE.PerspectiveCamera, frame: PostFrame): void
   setQuality(q: QualitySettings): void
   dispose(): void
 }
+
+export interface PostFrame {
+  sunDir: THREE.Vector3
+  warm: number
+  night: number
+  dt: number
+  snap: boolean
+  color: THREE.Texture
+}
+
+const AO_LEVELS: Record<QualitySettings['level'], number> = { high: 1, medium: 0.85, low: 0 }
 
 export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: QualitySettings): Post {
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)
@@ -210,30 +356,48 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
   const sceneTarget = new THREE.WebGLRenderTarget(1, 1, {
     type: THREE.HalfFloatType, depthBuffer: true, depthTexture: depthTex, samples: quality.level === 'low' ? 0 : 4,
   })
+  const mergedTarget = new THREE.WebGLRenderTarget(1, 1, hf)
+  const softTarget = new THREE.WebGLRenderTarget(1, 1, hf)
   const shaftTarget = new THREE.WebGLRenderTarget(1, 1, hf)
   const radialTarget = new THREE.WebGLRenderTarget(1, 1, hf)
+  const aoTarget = new THREE.WebGLRenderTarget(1, 1, { ...hf, type: THREE.UnsignedByteType })
+  const aoBlurTarget = new THREE.WebGLRenderTarget(1, 1, { ...hf, type: THREE.UnsignedByteType })
   const bloom: Target[] = [2, 4, 8].map((div) => ({ rt: new THREE.WebGLRenderTarget(1, 1, hf), div }))
-  const targets: Target[] = [{ rt: shaftTarget, div: 2 }, { rt: radialTarget, div: 4 }, ...bloom]
+  const targets: Target[] = [
+    { rt: mergedTarget, div: 1 }, { rt: softTarget, div: 4 }, { rt: shaftTarget, div: 2 }, { rt: radialTarget, div: 4 },
+    { rt: aoTarget, div: 2 }, { rt: aoBlurTarget, div: 2 }, ...bloom,
+  ]
+  const exposure = [0, 1].map(() => new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false }))
+  let expIdx = 0
 
-  const downMat = new THREE.ShaderMaterial({
-    uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0 } },
-    vertexShader: QUAD_VS, fragmentShader: DOWN_FS, depthTest: false, depthWrite: false,
-  })
-  const upMat = new THREE.ShaderMaterial({
-    uniforms: { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } },
-    vertexShader: QUAD_VS, fragmentShader: UP_FS, depthTest: false, depthWrite: false,
+  const quadMat = (fragmentShader: string, uniforms: Record<string, THREE.IUniform>, extra: Partial<THREE.ShaderMaterialParameters> = {}) =>
+    new THREE.ShaderMaterial({ uniforms, vertexShader: QUAD_VS, fragmentShader, depthTest: false, depthWrite: false, ...extra })
+
+  const downMat = quadMat(DOWN_FS, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() }, uThreshold: { value: 0 } })
+  const upMat = quadMat(UP_FS, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } }, {
     blending: THREE.AdditiveBlending, transparent: true,
   })
-  const radialMat = new THREE.ShaderMaterial({
-    uniforms: {
-      tScene: { value: sceneTarget.texture }, tDepth: { value: depthTex }, uSun: { value: new THREE.Vector2() },
-      uSunVis: { value: 0 }, uNear: { value: 0.1 }, uFar: { value: 4000 },
-    },
-    vertexShader: QUAD_VS, fragmentShader: RADIAL_FS, depthTest: false, depthWrite: false,
+  const copyMat = quadMat(COPY_FS, { tSrc: { value: null } })
+  const softMat = quadMat(SOFT_FS, { tSrc: { value: null }, uTexel: { value: new THREE.Vector2() } })
+  const aoMat = quadMat(AO_FS, {
+    tDepth: { value: depthTex }, uProjInv: { value: new THREE.Matrix4() }, uProjScale: { value: 1 },
+    uRadius: { value: 0.75 }, uTexel: { value: new THREE.Vector2() }, uFull: { value: new THREE.Vector2() },
+  })
+  const aoBlurMat = quadMat(AO_BLUR_FS, {
+    tAO: { value: aoTarget.texture }, tDepth: { value: depthTex }, uTexel: { value: new THREE.Vector2() },
+    uNear: { value: 0.1 }, uFar: { value: 4000 },
+  })
+  const expMat = quadMat(EXPOSURE_FS, {
+    tSrc: { value: softTarget.texture }, tPrev: { value: null }, uK: { value: 1 }, uIndoor: pub.uIndoor, uNight: { value: 0 },
+  })
+  const radialMat = quadMat(RADIAL_FS, {
+    tScene: { value: sceneTarget.texture }, tDepth: { value: depthTex }, uSun: { value: new THREE.Vector2() },
+    uSunVis: { value: 0 }, uNear: { value: 0.1 }, uFar: { value: 4000 },
   })
   const compositeUniforms = {
-    tScene: { value: sceneTarget.texture }, tDepth: { value: depthTex }, tBloom: { value: bloom[0]!.rt.texture },
+    tScene: { value: sceneTarget.texture as THREE.Texture }, tDepth: { value: depthTex }, tBloom: { value: bloom[0]!.rt.texture },
     tShafts: { value: shaftTarget.texture }, tRadial: { value: radialTarget.texture },
+    tAO: { value: aoBlurTarget.texture }, tExposure: { value: exposure[0]!.texture }, uAO: { value: AO_LEVELS[quality.level] },
     uTexel: { value: new THREE.Vector2() }, uNear: { value: 0.1 }, uFar: { value: 4000 },
     uTime: pub.uTime, uIndoor: pub.uIndoor, uWarm: { value: 0 }, uNight: { value: 0 },
     uProfond: int.rdProfond,
@@ -241,9 +405,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     uHighTone: { value: new THREE.Color(1.08, 1.0, 0.86) },
     uInterieur: int.rdInterieur,
   }
-  const compositeMat = new THREE.ShaderMaterial({
-    uniforms: compositeUniforms, vertexShader: QUAD_VS, fragmentShader: COMPOSITE_FS, depthTest: false, depthWrite: false,
-  })
+  const compositeMat = quadMat(COMPOSITE_FS, compositeUniforms)
 
   const setDefines = (q: QualitySettings) => {
     const defines: Record<string, string> = {}
@@ -252,6 +414,7 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     if (q.godRayPass) defines.RADIAL = ''
     compositeMat.defines = defines
     compositeMat.needsUpdate = true
+    compositeUniforms.uAO.value = AO_LEVELS[q.level]
     const samples = q.level === 'low' ? 0 : 4
     if (sceneTarget.samples !== samples) {
       sceneTarget.samples = samples
@@ -269,6 +432,12 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     if (clear) renderer.clear(true, false, false)
     renderer.render(quad, camera)
   }
+  const soft = (renderer: THREE.WebGLRenderer, src: THREE.Texture) => {
+    softMat.uniforms.tSrc!.value = src
+    softMat.uniforms.uTexel!.value.set(1 / sceneTarget.width, 1 / sceneTarget.height)
+    pass(renderer, softMat, softTarget, false)
+  }
+  let softFresh = false
 
   return {
     sceneTarget,
@@ -282,17 +451,57 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
         for (const t of targets) t.rt.setSize(Math.max(1, Math.floor(w / t.div)), Math.max(1, Math.floor(h / t.div)))
         compositeUniforms.uTexel.value.set(1 / w, 1 / h)
       }
+      softFresh = false
     },
-    finish(renderer, cam, sunDir, warm, night) {
+    prepareGlass(renderer, glass) {
+      const autoClear = renderer.autoClear
+      renderer.autoClear = false
+      copyMat.uniforms.tSrc!.value = sceneTarget.texture
+      pass(renderer, copyMat, mergedTarget, false)
+      soft(renderer, sceneTarget.texture)
+      softFresh = true
+      renderer.autoClear = autoClear
+      glass.rgScene.value = sceneTarget.texture
+      glass.rgSceneSoft.value = softTarget.texture
+      glass.rgDepth.value = depthTex
+      glass.rgRes.value.set(sceneTarget.width, sceneTarget.height)
+      return mergedTarget
+    },
+    finish(renderer, cam, f) {
       const autoClear = renderer.autoClear
       renderer.autoClear = false
       compositeUniforms.uNear.value = cam.near
       compositeUniforms.uFar.value = cam.far
-      compositeUniforms.uWarm.value = warm
-      compositeUniforms.uNight.value = night
+      compositeUniforms.uWarm.value = f.warm
+      compositeUniforms.uNight.value = f.night
+      expMat.uniforms.uNight!.value = f.night
+      compositeUniforms.tScene.value = f.color
+      radialMat.uniforms.tScene!.value = f.color
+
+      if (!softFresh) soft(renderer, f.color)
+      const prev = exposure[expIdx]!
+      expIdx = 1 - expIdx
+      expMat.uniforms.tPrev!.value = f.snap ? null : prev.texture
+      expMat.uniforms.uK!.value = f.snap ? 1 : 1 - Math.exp(-f.dt * 1.6)
+      pass(renderer, expMat, exposure[expIdx]!, false)
+      compositeUniforms.tExposure.value = exposure[expIdx]!.texture
+
+      if (compositeUniforms.uAO.value > 0) {
+        const a = aoMat.uniforms
+        a.uProjInv!.value.copy(cam.projectionMatrixInverse)
+        a.uProjScale!.value = cam.projectionMatrix.elements[5]! * 0.5
+        a.uTexel!.value.set(1 / aoTarget.width, 1 / aoTarget.height)
+        a.uFull!.value.set(1 / sceneTarget.width, 1 / sceneTarget.height)
+        pass(renderer, aoMat, aoTarget, false)
+        const b = aoBlurMat.uniforms
+        b.uTexel!.value.set(1 / aoTarget.width, 1 / aoTarget.height)
+        b.uNear!.value = cam.near
+        b.uFar!.value = cam.far
+        pass(renderer, aoBlurMat, aoBlurTarget, false)
+      }
 
       if (godRays) {
-        sunNdc.copy(cam.position).addScaledVector(sunDir, 1000).project(cam)
+        sunNdc.copy(cam.position).addScaledVector(f.sunDir, 1000).project(cam)
         const facing = sunNdc.z < 1 ? 1 : 0
         const r = radialMat.uniforms
         r.uSun!.value.set(sunNdc.x * 0.5 + 0.5, sunNdc.y * 0.5 + 0.5)
@@ -303,14 +512,14 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
         pass(renderer, radialMat, radialTarget, true)
       }
 
-      let src: THREE.Texture = sceneTarget.texture
+      let src: THREE.Texture = f.color
       let srcW = sceneTarget.width
       let srcH = sceneTarget.height
       for (let i = 0; i < bloom.length; i++) {
         const t = bloom[i]!.rt
         downMat.uniforms.tSrc!.value = src
         downMat.uniforms.uTexel!.value.set(1 / srcW, 1 / srcH)
-        downMat.uniforms.uThreshold!.value = i === 0 ? 1.25 - 0.3 * pub.uIndoor.value : 0
+        downMat.uniforms.uThreshold!.value = i === 0 ? 1.15 - 0.3 * pub.uIndoor.value : 0
         pass(renderer, downMat, t, true)
         src = t.texture
         srcW = t.width
@@ -333,8 +542,9 @@ export function createPost(pub: PublicUniforms, int: InternalUniforms, quality: 
     dispose() {
       sceneTarget.dispose()
       for (const t of targets) t.rt.dispose()
+      for (const t of exposure) t.dispose()
       depthTex.dispose()
-      for (const m of [downMat, upMat, radialMat, compositeMat]) m.dispose()
+      for (const m of [downMat, upMat, copyMat, softMat, aoMat, aoBlurMat, expMat, radialMat, compositeMat]) m.dispose()
       geo.dispose()
     },
   }

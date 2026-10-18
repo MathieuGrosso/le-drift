@@ -189,6 +189,14 @@ vec3 rd_beamColor() {
   vec3 night = rdVitreMer * 0.05 + vec3(0.25, 0.4, 0.12) * rdPlankton * 0.5;
   return day + night * (1.0 - rdDay);
 }
+// Big panes break their light into separate shafts (waves above, mullions); portholes stay whole.
+float rd_beamStreak(vec2 uv, float halfW, int i) {
+  float k = smoothstep(0.7, 1.8, halfW);
+  if (k <= 0.0) return 1.0;
+  float s = rd_noise(vec2(uv.x * 0.9 + uv.y * 0.22 + float(i) * 7.3 + rdTime * 0.04, rdTime * 0.06 + float(i)));
+  float s2 = rd_noise(vec2(uv.x * 2.3 - rdTime * 0.05, 3.0 + float(i)));
+  return mix(1.0, 0.12 + 0.88 * smoothstep(0.38, 0.72, s * 0.75 + s2 * 0.25), k);
+}
 float rd_beamAt(vec3 P, int i, out float along) {
   along = 0.0;
   vec4 A = rdGlassA[i];
@@ -204,7 +212,7 @@ float rd_beamAt(vec3 P, int i, out float along) {
   vec3 hit = rel + Lb * t;
   vec3 T = rd_glassT(B.xyz);
   vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
-  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * C.x * C.z * exp(-t * 0.09) * smoothstep(0.0, 0.25, front);
+  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * rd_beamStreak(uv, A.w, i) * C.x * C.z * exp(-t * 0.09) * smoothstep(0.0, 0.25, front);
 }
 vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
   vec3 fill = vec3(0.0);
@@ -232,7 +240,7 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     vec3 hit = rel + Lb * t;
     vec3 T = rd_glassT(B.xyz);
     vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
-    float m = rd_glassMask(uv, A, B, C, 0.03 + t * 0.025);
+    float m = rd_glassMask(uv, A, B, C, 0.03 + t * 0.025) * rd_beamStreak(uv, A.w, i);
     if (m <= 0.0) continue;
     float lit = m * smoothstep(-0.05, 0.3, dot(N, Lb)) * exp(-t * 0.06) * C.x * C.z;
     vec2 cu = uv * 2.4 + vec2(rdTime * 0.07, -rdTime * 0.05) + float(i) * 3.7;
