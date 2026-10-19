@@ -239,6 +239,42 @@ function frameOf(slot: DressSlot, d: Dresser): Frame {
   }
 }
 
+// A floor slot on a walked tile moves to the tile's edge beside the path (a corner at a turn), facing it.
+function sidestepper(shell: DistrictShell, rng: Rng): (slot: DressSlot) => DressSlot {
+  const at = new Map(shell.walk.nodes.map((n) => [n.id, n.at]))
+  const dirs = new Map<string, { x: number; z: number }[]>()
+  const key = (p: Vec3) => `${Math.round(p.x * 2)}:${Math.round(p.y)}:${Math.round(p.z * 2)}`
+  for (const e of shell.walk.edges) {
+    const a = at.get(e.a)
+    const b = at.get(e.b)
+    if (!a || !b) continue
+    for (const [p, q] of [[a, b], [b, a]] as const) {
+      const list = dirs.get(key(p)) ?? []
+      list.push({ x: q.x - p.x, z: q.z - p.z })
+      dirs.set(key(p), list)
+    }
+  }
+  const { depth } = DRESS.aside
+  return (slot) => {
+    if (slot.kind !== 'sol' || !slot.onPath) return slot
+    const ds = dirs.get(key(slot.at))
+    if (!ds) return slot
+    const alongX = ds.some((v) => Math.abs(v.x) > Math.abs(v.z))
+    const alongZ = ds.some((v) => Math.abs(v.z) >= Math.abs(v.x))
+    const sx = rng() < 0.5 ? -1 : 1
+    const sz = rng() < 0.5 ? -1 : 1
+    const hx = slot.w / 2 - depth / 2
+    const hz = slot.d / 2 - depth / 2
+    if (alongX && alongZ) {
+      const inset = DRESS.aside.cornerInset
+      return { ...slot, kind: 'coin', at: { x: slot.at.x + sx * (slot.w / 2 - inset), y: slot.at.y, z: slot.at.z + sz * (slot.d / 2 - inset) }, yaw: Math.atan2(-sx, -sz), w: depth, d: depth }
+    }
+    const off = alongX ? { x: 0, z: sz * hz } : { x: sx * hx, z: 0 }
+    const yaw = alongX ? (sz > 0 ? Math.PI : 0) : sx > 0 ? -Math.PI / 2 : Math.PI / 2
+    return { ...slot, at: { x: slot.at.x + off.x, y: slot.at.y, z: slot.at.z + off.z }, yaw, w: alongX ? slot.w : slot.d, d: depth }
+  }
+}
+
 // Long wall runs become bays of a few metres, each with its own cluster, so a corridor never repeats one prop.
 function bays(slot: DressSlot, rng: Rng): DressSlot[] {
   const { min, max, gap, split } = DRESS.bay
@@ -514,7 +550,8 @@ export function planDressing(input: DressInput): DressPlan {
     return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
   }
   for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe && d.pipes.length < DRESS.wall.maxPipes) pipeRun(frameOf(s, d))
-  const slots = shell.slots.flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
+  const aside = sidestepper(shell, rng)
+  const slots = shell.slots.map(aside).flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
   const fills = slots.map(fillOf)
   const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
   const scale = Math.min(1, DRESS.maxClusters / Math.max(1, expected))
