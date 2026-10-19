@@ -27,6 +27,8 @@ const T = {
   ladder: 1.6,
   ladderFast: 2.6,
   ladderSlide: 4.5,
+  ladderFootReach: 0.75,
+  ladderTopReach: 1.3,
   zipMax: 9,
   zipCost: 0.03,
   zipHang: 1.95,
@@ -82,7 +84,7 @@ type Activity =
   | { kind: 'sit'; seatId: string; anchor: THREE.Vector3; yaw: number; stage: 'approach' | 'down' | 'sit' | 'up'; t: number; standAt: THREE.Vector3; anchorL: Vec3; yawL: number; standL: Vec3 | null }
   | { kind: 'lean'; target: THREE.Vector3; stage: 'in' | 'lean' | 'up'; t: number }
   | { kind: 'sleep'; stage: 'down' | 'sleep' | 'up'; t: number; bed: Vec3 | null; bedYaw: number; from: THREE.Vector3 }
-  | { kind: 'ladder'; a: LadderA; s: number; topT: number; mountT: number; from: THREE.Vector3; exit: THREE.Vector3 }
+  | { kind: 'ladder'; a: LadderA; s: number; topT: number; mountT: number; descendHeld: boolean; from: THREE.Vector3; exit: THREE.Vector3 }
   | { kind: 'zip'; a: ZipA; s: number; v: number; dir: 1 | -1; swing: number; swingV: number; lastV: number }
   | { kind: 'slide'; a: SlideA; cum: number[]; d: number; v: number; off: number; lastYaw: number }
   | { kind: 'tube'; stage: 'in' | 'out'; t: number }
@@ -1399,14 +1401,14 @@ export class HeroController {
       const nb = Math.hypot(this.pos.x - b.x, this.pos.z - b.z)
       const nW = this.ladderNormalW(a, this.tmp3)
       const into = -(facing.x * nW.x + facing.z * nW.z)
-      if (nb < 0.75 && Math.abs(this.pos.y - b.y) < 0.6 && into > 0.5) {
+      if (nb < T.ladderFootReach && Math.abs(this.pos.y - b.y) < 0.6 && into > 0.5) {
         this.attachLadder(a)
         return true
       }
       const tp = this.toW(a.top, this.tmp)
       const nt = Math.hypot(this.pos.x - tp.x, this.pos.z - tp.z)
       const front = (this.pos.x - tp.x) * nW.x + (this.pos.z - tp.z) * nW.z > 0.25
-      if (nt < 0.9 && Math.abs(this.pos.y - tp.y) < 0.6 && (front ? into > 0.5 : into < -0.3)) {
+      if (nt < (front ? T.ladderFootReach : T.ladderTopReach) && Math.abs(this.pos.y - tp.y) < 0.6 && (front ? into > 0.5 : into < -0.3)) {
         this.attachLadder(a, 0.97)
         return true
       }
@@ -1448,7 +1450,8 @@ export class HeroController {
     const len = Math.max(0.1, a.top.y - a.bottom.y)
     const local = this.localNow()
     const start = s ?? THREE.MathUtils.clamp((local.y - a.bottom.y) / len, 0, 1)
-    this.activity = { kind: 'ladder', a, s: Math.min(start, 0.98), topT: -1, mountT: s !== undefined && s > 0.9 ? 0.5 : 0, from: new THREE.Vector3(), exit: new THREE.Vector3() }
+    const fromTop = s !== undefined && s > 0.9
+    this.activity = { kind: 'ladder', a, s: Math.min(start, 0.98), topT: -1, mountT: fromTop ? 0.5 : 0, descendHeld: fromTop && this.ctx.input.move.y > 0.2, from: new THREE.Vector3(), exit: new THREE.Vector3() }
     this.vel.set(0, 0, 0)
     this.climbing = false
     this.gliding = false
@@ -1493,6 +1496,11 @@ export class HeroController {
       return true
     }
     let my = locked ? 0 : input.move.y
+    // Walking onto a ladder from its top keeps going down until the stick is let go.
+    if (a.descendHeld) {
+      if (my < 0.2) a.descendHeld = false
+      else my = -my
+    }
     if (a.mountT > 0) {
       a.mountT -= dt
       my = -0.6
