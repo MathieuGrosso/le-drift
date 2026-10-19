@@ -512,6 +512,28 @@ const PORTRAIT_CAM_YAW = -0.24
 
 function registerPortrait(ctx: GameContext): void {
   const reg = ctx.services.debug as typeof ctx.services.debug & { registerFactory?: (name: string, f: (c: GameContext) => DebugPose) => void }
+  for (const [name, around] of [['ilo-face', 0], ['ilo-dos', Math.PI], ['ilo-34', 0.8]] as const) {
+    reg.registerFactory?.(name, (c) => {
+      const drift = c.services.drift
+      if (!drift) return { hour: 8, camera: { position: { x: 0, y: 1.4, z: -3 }, target: { x: 0, y: 0.9, z: 0 }, fov: 35 } }
+      const st = c.state.hero
+      const place = PLACES['grande-vitre']!
+      st.medium = 'air'
+      st.room = place.room ?? 'refectoire'
+      st.district = place.district
+      st.localPosition = { ...PORTRAIT_AT }
+      const a = PORTRAIT_YAW + around
+      return {
+        hour: 8,
+        hero: { position: drift.toWorld(PORTRAIT_AT), yaw: PORTRAIT_YAW + drift.pose().heading },
+        camera: {
+          position: drift.toWorld({ x: PORTRAIT_AT.x + Math.sin(a) * 4.3, y: 1.3, z: PORTRAIT_AT.z - Math.cos(a) * 4.3 }),
+          target: drift.toWorld({ x: PORTRAIT_AT.x, y: 0.88, z: PORTRAIT_AT.z }),
+          fov: 35,
+        },
+      }
+    })
+  }
   reg.registerFactory?.('art-ilo', (c) => {
     const drift = c.services.drift
     const st = c.state.hero

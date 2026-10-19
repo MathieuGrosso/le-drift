@@ -271,7 +271,7 @@ The day loop of the story, inside: wake in the cabin, read the forecast in the l
 windows, breakfast in front of the big window (served last, still dripping), the kids on the sill,
 grandfather's window last, La Chose twice a day through whatever glass you are near.
 
-Characters: **Ilo** (unnamed in dialogue: « toi », « petit·e »), **Grand-père** (keeps the chart),
+Characters: **Ilo** (unnamed in dialogue: « toi », « petit »), **Grand-père** (keeps the chart),
 **le Cuistot**, **Mme Rouille** (gardienne de l'écluse, forecast board), **les enfants du rebord**
 (Mila, Tao, Pépin), **Bastien** (engineer, Le Puits), **Nour** (gardener, Les Serres), **La Chose**
 (the bird; nobody has the word « oiseau »).

@@ -13,7 +13,7 @@ export class Secondary {
   private dir = new THREE.Vector3()
   private q = new THREE.Quaternion()
   private ready = false
-  private readonly len = 0.14
+  private readonly len = 0.07
 
   constructor(private model: HeroModel) {}
 
