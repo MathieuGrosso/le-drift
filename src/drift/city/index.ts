@@ -204,6 +204,7 @@ export class City {
   private readonly districts = new Map<GroupKey, DistrictRt>()
   private readonly portals: Kit['portals'] = []
   private readonly ladders: LadderSpec[] = []
+  private readonly climbs: { from: Vec3; to: Vec3 }[] = []
   private readonly anchors: Anchor[] = []
   private readonly seats = new Map<string, SeatSpec>()
   private readonly doors = new Map<string, DoorRt>()
@@ -318,6 +319,7 @@ export class City {
       this.districts.set(id, { id, group: g, body, loaded: true, snap: false })
       for (const l of k.lamps) if (l.live) this.lamps.push({ local: new THREE.Vector3(l.x, l.y, l.z), world: new THREE.Vector3(), color: new THREE.Color(l.color), radius: l.radius, district: id })
       this.ladders.push(...k.ladders)
+      this.climbs.push(...k.climbs)
       this.anchors.push(...k.anchors)
       for (const s of k.seats) this.seats.set(s.id, s)
       for (const r of k.rides) this.rides.set(r.id, r)
@@ -717,8 +719,9 @@ export class City {
 
   navLinks(): NavLink[] {
     const ladders = this.ladders.map(ladderLink)
+    const nets = this.climbs.map((c) => ({ ...c, both: true }))
     const rides = [...this.rides.values()].map((r) => ({ from: r.from, to: r.to, both: false }))
-    return [...ladders, ...rides]
+    return [...ladders, ...nets, ...rides]
   }
 
   useNav(nav: DriftNavmesh): void {

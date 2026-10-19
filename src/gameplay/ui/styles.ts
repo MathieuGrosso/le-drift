@@ -34,7 +34,10 @@ export const GAMEPLAY_CSS = `
 .gp-prompt.show { opacity: 1; transform: translateX(-50%); }
 .gp-key { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--gp-texte); color: var(--gp-abysse); font-weight: 800; font-size: 15px; box-shadow: 0 2px 0 rgba(14,59,82,.5); }
-.gp-prompt svg { position: absolute; left: 3px; top: 3px; width: 40px; height: 40px; pointer-events: none; }
+.gp-keywrap { position: relative; display: inline-flex; }
+.gp-prompt svg { position: absolute; left: -5px; top: -5px; width: 40px; height: 40px; pointer-events: none; }
+.gp-prompt.hold { padding-left: 16px; }
+.gp-hold { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .8; }
 
 .gp-toast { position: absolute; top: 26px; left: 30px; max-width: 46vw; display: flex; flex-direction: column; gap: 3px; opacity: 0; transform: translateX(-10px); transition: opacity .6s, transform .6s; }
 .gp-toast.show { opacity: 1; transform: none; }
@@ -44,6 +47,11 @@ export const GAMEPLAY_CSS = `
 .gp-tip { position: absolute; left: 50%; bottom: 22%; transform: translateX(-50%); padding: 8px 16px; border-radius: 12px; font-size: 15px;
   background: rgba(14,59,82,.42); opacity: 0; transition: opacity .6s; white-space: nowrap; }
 .gp-tip.show { opacity: .95; }
+.gp-waypoint { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 4px; opacity: 0; transition: opacity .6s; pointer-events: none; }
+.gp-waypoint.show { opacity: 1; }
+.gp-waypoint .mark { width: 14px; height: 14px; transform: rotate(45deg); border: 2px solid var(--gp-souffle); background: rgba(14,59,82,.55); box-shadow: 0 0 12px rgba(158,230,201,.7); }
+.gp-waypoint .l { padding: 2px 10px; border-radius: 999px; font-size: 13px; background: rgba(14,59,82,.5); white-space: nowrap; }
+.gp-tip .gp-key { min-width: 24px; height: 24px; margin: 0 2px; font-size: 13px; vertical-align: middle; }
 
 .gp-place { position: absolute; left: 0; right: 0; top: 30%; text-align: center; opacity: 0; transition: opacity 1s ease; }
 .gp-place.show { opacity: 1; }
@@ -93,6 +101,7 @@ export const GAMEPLAY_CSS = `
 .gp-btn.primary { background: var(--gp-accent); color: #fff8ee; border-color: transparent; text-align: center; }
 .gp-btn.primary:hover { background: #d95a3e; transform: none; }
 .gp-btn:disabled { opacity: .4; cursor: default; transform: none; }
+.gp-menu :is(.gp-btn, .gp-tab, .gp-card.pick, .gp-slot.full, input):focus { outline: 3px solid var(--gp-abysse); outline-offset: 3px; }
 .gp-stack { display: flex; flex-direction: column; gap: 10px; }
 .gp-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .gp-objective { margin: 0 0 20px; padding: 12px 16px; border-left: 3px solid var(--gp-accent); background: rgba(232,103,74,.07); border-radius: 0 12px 12px 0; }

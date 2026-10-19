@@ -8,6 +8,7 @@ import { quarterPoint } from '../core/layout'
 
 const ACT1 = ['a1-reveil', 'a1-sortie', 'a1-grande-vitre', 'a1-chose', 'a1-petit-dejeuner', 'a1-rebord', 'a1-dome', 'a1-grand-pere', 'a1-poulie'] as const
 const ORDER = [...ACT1, 'a2-domes', 'a2-lest', 'a3-matin', 'a3-pluie', 'a3-dome-proue', 'a3-ligne'] as const
+export const BIG_WINDOW_LOCAL = quarterPoint({ x: 18, y: 2.6, z: 72.4 })
 const isBigWindow = (id: string) => id === 'grande-vitre' || /grande/.test(id)
 const isGrandpaWindow = (id: string) => /grand-?pere/.test(id)
 
@@ -69,7 +70,7 @@ export function createQuests(gp: Gp): Quests {
   const bigWindowPos = (): Vec3 => {
     const w = ctx.services.drift?.nearestWindow(gp.heroPos(), 40)
     if (w && isBigWindow(w.id)) return w.position
-    return st().drift.position ? ctx.services.drift?.toWorld(quarterPoint({ x: 18, y: 2.6, z: 72.4 })) ?? st().drift.position : st().hero.position
+    return st().drift.position ? ctx.services.drift?.toWorld(BIG_WINDOW_LOCAL) ?? st().drift.position : st().hero.position
   }
 
   const afterBigWindow = () =>
@@ -349,6 +350,8 @@ export function createQuests(gp: Gp): Quests {
             void scene(async () => {
               await say(DIALOGUES.tableauA1, 'mme-rouille')
               set('a1-reveil', 'sortir')
+            }).then(() => {
+              gp.menus.board()
               gp.hud.tip(TIPS.sas(ctx.input.keyLabel('interact')), 6)
             })
           } else if (step('a1-poulie') === 'rouille') void poulieScene()
@@ -424,6 +427,8 @@ export function createQuests(gp: Gp): Quests {
     update() {
       if (ctx.clock.paused) return
       const s = st()
+      const toBigWindow = s.hero.medium === 'water' && (step('a1-sortie') === 'coque' || step('a1-grande-vitre') === 'frotter')
+      gp.hud.waypoint(toBigWindow ? { at: bigWindowPos(), label: UI.grandeVitre } : null)
       if (step('a1-reveil') === 'sas' && s.hero.room === 'sas') set('a1-reveil', 'tableau')
       if (step('a3-matin') === 'refectoire' && s.hero.room === 'refectoire' && !running) void matinScene()
       if (step('a1-sortie') === 'coque') {

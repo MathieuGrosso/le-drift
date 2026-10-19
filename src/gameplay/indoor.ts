@@ -3,6 +3,7 @@ import { dist3, type Candidate, type Gp, type Indoor } from './context'
 import type { Owned } from './world/sites'
 import { DISTRICT_NAMES, DOME_NAMES, NPC_IDS, PLACE_NAMES, PROMPTS, TIPS, UI } from './text/fr'
 import type { Uses } from './world/uses'
+import { BIG_WINDOW_LOCAL } from './quests'
 
 const RAY_REACH = 2.4
 const LOCK_REACH = 7
@@ -10,6 +11,7 @@ const NPC_REACH = 2.8
 const REEL_HOLD = 1
 const DOOR_REACH = 1.7
 const DOOR_CONE = 0.6
+const SAS_FLOOR_REACH = 1.5
 
 const BED = /^(lit|couchette|bunk|bed|hamac)/
 const SEAT = /^(banc|siege|chaise|tabouret|seat)/
@@ -39,19 +41,37 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     seenRooms.add(key)
     const name = PLACE_NAMES[cellId] ?? DOME_NAMES[cellId]
     if (name && !gp.busy()) gp.hud.placeName(name)
-    if (cellId === 'sas' && !ctx.state.flags['tip-sas']) {
+    if (cellId === 'sas' && !ctx.state.flags['tip-sas'] && !boardPending()) {
       ctx.state.flags['tip-sas'] = true
       gp.hud.tip(TIPS.sas(ctx.input.keyLabel('interact')))
     }
   })
 
+  const boardPending = () => gp.quests.step('a1-reveil') === 'tableau'
+
+  const faceAlongHull = async () => {
+    const hero = ctx.services.hero
+    const drift = ctx.services.drift
+    if (!hero || !drift) return
+    await gp.cine.fade('black', 0.35)
+    const from = drift.lockPosition()
+    const to = drift.toWorld(BIG_WINDOW_LOCAL)
+    hero.teleport(from, Math.atan2(to.x - from.x, from.z - to.z))
+    await gp.cine.fade(null, 0.5)
+  }
+
   const airlock = async (dir: 'in' | 'out', lockId: 'sas' | 'echelle-toit' = 'sas') => {
+    if (dir === 'out' && boardPending()) {
+      gp.quests.talk('mme-rouille')
+      return
+    }
     gp.lock.count++
     try {
       const drift = ctx.services.drift
       if (drift) {
         gp.heroMode('airlock')
         await drift.cycleAirlock(lockId, dir)
+        if (dir === 'out' && lockId === 'sas') await faceAlongHull()
         gp.heroMode(ctx.state.hero.medium === 'air' ? 'idle' : 'swim')
       } else {
         await gp.cine.fade('black', 0.5)
@@ -164,8 +184,9 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     }
     switch (room as RoomId) {
       case 'sas':
-        add('sas', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out'))
-        if (gp.quests.step('a1-reveil') === 'tableau') add('tableau', 'npc', PROMPTS.tableau, 2.7, () => gp.quests.talk('mme-rouille'))
+        if (gp.heroLocal().y - (ctx.services.drift?.cellSpawn('sas')?.local.y ?? 0) > SAS_FLOOR_REACH) break
+        if (boardPending()) add('tableau', 'npc', PROMPTS.tableau, 2.7, () => gp.quests.talk('mme-rouille'))
+        else add('sas', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out'))
         break
       case 'salle-des-cartes':
         add('table-carte', 'chart-table', PROMPTS.carte, 2.6, () => gp.quests.chartTable())
@@ -202,6 +223,9 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
       }
       rayDoor(out)
       coneDoor(out)
+      if (boardPending()) {
+        for (let i = out.length - 1; i >= 0; i--) if (out[i]!.kind === 'airlock') out.splice(i, 1)
+      }
       roomFallbacks(out)
       if (drift) {
         const p = gp.heroPos()

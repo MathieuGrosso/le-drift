@@ -54,7 +54,7 @@ export class DriftNavmesh implements DriftNav {
     return r.success ? r.path : []
   }
 
-  // Unreachable = no path ends within reach of the target; off-mesh = the target has no floor under it.
+  // Unreachable = no path ends within pick-up reach of the target; off-mesh = the target has no floor under it.
   audit(from: Vec3, targets: readonly { id: string; at: Vec3 }[]): WalkReport {
     const report: WalkReport = { from, checked: targets.length, unreachable: [], offMesh: [] }
     for (const t of targets) {
@@ -64,7 +64,7 @@ export class DriftNavmesh implements DriftNav {
         continue
       }
       const end = this.path(from, snapped).at(-1)
-      if (!end || Math.hypot(end.x - snapped.x, end.y - snapped.y, end.z - snapped.z) > NAV.crowd.waypointReach) report.unreachable.push(t)
+      if (!end || Math.hypot(end.x - snapped.x, end.y - snapped.y, end.z - snapped.z) > NAV.auditReach) report.unreachable.push(t)
     }
     return report
   }

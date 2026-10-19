@@ -109,6 +109,7 @@ export class Kit {
   readonly cols: ColSpec[] = []
   readonly lamps: LampSpec[] = []
   readonly ladders: LadderSpec[] = []
+  readonly climbs: { from: Vec3; to: Vec3 }[] = []
   readonly anchors: Anchor[] = []
   readonly seats: SeatSpec[] = []
   readonly cells: CellDef[] = []
@@ -380,6 +381,7 @@ export class Kit {
       this.line(ax, y, az, bx, y, bz)
     }
     const rot = Math.atan2(bx - ax, bz - az)
+    this.climbs.push({ from: { x: (ax + bx) / 2, y: y0, z: (az + bz) / 2 }, to: { x: (ax + bx) / 2, y: y1, z: (az + bz) / 2 } })
     this.cols.push({
       kind: 'net', climbable: true, ownerId: owner, x: (ax + bx) / 2, y: (y0 + y1) / 2, z: (az + bz) / 2,
       hx: 0.08, hy: (y1 - y0) / 2, hz: len / 2, q: new THREE.Quaternion().setFromAxisAngle(UP, rot),

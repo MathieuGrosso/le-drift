@@ -352,6 +352,7 @@ export function shrine(k: Kit, s: ShrineAt): void {
   box(1.1, 1.4, D0, D1, 0, 2.6, teal)
   box(-1.4, 1.4, D0, D1, 2.6, 2.9, dark)
   box(-1.1, 1.1, D0, D1, -0.3, 0, C(PAL.metal), 'floor', true)
+  box(-1.1, 1.1, -0.6, D0, -0.3, -0.004, C(PAL.metal), 'floor', true)
   k.doors.push({ id: `scellee-${s.id}`, x: P(0, D0 + 0.1, 0).x, y, z: P(0, D0 + 0.1, 0).z, w: 1.3, h: 2.2, axis: along ? 'z' : 'x', style: 'hatch', open: false, lock: { act: 2 }, sign: `Coque scellée n° ${s.num}` })
   const R0 = D1
   const R1 = D1 + 9
@@ -391,7 +392,7 @@ export function shrine(k: Kit, s: ShrineAt): void {
   k.e.sphere(lever.x + 0.2, lever.y + 1.33, lever.z, 0.08, 0.08, 0.08, C(PAL.tissu1, 1.3))
   k.cols.push({ kind: 'prop', climbable: false, ownerId: `levier-${s.id}`, x: lever.x, y: lever.y + 0.6, z: lever.z, hx: 0.3, hy: 0.6, hz: 0.3 })
   box(-RW, -RW + 3, R1 - 2.5, R1, 2.8, 3.1, C(PAL.bois), 'floor', true)
-  k.ladder(`echelle-${s.id}`, P(-RW + 1.5, R1 - 2.7, 0).x, P(-RW + 1.5, R1 - 2.7, 0).z, 0, 3.1, -nx, -nz, [s.id])
+  k.ladder(`echelle-${s.id}`, P(-RW + 1.5, R1 - 2.7, 0).x, P(-RW + 1.5, R1 - 2.7, 0).z, y, y + 3.1, -nx, -nz, [s.id])
   const gr = P(-RW + 1.5, R1 - 2.5, 3.1)
   k.doors.push({ id: `grille-${s.id}`, x: gr.x, y: gr.y, z: gr.z, w: 2.4, h: 2.2, axis: along ? 'z' : 'x', style: 'grate', open: false })
   const ped = P(-RW + 1.5, R1 - 1.2, 3.1)
