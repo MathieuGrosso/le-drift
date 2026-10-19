@@ -1,149 +1,128 @@
-# Feel — round 2 (programmeur gameplay)
+# Feel — revue gameplay, round 2 (relecteur)
 
-Build `npm run build`, `vite preview` :4210, Chrome 155 GPU réel (port 9222, onglet dédié), `?debug&nosave`.
-Entrées réelles CDP (`Input.dispatchKeyEvent` tenu, `Input.dispatchMouseEvent`), `mousemove` réels pour le look
-(pointer lock refusé aux onglets CDP). Mesures par frame en coordonnées **locales du Drift** (le Drift avance :
-les « glissades » de M5 au round 1 étaient le navire qui bouge). `clip` = sphère 0,12 m à la caméra qui touche un
-collider solide. `distJerk` = plus grand saut de vitesse de la distance caméra-tête en une frame.
+Build `npm run build` du commit `acf07aa`, copie figée de `dist/` servie par `vite preview` sur :4211,
+Chrome 155 GPU réel (profil debug, port 9222, onglet dédié par session, refermé à la fin), viewport 1512×804 @2x,
+`?debug&nosave`. Environ 11 min de jeu réparties en 14 sessions.
 
-## Checklist traversées (entrée et sortie, avec vraies touches)
-
-| Traversée | Résultat | Mesure |
-|---|---|---|
-| Saut (Espace tenu / tapé) | OK | apex +1,15 m tenu, +0,58 m tapé ; coyote 0,12 s, buffer 0,12 s ; `jump→fall→land` |
-| Saut sur caisses / mantle | OK (corrigé) | pile de caisses de la Nef : était bloqué en `climb` sous un surplomb ; mantle sur le dessus en ~1 s |
-| Escalier, descente / montée | OK (corrigé) | descente 8 m en 3,6 s : 200 frames `run`, 0 `fall` (262/398 en `fall` au round 1) |
-| Échelle, monter par le pied | OK | mât 0-8 : 0 clip, distance min 1,9 m ; puits de l'Écluse 16 m, sortie en haut |
-| Échelle, sortie en haut | OK (corrigé) | recherche d'un point d'appui (par-dessus, derrière, sur les côtés) ; plus de collage au fût (L1) |
-| Échelle, descendre (S) / lâcher (Ctrl) | OK | retour au sol, `fall→land` |
-| Échelle, sauter (Espace) à mi-hauteur / sous plafond | OK (corrigé) | mi-hauteur : retombe à 3 m ; en haut : Espace = sortie ; détection « figé en l'air » (J1) |
-| Tube pneumatique Nef ↔ 5 stations | OK (corrigé) | la caméra restait côté Nef, face à Ilo, W poussait dans la cabine : arrivée caméra derrière, Ilo avancé de 1,3 m hors de la cabine, distance caméra ≥ 1,4 m |
-| Tube retour (Marché → Nef) | OK | E face à la cabine |
-| Tyrolienne Nef ouest | OK | 31 m, `zip` 191 frames, arrivée au sol ; distance caméra min 1,1 m au départ |
-| Toboggan Nef | OK | entrée en marchant dedans, 14 m de descente, sortie en course |
-| Porte de cabine | OK | invite Ouvrir/Fermer, passage sans accroc |
-| Écluse sortie / entrée | OK | tableau → Sortir → nage → « Rentrer » (E maintenu) → rembobinage 4 m/s → sas → air |
-| Nage (W seul) | OK (corrigé) | flottabilité neutre : dy 0 sur 4 s (−0,45 m/s au round 1) ; Espace +1,6 m/s, Ctrl −1,2 m/s |
-| S'asseoir / se lever | OK | banc du Réfectoire, W pour se lever |
-| Porter / poser | OK (API seulement) | saut porté 0,46 m ; aucun système ne déclenche `carry()` en jeu |
-| Échelle du mât 8-16 (caméra) | Partiel | 12 frames de clip sur 500 au passage du plancher annulaire, la caméra suit Ilo par le trou |
-
-## Les 4 bugs de l'orchestrateur
-
-1. **Caméra de cabine** : 2,7–3,0 m, 0 clip en idle, en lacet ±600 px, en tangage et en marche. FOV intérieur 64
-   (+5 dans les pièces étroites), tangage max intérieur 52° (vue zénithale supprimée), Ilo s'estompe sous 0,8 m.
-2. **Espace** : apex +1,15 m. Hauteur variable seulement sur un tap (< 0,16 s), le saut tenu 300 ms donne la hauteur pleine.
-3. **E pendant la narration** : 12 E à 250 ms → plus de menu « Dormir » (1 s de grâce après l'intro, la touche est avalée).
-4. **Intro** : bouger (ZQSD / stick) passe l'intro : contrôle à **1,3 s** après le clic de démarrage. Lignes auto 2,2–4,5 s.
-   Les cartons d'acte ne bloquent plus E / M / Échap (I2) : tube et pause marchent pendant « ACTE II ».
-
-## Autres corrections
-
-- **C1/C2 souris** : tout clic hors d'un contrôle d'UI reverrouille la souris (listener sur `window`, calque des bulles
-  transparent aux clics). Sans verrouillage, glisser clic gauche ou droit oriente la caméra (+0,5 rad mesuré).
-- **C3 caméra** : la caméra glisse vers l'avant à 9 m/s quand un obstacle n'occulte que la vue et ne saute que si elle
-  entrerait dans la géométrie, puis tient 0,35 s avant de ressortir (fin du pompage sous les poutres).
-- **M1/M2 sprint** : 6,0 m/s contre 3,8 m/s en course (+58 %) ; pousser un mur ne vide plus l'endurance.
-- **M4 demi-tour** : plus de bascule de lacet en une frame après un dérapage.
-- **Invites** : « Parler » ne s'affiche que face au PNJ (ou à moins de 1,3 m) ; il volait l'invite de la tyrolienne.
-- `?debug` expose `__heroCtrl` et `__heroCam`.
-
-## Reste à faire
-
-- Caméra au passage d'un plancher par une échelle (mât 8-16).
-- C5 : caméra à 0,5–0,6 m quand Ilo pousse dans un coin ; pas de décalage latéral automatique.
-- I3 : dans le sas, « Lire le tableau » prend E avant « Sortir » tant que la quête l'exige (voulu, mais double invite).
-- I5 : « Dormir » reste la première invite au réveil.
-
----
-
-# Feel — revue gameplay, round 1
-
-Build `npm run build` du commit `8022d96`, `vite preview` sur :4211, Chrome 155 GPU réel (profil debug, port 9222), viewport 1512×804 @2x.
-Partie neuve (`?nosave&debug`), 23 sessions scriptées pendant environ 12 min de jeu.
-Entrées réelles via CDP : `Input.dispatchKeyEvent` (keyDown/keyUp tenus), `Input.dispatchMouseEvent` (mouseMoved, `movementX` réel).
-Mesures par frame (rAF) : position et mode d'Ilo, distance caméra-tête, FOV, endurance, et **clip** = une sphère de 0,12 m (demi-largeur du near plane) au centre de la caméra qui intersecte un collider solide (hors trigger, fauna, kelp, net, seat).
-`distJerk` = plus grande variation de la vitesse de la distance caméra en une frame (un saut brutal de la caméra).
-Captures : `shots/feel/*.jpg` (non versionnées).
-
-Limite du banc : Chrome refuse le pointer lock à un onglet ouvert par CDP (« root document not valid »). Le look souris est donc mesuré avec de vrais `mousemove`, après avoir forcé `ctx.input.pointerLocked = true`. Le chemin clic → verrouillage, lui, est cassé pour de vrai (voir C1).
+Entrées : vraies touches CDP (`Input.dispatchKeyEvent` tenues/relâchées) et **vrais déplacements de souris**
+(`Input.dispatchMouseEvent mouseMoved`, `movementX` produit par Chrome, environ 0,0028 rad/px soit 2,25 rad pour 800 px).
+Chrome refuse toujours le pointer lock à un onglet CDP, donc `input.pointerLocked` est forcé à `true` ; le clic
+de démarrage et Échap restent de vrais événements.
+Mesures par frame (rAF), en coordonnées locales du Drift : mode d'Ilo, distance caméra-tête, FOV,
+`clip` = sphère de 0,12 m à la caméra qui touche un collider solide, `distJerk` = plus grand changement de vitesse
+de la distance caméra en une frame. Captures : `shots/feel3/*.jpg` (non versionnées).
 
 ## Notes
 
 | Axe | Note | En une ligne |
 |---|---|---|
-| Caméra | **5/10** | Bonne dans les coursives et la Nef, mais elle traverse le mât sur l'échelle, saute de 0,7 à 4 m en une frame près des plafonds, et un clic ne rend jamais la souris. |
-| Saut | **7/10** | Le saut est corrigé : 1,14 m tenu, 0,62 m tapé, coyote time, on monte sur les tables. On reste figé en l'air en sautant d'une échelle près d'un plafond. |
-| Déplacement | **6/10** | Réactif (0 à 4 m/s en 0,3 s, arrêt en 0,2 s), monte bien les escaliers. Le sprint n'ajoute que 10 %, la descente d'escalier joue l'animation de chute, et pousser un mur en sprint vide l'endurance. |
-| Escalade | **4/10** | L'échelle s'attrape en marchant et monte à 1,6 m/s, mais l'échelle du mât n'a pas de sortie : on se colle au mât en clignotant entre `fall` et `climb`. |
-| Nage | **5/10** | Vitesse correcte et corde lisible, mais Ilo coule en avançant, sort de l'écluse dos à la coque, et le fond marin est au centre de l'image. |
-| Interactions | **4/10** | Le E du dialogue de Mme Rouille déclenche l'écluse. Les premières pressions sont mangées pendant le carton d'acte, et deux invites se disputent la même touche. |
+| Caméra | **6/10** | 0 frame de clip sur toute la session et aucun saut brutal, mais pas de vraie vue par-dessus l'épaule, Ilo occupe encore le centre de la cabine, et la caméra s'écrase à 0,2–0,8 m dans les coins, les coursives et sur l'échelle. |
+| Saut | **7/10** | Le saut marche partout : 1,12 m tenu, 0,56 m tapé, buffer vérifié, saut en descente d'escalier. Atterrir *sur* un banc reste difficile, et un saut contre une caisse basse devient un agrippement. |
+| Déplacement | **7/10** | Course 3,9 m/s, sprint 6,4 m/s, escaliers sans chute. Un tap de 100 ms fait glisser Ilo de 0,74 m, l'animation clignote walk/idle contre un obstacle, et une porte prise 0,9 m hors de l'axe bloque net. |
+| Escalade | **5/10** | Échelle attrapée en marchant et montée propre, mais la sortie en haut du mât 0-8 ne pose pas Ilo sur le palier : il continue en escalade libre sur le fût. Caisse basse = agrippement figé. |
+| Nage | **6/10** | Vitesse lisible (2,8 m/s, 4,4 m/s en sprint), corde visible, cadrage large. Ilo coule à l'arrêt (−0,2 m/s), la corde ne se fait pas sentir sur 23 m, et il faut tenir E 11 s pour rentrer. |
+| Interactions | **5/10** | Le menu « Dormir » s'ouvre encore en martelant E à la fin de l'intro. La première sortie coûte 8 pressions de dialogue et 6,4 s de cinématique. Invites et textes se superposent au centre de l'écran. |
 
-## Les 4 bugs signalés par l'orchestrateur
+Intro (bug 4) : **corrigée pour l'essentiel**. Sans rien toucher, contrôle à 12,2 s (3 lignes). Échap : contrôle à 1,5 s.
+Bouger (W) : contrôle à moins de 1,2 s. Espace et E font avancer (3 lignes en 3,6 s à l'Espace).
 
-1. **Caméra dans la cabine au démarrage : corrigé.** Distance 2,71 m, Ilo bas-centre, rien ne clippe (`10-cabin-idle`). Ça régresse dès qu'on tourne : après 600 px de yaw, la caméra tombe à **0,74–0,9 m** (14 frames sous 0,8 m), et la tête d'Ilo occupe le centre sans s'estomper (`13-cabin-look`). En tangage à fond (+300 px), la vue devient zénithale au-dessus d'Ilo (`14-cabin-pitch`).
-2. **Espace ne saute pas : corrigé.** Espace tenu 300 ms → apex **+1,143 m**. Tapé 50 ms → **+0,615 m** (hauteur variable). Suite `jump → fall → land`.
-3. **E traverse la narration : corrigé pour l'intro, pas ailleurs.** Six E à 250 ms pendant l'intro : chaque carton exige environ 1,4 s, le reste est avalé, et « Dormir » ne s'ouvre pas. Le même défaut existe dans le dialogue du tableau (I3).
-4. **Intro longue : corrigé.** Trois cartons, avancés au clic, à Espace ou à E. Contrôle obtenu à 5,2 s en enchaînant les pressions, et tout de suite avec Échap. Sans rien toucher, le premier carton reste environ 6 s.
+## Les 4 bugs de l'orchestrateur, revérifiés
 
-## Caméra
+| # | État | Mesure |
+|---|---|---|
+| 1 Caméra de cabine | **Partiel** | Départ : 2,7 m, tangage 0,28, FOV 64,6, `side` 0,09 : Ilo reste centré et cache la porte ronde (`cab-0.jpg`). En reculant 2 s vers la caméra (S), la caméra arrive à **0,23 m** de la tête, `side` 0,5, FOV 68,8 : l'image n'est plus qu'Ilo tramé en gros plan dans un coin sombre (`cab-wall.jpg`). Le fondu sous 0,8 m existe (tramage visible) mais ne suffit pas à rendre la vue lisible. |
+| 2 Espace ne saute pas | **Corrigé** | Cabine : +1,12 m (Espace tenu 300 ms), +0,56 m (tap 50 ms), séquence `jump>fall>land>idle`. |
+| 3 E pendant la narration | **Partiel** | 20 E à 290 ms d'intervalle depuis le clic : narration terminée à 4,0 s, puis **menu « Dormir » ouvert à 5,2 s**. La seconde de grâce ne couvre pas un joueur qui martèle. Avec Espace martelé, le premier appui après la narration fait sauter Ilo (inoffensif). |
+| 4 Intro longue et sombre | **Corrigé** (sauf la lumière) | Voir plus haut. La cabine reste très sombre à l'arrivée (`intro-auto-end.jpg`) et le carton « ACTE I · La Vitre » s'affiche sur Ilo pendant les premières secondes de jeu (`cab-0.jpg`). |
 
-**C1 — Le clic ne reprend jamais la souris (bloquant).** `.drift-bulles` (`src/drift/chatter.ts`) est un calque `position: fixed; inset: 0` dont le `pointer-events: none` est écrasé par `#ui > * { pointer-events: auto }` (une règle d'id bat une règle de classe). `elementsFromPoint(640,400)` renvoie `DIV.drift-bulles pe=auto` au-dessus du `CANVAS`, et un clic CDP au centre déclenche **0** `click` sur le canvas. Après Échap, un alt-tab ou une perte de focus, cliquer dans le jeu ne reverrouille pas la souris, et sans verrouillage `onMouseMove` ignore tout : la caméra est morte. C'est très probablement le « caméra vraiment buggy » du propriétaire. Repro : lancer une partie, Échap, Reprendre ou cliquer dans la scène, bouger la souris.
-**C2 — Aucun look sans pointer lock.** `input.ts` n'accepte la souris que verrouillée. Il n'y a pas de repli clic-droit-glisser, alors qu'un navigateur peut refuser le verrouillage (iframe, onglet d'arrière-plan, Safari, ou deux Échap rapprochés).
-**C3 — Sauts de distance en une frame.** Orbite de 1000 px en haut de l'escalier de la Nef : `distJerk` **2,22 m**, distance entre 1,35 et 5,3 m. Tangage dans la cabine : 0,69 m. Échelle du mât : **4,16 m**. Le cast se raccourcit instantanément (`allowed < dist` → `dist = allowed`) puis ressort à `easeOut`, ce qui donne un pompage visible près des poutres et des plafonds.
-**C4 — La caméra traverse le mât sur l'échelle.** Échelle `mat-0-8` (local 2.9,0,0), montée de 3 s : 8 frames en clip, et l'écran entier montre les barreaux sans Ilo (`36-ladder-mid`). Le style `ladder` ajoute +0,6 m de distance et recentre le yaw sur le mur, ce qui pousse la caméra dans le fût.
-**C5 — Caméra collée dans les coins.** Dans le sas, contre un mur en sprint : 276/276 frames à **0,58 m**, Ilo réduit à une silhouette tramée en bord d'écran (`75-swim-sprint`). Il n'y a pas d'offset latéral pour se dégager, et pas de recentrage quand on est bloqué.
-**OK :** coursive en W pendant 3 s, distance 2,9–3,7 m, 0 clip, jerk 0,2. Nef 4,6–5 m, FOV 62. Sas 2,7–3,05 m. Zip : la caméra suit derrière, FOV 66–69, lisible (`52-zip-ride`). Aucun basculement constaté, pitch borné.
-**Réglages :** sensibilité et inversion existent (Pause → Réglages).
+## Défauts, avec repro
 
-## Saut
+### Caméra
 
-**J1 — Figé en l'air après un saut d'échelle sous un plafond.** Monter `mat-0-8` jusqu'à environ 6,8 m (local), puis Espace : mode `fall` pendant 1,2 s et plus, y constant à 61,829, caméra en clip 123/123 frames à 0,72 m (`37-ladder-jumpoff`). Le même saut à 3,6 m retombe normalement.
-**J2 — Ilo se colle à la Grande Vitre.** Courir vers la vitre du Réfectoire en tapant Espace toutes les 0,4 s : Ilo finit à +1,85 m, plaqué contre le verre en pose de saut pendant 173 frames (`62-refectoire-jump`). Il escalade la vitre de l'intérieur.
-**OK :** coyote et buffer présents, monter sur banc et table au saut fonctionne (+1,0 à +1,6 m atteints), réception `land`.
+- **C1 Pas d'épaule.** `__heroCam.side` vaut 0 à 0,1 en marche normale, partout (cabine, coursive, Nef). L'épaule
+  n'apparaît (0,3–0,5) que quand la caméra est déjà écrasée. Repro : partie neuve, Échap, ne pas bouger, `cab-0.jpg`.
+  Attendu : Ilo décalé d'un tiers d'écran dans les petites pièces, la porte visible.
+- **C2 Coin de cabine.** Partie neuve, Échap, maintenir S 2 s : distance 2,88 → 0,40 m, finit à 0,23 m. Aucun clip
+  (la sphère tient), mais aucune vue utile. Attendu : relever la caméra (tangage) au lieu de l'avancer sous 1 m.
+- **C3 Coursive.** `goto('coursive')`, W tenu 4 s avec la souris en zigzag ±300 px : la distance tombe de 1,96 à
+  **0,81 m en 8 frames**, puis remet 2 s à revenir à 2,9 m. Aucun clip. Le rentrage est trop profond pour un couloir
+  de cette largeur ; il faudrait un plancher autour de 1,3 m tant qu'aucune géométrie ne touche la caméra.
+- **C4 Échelle, regard vers le haut.** Mât 0-8, monter 2,5 s puis souris +1500 px en lacet et ±300 px en tangage :
+  distance min **0,43 m**, tangage −0,81, `side` −0,5. Au saut depuis l'échelle, la caméra repart de 0,43 m
+  (`distJerk` 0,64).
+- **C5 Départ de tyrolienne.** E sur `tyrolienne-nef-ouest` : 68 frames (≈1,2 s) d'`idle` avant le départ, puis la
+  distance passe de 4,9 à 5,95 m en une frame (`distJerk` 1,22). Toboggan : 0,47 m au point d'entrée, `distJerk` 1,04.
+- **C6 Arrivée de tube au Marché.** Tube Nef → Marché : arrivée à 1,49 m derrière la tête, la nuque en bas au centre,
+  face à la file d'un étal, invite « Parler » immédiate, et W 1 s n'avance que de 0,59 m (bloqué par la foule).
+  Le titre « Le Grand Marché » est posé sur les PNJ (`t2-tube.jpg`).
+- **Bon** : 0 frame de clip sur environ 6 000 frames mesurées ; aucun retournement ; FOV 62–66 à l'intérieur,
+  55 dehors ; recentrage derrière Ilo en marchant ; tangage borné (≈ −0,8 à 0,8 rad) ; réglages « Inverser la caméra
+  verticale » et « Sensibilité » présents dans Pause → Réglages.
 
-## Déplacement
+### Saut
 
-**M1 — Le sprint n'apporte presque rien.** Course 3,98 m/s, Maj+W 4,3 m/s (+10 %) pour 31 % d'endurance en 3 s. BotW est à environ +60 %.
-**M2 — Le sprint contre un mur vide l'endurance.** Maj+W bloqué dans un coin du sas : déplacement 1,55 m en 3 s, mode `idle` 274/276, endurance 1,0 → 0,70.
-**M3 — La descente d'escalier joue la chute.** Escalier de la Nef (local -28, de 8 à 0) en W pendant 4 s : 262 frames en `fall` sur 398. Ilo « tombe » de marche en marche au lieu de descendre.
-**M4 — Le demi-tour est instantané.** W puis S : le yaw passe de 1,26 à -1,88 en une frame, vitesse à 0, puis réaccélère. C'est lisible mais sec : il n'y a pas de pivot ni de dérapage.
-**M5 — Glissade à l'arrêt.** W tapé 120 ms : 0,22 m pendant l'appui, puis 0,41 m après le relâchement.
-**OK :** montée de l'escalier à 1,9 m/s vertical sans accroc, coursive et portes franchies sans blocage, accélération en 0,3 s.
+- **J1 Bancs.** Banc `banc-nef-1` (12,2, −5,5, 5,05), Ilo à 2,5 m face au banc, W 350 ms puis Espace : apex 1,29 m
+  mais Ilo passe par-dessus et atterrit derrière (dy +0,08). Depuis l'autre côté : le même geste l'envoie par-dessus le
+  bord de la Nef, chute de 6,8 m (roulade). On ne peut pas viser le dessus d'un banc : pas assez de freinage en l'air.
+- **J2 Caisse basse.** Nef, (−30, −6, −23,5) face au nord, W 1,2 s : Ilo passe en `climb` contre la première caisse
+  et y reste (bras levés, `t2-crate.jpg`). Espace dans cet état : apex 0,10 m, 125 frames de `climb` figé.
+  Il faut un second Espace pour s'en sortir. Avec un élan de 300 ms, le même mur se franchit bien (mantle, `climb>idle`).
+  Attendu : une caisse sous ~1,2 m se monte (mantle direct), elle ne s'agrippe pas.
+- **Bon** : buffer vérifié (Espace 60 ms avant l'atterrissage → deuxième saut) ; saut en descente d'escalier
+  (`run>jump>fall>run`) ; saut en montée d'escalier.
 
-## Escalade
+### Déplacement
 
-**L1 — L'échelle du mât n'a pas de sortie.** W tenu 7 s depuis le pied de `mat-0-8` : Ilo arrive à local (2,35 ; 8,1) puis alterne `fall` et `climb` contre le fût (77/66 frames). L'endurance descend (0,91) et il ne se hisse jamais sur la plateforme (`41-ladder-exit`). Il manque une sortie en haut de l'échelle et un mantle vers la plateforme.
-**L2 —** Descendre l'échelle avec S fonctionne (de 3,65 à 0,01 en 3 s). Sauter à 3,6 m fonctionne. Voir J1 pour le cas haut.
-**L3 —** L'échelle part en `ladder` dès qu'on marche dedans, sans invite : c'est bien, mais aucune indication avant le contact.
+- **M1 Glissement court.** Coursive, tap W 100 ms : Ilo parcourt 0,74 m. Un pas de placement devrait faire ~0,3 m.
+- **M2 Clignotement walk/idle.** Bas de l'escalier ouest (−28, 8, −4), S tenu 1 s puis Espace : la séquence de modes
+  est `run>jump>run>walk>run>walk>idle>walk>idle>walk>idle…` (12 bascules en 2 s) pendant qu'Ilo pousse contre la
+  rampe. Visible à l'écran comme un pas qui bégaie.
+- **M3 Porte hors de l'axe.** Cabine, porte ouverte : si Ilo arrive à ~0,9 m à droite de l'axe (x ≈ −10,3), W 2,6 s
+  ne le fait pas avancer (0 m, mode `idle`), pas de glissement le long du chambranle. Centré, il passe sans accroc.
+- **M4 Pousser un mur = idle.** Contre un mur, W donne `idle` sans aucune animation d'appui ; le joueur ne sait pas si
+  la touche est prise en compte.
+- **Bon** : course 3,93 m/s, sprint 6,38 m/s (+62 %), descente d'escalier 8 m en 3,6 s sans `fall`, montée sans accroc.
 
-## Nage (sortie à la longe)
+### Escalade
 
-**S1 — Ilo coule en avançant.** W seul pendant 5 s : y passe de 55,8 à 53,5, puis de 53,3 à 51,7 en 4 s, soit environ 0,45 m/s vers le fond. Le joueur doit corriger en permanence avec Espace, et le fond marin, qu'on ne doit jamais rejoindre, finit au centre de l'image.
-**S2 — Sortie dos à la coque.** Au spawn, la caméra regarde le large, les kelps et les poissons (`83-sortie-spawn`). La coque, la vitre à nettoyer et la corde-guide sont hors champ.
-**S3 — « Rentrer » partout, et sans effet.** L'invite « E Rentrer » reste affichée à 30 m du sas. Un E à 28 m ne fait rien (position inchangée après 6 s).
-**S4 — E en sortie de sas te fait rentrer.** À l'apparition, « Entrer dans le sas » est l'invite active : un E de trop, ou celui du joueur qui enchaîne, annule la sortie. Ça s'est produit à la 2e pression.
-**S5 — F loin d'une vitre ne dit rien.** F tenu 2,5 s en pleine eau : aucune invite, aucun retour.
-**OK :** 2,9 m/s en nage et 3,7 m/s en sprint (endurance de 1,0 à 0,64 en 3 s, régénère), montée et descente nettes, caméra à 6–7 m sans clip, corde bien lisible (`86-swim-w2`). La longe borne la sortie à environ 28 m.
+- **L1 Sortie du mât 0-8.** Téléporter en (4, 0, 0) face à l'ouest, W 7 s : l'échelle monte à 8,95 m puis Ilo passe en
+  `climb` **sur le fût du mât**, au-dessus du palier, au lieu de poser les pieds sur le plancher annulaire
+  (`t2-ladder-top.jpg`). W continue l'escalade libre jusqu'à 13,75 m. Le palier est juste derrière lui.
+- **L2** = J2 (agrippement sur caisse basse).
+- **Bon** : saut depuis l'échelle à mi-hauteur (retour au sol, `jump>fall>land`), montée par simple marche.
 
-## Interactions et UI
+### Nage (sortie à l'écluse)
 
-**I1 — Le E du dialogue lance l'écluse.** Au tableau du sas, avec E toutes les 1,45 s : la 6e pression ferme le dialogue de Mme Rouille, la 7e déclenche l'écluse (`cutscene` → `water`) alors que le joueur ne visait pas la porte. Le dialogue doit avaler la pression qui le ferme.
-**I2 — Pressions mangées pendant le carton d'acte.** Pendant les 4,5 s du carton « ACTE I · La Vitre » après l'intro, aucune invite ne s'affiche, et M, Échap et E sont perdus sans tampon. À 9 s, les mêmes touches ouvrent la pause et la carte. Même symptôme au tableau : le premier E après l'arrivée est ignoré.
-**I3 — Deux invites pour E.** Dans le sas, le conseil « [E] près de la porte ronde pour passer l'écluse. » s'affiche (crochets bruts) au-dessus de « E Lire le tableau », mais E lit le tableau (`24-sas`).
-**I4 — Le carton d'acte et le nom de lieu couvrent Ilo** (`10-cabin-idle`, `30-nef`). « Qualité réduite » chevauche « Nouvelle tâche » en haut à gauche (`31-stairs-bottom`).
-**I5 — « Dormir » est la première invite du jeu.** Elle s'affiche dès le spawn dans la cabine, depuis n'importe quel point de la pièce.
+- **S1 Coule à l'arrêt.** Dehors, aucune touche pendant 2 s : dy −0,41 m. Le round précédent annonçait 0.
+- **S2 Corde muette.** W tenu 8 s dans le même axe : 23,5 m parcourus à vitesse constante, aucune tension, aucune
+  butée ressentie. Si la longe a une longueur, elle ne se sent pas.
+- **S3 Retour long.** « Rentrer » (E maintenu) : 11,1 s avant d'être de nouveau dans le sas.
+- **Bon** : contrôle à 6,4 s après « Sortir par l'écluse » ; nage 2,8 m/s, sprint 4,4 m/s qui consomme le souffle
+  (1,00 → 0,64) ; Espace monte (+2,5 m en 1,5 s), Ctrl descend (−2,1 m) ; cadrage 6 m, FOV 55 ; on ne marche jamais
+  sur le fond.
 
-## Hors gameplay, vu en passant
+### Interactions
 
-- Un banc de poissons nage **dans** le sas, sous le plafond (`24-sas`).
-- Une longue ligne droite (câble ou longe ?) traverse le Réfectoire en diagonale devant la Grande Vitre (`62`, `64`).
-- Performances : 80–100 fps en intérieur, 42–56 fps à l'arrivée dans la Nef, et « Qualité réduite » s'affiche environ 2 s après le démarrage.
+- **I1** = bug 3 (« Dormir » après martèlement de E).
+- **I2 « Dormir » reste la première invite** au réveil, 0,8 s après la fin de l'intro, alors que la tâche est
+  « Aller à l'écluse ».
+- **I3 Première sortie lourde.** `goto('sas')` → « Lire le tableau » → 8 pressions de E (dialogue de Mme Rouille,
+  sans indication de touche, seul un triangle) → « Sortir par l'écluse » → 6,4 s de cinématique.
+  Total : ~15 s avant de nager.
+- **I4 Empilement au centre.** Devant le tableau du sas : titre de zone « L'Écluse », bulle de PNJ, aide
+  « [E] près de la porte ronde… » et invite « E S'asseoir » au même moment. L'aide parle de la porte, mais E fait
+  asseoir sur le tabouret (`t3-coursive.jpg`). Même chose au Marché (titre + « Parler »).
+- **I5 Banc sans invite.** Face à `banc-nef-1` à 2,5 m puis à son contact : aucune invite « S'asseoir ».
 
 ## Ordre de correction proposé
 
-1. C1 (calque qui mange les clics) et C2 (repli sans lock) : sans eux, la caméra n'existe pas pour le joueur.
-2. I1 et S4 (E qui traverse), I2 (pressions perdues pendant les cartons).
-3. L1 et J1 (sortie d'échelle, figé en l'air), C4 (caméra sur l'échelle).
-4. S1 (flottabilité neutre quand on n'appuie sur rien) et S2 (spawn face à la coque).
-5. C3 (lisser le rapprochement de la caméra), M1 à M3.
+1. C1/C2 : vraie épaule (0,4–0,5 m) dans les pièces de moins de 4 m, et relever la caméra au lieu de l'avancer sous 1 m.
+2. L1 + J2 : sortie d'échelle sur le palier, mantle direct sous 1,2 m.
+3. Bug 3 : avaler E jusqu'à ce que la touche soit relâchée *et* 1 s écoulée ; ne pas proposer « Dormir » en premier au réveil.
+4. C3/C4 : plancher de distance en couloir et sur échelle quand rien ne touche la caméra.
+5. S1–S3, M1–M3, I3–I5.
+
+## Ce qui n'a pas été testé
+
+Filets, tuyaux, nervures de coque (aucune ancre de ces types dans `anchorsNear`), saut depuis une tyrolienne,
+manette (stick droit). Pointer lock réel : refusé à l'onglet CDP, donc non vérifié.
