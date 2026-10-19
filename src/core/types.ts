@@ -220,6 +220,8 @@ export interface SaveStore {
   write(): boolean
   load(): GameState | null
   clear(): void
+  /** Online, writes go to this player's own key so the solo save is left as it was; null returns to solo. */
+  useSlot(slot: string | null): void
 }
 
 export interface CelMaterialParams {

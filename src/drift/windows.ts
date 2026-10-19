@@ -1,5 +1,7 @@
 import * as THREE from 'three'
+import { WINDOWS } from '../core/tuning'
 import type { GameContext, Vec3 } from '../core/types'
+import { windowCoat } from '../shared/protocol'
 import type { DriftPose } from './frame'
 import { dirToWorld, toLocal, toWorld } from './frame'
 import type { Quarter } from './interiors/quarter'
@@ -99,7 +101,6 @@ void main() {
 
 export interface WindowInfo { id: string; coat: number; position: Vec3; normal: Vec3 }
 
-const INITIAL_COAT = 0.9
 const _m = new THREE.Matrix4()
 const _m2 = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
@@ -206,6 +207,8 @@ export class Windows {
   }
 
   private regrowHours(): number {
+    // Online every player must see the same coat, so the act/north rate is solo only.
+    if (this.ctx.services.net?.status() === 'online') return WINDOWS.sharedRegrowHours
     const s = this.ctx.state
     let h = s.act >= 2 ? 12 : 20
     if (s.drift.position.z < -600) h *= 0.5
@@ -213,9 +216,7 @@ export class Windows {
   }
 
   coat(id: string): number {
-    const t = this.ctx.state.windows[id]
-    if (t === undefined) return INITIAL_COAT
-    return THREE.MathUtils.clamp((this.now() - t) / this.regrowHours(), 0, 1)
+    return windowCoat(this.ctx.state.windows[id], this.now(), this.regrowHours(), WINDOWS.initialCoat)
   }
 
   scrub(id: string, amount: number): number {

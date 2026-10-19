@@ -3,7 +3,7 @@ import { Client, type Room } from '@colyseus/sdk'
 import {
   AVATAR_COLORS, DEFAULT_PORT, PROTOCOL_VERSION, ROOM,
   type ChatLine, type ClientMessages, type JoinOptions, type MondeStateView, type QuartierJoinOptions,
-  type QuartierStateView, type ServerMessages,
+  type PlayerSave, type QuartierStateView, type ServerMessages,
 } from '../../src/shared/protocol'
 import { DISTRICT_BY_ID } from '../../src/core/layout'
 import { GUARDS } from '../src/config'
@@ -16,6 +16,8 @@ const SEND_MS = 1000 / 12
 
 interface Bot {
   name: string
+  base: JoinOptions
+  welcome: ServerMessages['welcome'] | null
   monde: Room<unknown, MondeStateView>
   quartier: Room<unknown, QuartierStateView>
   chats: ChatLine[]
@@ -36,9 +38,12 @@ async function join(name: string, color: number): Promise<Bot> {
     profile: { name, color },
   }
   const monde = await client.joinOrCreate<MondeStateView>(ROOM.monde, base)
+  // Registered before the next await: the server flushes `welcome` right after the join handshake.
+  const seen: Pick<Bot, 'welcome'> = { welcome: null }
+  monde.onMessage('welcome', (m: ServerMessages['welcome']) => void (seen.welcome = m))
   const opts: QuartierJoinOptions = { ...base, district: DISTRICT }
   const quartier = await client.joinOrCreate<QuartierStateView>(ROOM.quartier, opts)
-  const bot: Bot = { name, monde, quartier, chats: [], refused: [] }
+  const bot: Bot = { name, base, welcome: seen.welcome, monde, quartier, chats: [], refused: [] }
   quartier.onMessage('chat', (m: ChatLine) => bot.chats.push(m))
   for (const room of [monde, quartier]) {
     room.onMessage('refused', (m: ServerMessages['refused']) => bot.refused.push(m))
@@ -110,6 +115,29 @@ const bogus = await rejects(new Client(URL_).create(ROOM.quartier, { ...intruder
 const twin = await rejects(new Client(URL_).create(ROOM.quartier, { ...intruder, district: DISTRICT }))
 await sleep(200)
 check('a client cannot create a room for an unknown or live district', bogus && twin && bots.every((b) => b.quartier.state.avatars.size >= 3))
+
+const saveWith = (quests: Record<string, string>): PlayerSave => ({
+  version: 2, act: 1, quests, flags: {}, chart: { sondes: [], reperes: [], pins: [] }, inventory: { items: {}, slots: 8 },
+  shallows: [], trouvailles: [], hero: { localPosition: null, yaw: 0, district: DISTRICT, room: null },
+})
+const rejoinMonde = async (b: Bot) => {
+  await b.monde.leave()
+  const monde = await new Client(URL_).joinOrCreate<MondeStateView>(ROOM.monde, b.base)
+  b.welcome = null
+  monde.onMessage('welcome', (m: ServerMessages['welcome']) => void (b.welcome = m))
+  monde.onMessage('*', () => undefined)
+  b.monde = monde
+}
+check('a first join gets no server save', mila.welcome !== null && mila.welcome.save === null)
+send(mila.monde, 'save', { save: saveWith({ 'a1-reveil': 'faite' }) })
+send(bastien.monde, 'save', { save: saveWith({ 'demande-rouille': 'proposee' }) })
+await sleep(400)
+await Promise.all([rejoinMonde(mila), rejoinMonde(bastien)])
+await sleep(400)
+const questsOf = (b: Bot) => JSON.stringify(b.welcome?.save?.quests ?? null)
+check('each player gets back their own quest progress on rejoin', questsOf(mila) === '{"a1-reveil":"faite"}' && questsOf(bastien) === '{"demande-rouille":"proposee"}')
+const coatAt = (b: Bot) => b.monde.state.windows.get(WINDOW)
+check('every player sees the same scrubbed window', coatAt(nour) !== undefined && bots.every((b) => coatAt(b) === coatAt(nour)))
 
 walkers.forEach(clearInterval)
 await Promise.all(bots.flatMap((b) => [b.quartier.leave(), b.monde.leave()]))

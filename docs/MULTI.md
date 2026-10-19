@@ -167,6 +167,11 @@ callbacks only write into plain buffers that `update` reads.
   `sleepUntil` are solo-only.
 - Save: `createSaveStore` gains a remote sink; `welcome.save` (if present) replaces the local save on
   join; `PlayerSave` is `GameState` minus shared and local keys.
+  Once welcomed, local writes go to `le-drift:save:v2:online:<playerId>` (`SaveStore.useSlot`), so the
+  solo save `le-drift:save:v2` is never overwritten by an online player; the net system flushes the
+  debounced server save on dispose (page unload).
+- Windows: online, `coat()` uses `WINDOWS.sharedRegrowHours` and `net/world.ts` drops local scrub times
+  for windows the server has never seen, so every player sees the same coat.
 - Quests stay flag-derived and idempotent (BIBLE §3); nothing in them assumes being alone except the
   scenes, which run locally.
 - Interact prompts: a remote avatar is an `interact` candidate « Saluer » (sends the `salut` emote

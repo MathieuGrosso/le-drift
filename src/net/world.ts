@@ -26,11 +26,14 @@ export class SharedWorld {
     if (this.windowTimer > 0) return
     this.windowTimer = WINDOW_SYNC_SECONDS
     const now = performance.now()
+    const held = (id: string) => now - (this.scrubbedAt.get(id) ?? -Infinity) < LOCAL_SCRUB_HOLD_MS
     m.windows.forEach((scrubbedAt, id) => {
-      if (now - (this.scrubbedAt.get(id) ?? -Infinity) < LOCAL_SCRUB_HOLD_MS) return
+      if (held(id)) return
       this.state.windows[id] = scrubbedAt
       this.sentCoat.delete(id)
     })
+    // A window the server never saw is still coated for everyone, whatever the solo save says.
+    for (const id of Object.keys(this.state.windows)) if (!m.windows.has(id) && !held(id)) delete this.state.windows[id]
   }
 
   /** Forwards a local scrub as the coat it removed, so the server applies it on its own clock. */

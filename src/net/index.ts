@@ -77,6 +77,8 @@ export function createNetSystem(): System {
       case 'welcome': {
         const w = payload as ServerMessages['welcome']
         me = w.you
+        // Kept after a drop to solo: this tab now carries that player's progress, not the solo one.
+        ctx.save.useSlot(`online:${w.you}`)
         if (w.save) applyPlayerSave(ctx, w.save)
         else save?.flush()
         break
@@ -261,6 +263,8 @@ export function createNetSystem(): System {
 
     dispose() {
       unsubs.splice(0).forEach((u) => u())
+      // The engine's unload save only schedules the debounced send; it must leave before the socket closes.
+      if (status() === 'online') save?.flush()
       void session?.stop()
       session = null
       avatars?.clear()

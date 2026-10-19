@@ -5,12 +5,16 @@ export const SAVE_KEY = 'le-drift:save:v2'
 export const LEGACY_SAVE_KEYS = ['le-drift:save:v1'] as const
 
 export function createSaveStore(getState: () => GameState, bus: EventBus, enabled: boolean): SaveStore {
+  let writeKey = SAVE_KEY
   return {
     enabled,
+    useSlot(slot) {
+      writeKey = slot ? `${SAVE_KEY}:${slot}` : SAVE_KEY
+    },
     write() {
       if (!enabled) return false
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify(getState()))
+        localStorage.setItem(writeKey, JSON.stringify(getState()))
         bus.emit('save:written', {})
         return true
       } catch {
