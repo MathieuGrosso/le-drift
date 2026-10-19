@@ -8,6 +8,8 @@ export const DRESS = {
   sliceSlots: 60,
   bay: { min: 2.4, max: 4.6, gap: 0.5, split: 5 },
   roomTint: 0.6,
+  square: { clear: 2.4, seats: [3, 5] as const, seatRadius: 2.1, lampRadius: 2.9, scale: 1.5 },
+  banner: { count: [2, 5] as const, width: 1.1, drop: [4, 9] as const, inset: 0.6, clear: 1.3 },
   scrap: { every: 2.4, chance: 0.35, reach: [0.8, 1.5] as const, objet: 0.12 },
   aside: { depth: 1.1, cornerInset: 0.3 },
   facade: { window: 0.7, glow: 3.2, garland: 0.55, garlandSpan: [4, 14] as const, garlandY: 3.3 },

@@ -10,6 +10,7 @@ export type Weighted<T> = readonly (readonly [T, number])[]
 
 export interface Recipe {
   density: number
+  square?: PropKind
   scraps: 'papier' | 'linge' | 'ecailles' | 'limaille' | 'feuilles' | 'sciure'
   moods: Weighted<MoodId>
   slots: Readonly<Partial<Record<SlotKind, Weighted<ClusterId>>>>
@@ -102,6 +103,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { sol: [['atelier', 3], ['pile', 2]] },
   }),
   dortoirs: recipe({
+    square: 'table',
     moods: [['habite', 4], ['range', 2], ['fete', 1], ['abandonne', 1]],
     goods: ['livres', 'jouets', 'panier', 'tabouret'], work: ['couchette', 'livres'],
     lamps: ['applique', 'globe'], lines: [['linge', 3], ['ampoules', 2]], curtains: true, skinLit: 0.85,
@@ -141,6 +143,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { sol: [['plantes', 4], ['atelier', 1]], mur: [['plantes', 3], ['etagere', 1]] }, density: 1.2,
   }),
   nurserie: recipe({
+    square: 'bassin',
     moods: [['habite', 4], ['fete', 2], ['range', 1]],
     goods: ['jouets', 'panier', 'livres', 'berceau'], work: ['berceau', 'jouets'],
     lamps: ['globe', 'suspension'], lines: [['fanions', 3], ['linge', 2]], curtains: true, skinLit: 0.75,
@@ -153,6 +156,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { sol: [['atelier', 4], ['plantes', 2]], mur: [['atelier', 2], ['plantes', 2]] }, density: 1.15,
   }),
   bibliotheque: recipe({
+    square: 'table',
     moods: [['range', 4], ['habite', 2], ['encombre', 1], ['abandonne', 1]],
     goods: ['livres', 'horloge', 'tabouret'], work: ['etagere', 'table', 'livres'],
     lamps: ['verte', 'suspension'], lines: [['ampoules', 1]], linesPerVoid: [0, 2], curtains: true,

@@ -389,7 +389,7 @@ function floorUnder(shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, 
   return null
 }
 
-function dressVoids(d: Dresser, shell: DistrictShell): void {
+function dressVoids(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, nearWalk: NearWalk, nearMain: NearWalk): void {
   const { rng, recipe } = d
   for (const v of shell.voids) {
     const b = v.box
@@ -405,6 +405,8 @@ function dressVoids(d: Dresser, shell: DistrictShell): void {
       const span = Math.hypot(e.x - a.x, e.z - a.z)
       d.line(pick(rng, recipe.lines), a, e, span * (0.04 + rng() * 0.04), v.cell)
     }
+    banners(d, v.cell, b, nearWalk)
+    centrepiece(d, shell, cells, v.cell, b, nearMain)
     const kind = recipe.emitters.vide
     if (kind) d.emit(kind, { x0: b.x0 + 1, x1: b.x1 - 1, y0: b.y0, y1: b.y1, z0: b.z0 + 1, z1: b.z1 - 1 }, 1)
   }
@@ -433,12 +435,17 @@ function sampleByArea<T>(items: readonly T[], rect: (t: T) => Rect, n: number, r
   return out
 }
 
-function nearWalk(shell: DistrictShell, x: number, y: number, z: number, r: number): boolean {
+type NearWalk = (x: number, y: number, z: number, r: number) => boolean
+
+function walkProbe(shell: DistrictShell, mainOnly: boolean): NearWalk {
   const at = new Map(shell.walk.nodes.map((n) => [n.id, n.at]))
-  return shell.walk.edges.some((e) => {
+  const segs = shell.walk.edges.filter((e) => !mainOnly || e.main).flatMap((e) => {
     const a = at.get(e.a)
     const b = at.get(e.b)
-    if (!a || !b || Math.abs((a.y + b.y) / 2 - y) > 2.5) return false
+    return a && b ? [[a, b] as const] : []
+  })
+  return (x, y, z, r) => segs.some(([a, b]) => {
+    if (Math.abs((a.y + b.y) / 2 - y) > 2.5) return false
     const dx = b.x - a.x
     const dz = b.z - a.z
     const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)))
@@ -447,7 +454,7 @@ function nearWalk(shell: DistrictShell, x: number, y: number, z: number, r: numb
 }
 
 // Kelp groves: on the floor of glass voids where the archetype grows kelp, and in every flooded street.
-function dressGroves(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>): void {
+function dressGroves(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, nearWalk: NearWalk): void {
   const { rng } = d
   const { areaPer, maxClumps, perClump, scale, clear, clearWater } = DRESS.grove
   const beds: Bed[] = shell.waters.map((w) => ({ cell: w.cell, rect: w.rect, top: w.y + 0.5, water: w.y }))
@@ -458,7 +465,7 @@ function dressGroves(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string
     const cx = x0 + 0.5 + rng() * Math.max(0, x1 - x0 - 1)
     const cz = z0 + 0.5 + rng() * Math.max(0, z1 - z0 - 1)
     const fy = floorUnder(shell, cells, bed.cell, cx, bed.top, cz)
-    if (fy === null || nearWalk(shell, cx, fy, cz, bed.water === null ? clear : clearWater)) continue
+    if (fy === null || nearWalk(cx, fy, cz, bed.water === null ? clear : clearWater)) continue
     const room = bed.water === null ? scale[1] : Math.max(0.4, (bed.water - fy + 0.6) / DRESS.kelpHeight)
     const k = perClump[0] + Math.floor(rng() * (perClump[1] - perClump[0] + 1))
     for (let j = 0; j < k; j++) {
@@ -466,6 +473,69 @@ function dressGroves(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string
       const r = (0.3 + rng() * 1.4) * (bed.water === null ? 1 : 0.35)
       d.prop('laminaire', cx + Math.cos(a) * r, fy, cz + Math.sin(a) * r, rng() * 6, Math.min(room, scale[0] + rng() * (scale[1] - scale[0])) * (1 - r * 0.15))
     }
+  }
+}
+
+// A void's floor is a square, off the main route (the walk graph covers every tile): the archetype's trade object, enlarged, with seats facing it and lamps around.
+function centrepiece(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, cell: string, b: Box, nearMain: NearWalk): void {
+  const { clear, seats, seatRadius, lampRadius, scale } = DRESS.square
+  const cx = (b.x0 + b.x1) / 2
+  const cz = (b.z0 + b.z1) / 2
+  const qx = (b.x1 - b.x0) / 4
+  const qz = (b.z1 - b.z0) / 4
+  const spot = [[cx, cz], [cx - qx, cz - qz], [cx + qx, cz + qz], [cx - qx, cz + qz], [cx + qx, cz - qz]]
+    .map(([x, z]) => ({ x: x!, z: z!, y: floorUnder(shell, cells, cell, x!, b.y0 + 1, z!) }))
+    .find((p) => p.y !== null && !nearMain(p.x, p.y, p.z, clear))
+  if (!spot || spot.y === null) return
+  const y = spot.y
+  const feature = d.recipe.square ?? d.recipe.work[0]
+  if (!feature) return
+  d.sheet({ x: spot.x, y: y + 0.012, z: spot.z, w: 3.2, h: 3.2, rot: d.rng() * 0.5, pitch: Math.PI / 2, color: d.tissu(cell) })
+  d.prop(feature, spot.x, y, spot.z, d.rng() * 6, scale)
+  const n = seats[0] + Math.floor(d.rng() * (seats[1] - seats[0] + 1))
+  const a0 = d.rng() * Math.PI * 2
+  for (let i = 0; i < n; i++) {
+    const a = a0 + (i / n) * Math.PI * 2
+    const x = spot.x + Math.sin(a) * seatRadius
+    const z = spot.z + Math.cos(a) * seatRadius
+    d.prop(i % 2 ? 'tabouret' : 'banc', x, y, z, a + Math.PI, i % 2 ? 1 : 0.8)
+  }
+  for (let i = 0; i < 2; i++) {
+    const a = a0 + Math.PI / n + i * Math.PI
+    d.lamp({ kind: 'lampadaire', cell, x: spot.x + Math.sin(a) * lampRadius, y: y + 2.6, z: spot.z + Math.cos(a) * lampRadius, rot: a + Math.PI, color: d.pal.lampe, radius: 7, drop: 0 })
+    d.prop(pickOne(d.rng, d.recipe.plants), spot.x + Math.sin(a + 0.4) * lampRadius, y, spot.z + Math.cos(a + 0.4) * lampRadius, d.rng() * 6, 1.1)
+  }
+  maybeCatAt(d, cell, spot.x + 0.6, y, spot.z + 0.6)
+}
+
+function maybeCatAt(d: Dresser, cell: string, x: number, y: number, z: number): void {
+  if (d.rng() < d.catChance(cell)) d.prop('chat', x, y, z, d.rng() * 6)
+}
+
+// Tall cloth banners down the void's long sides: they catch the eye from every gangway across it.
+function banners(d: Dresser, cell: string, b: Box, nearWalk: NearWalk): void {
+  const { count, width, drop, inset } = DRESS.banner
+  const tall = b.y1 - b.y0
+  if (tall < drop[0] + 2) return
+  const alongX = b.x1 - b.x0 >= b.z1 - b.z0
+  const n = count[0] + Math.floor(d.rng() * (count[1] - count[0] + 1))
+  const color = d.tissu(cell)
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5 + (d.rng() - 0.5) * 0.4) / n
+    const side = i % 2 === 0 ? 0 : 1
+    const h = Math.min(tall - 2, drop[0] + d.rng() * (drop[1] - drop[0]))
+    const top = b.y1 - 0.4
+    const x = alongX ? b.x0 + (b.x1 - b.x0) * t : side ? b.x1 - inset : b.x0 + inset
+    const z = alongX ? (side ? b.z1 - inset : b.z0 + inset) : b.z0 + (b.z1 - b.z0) * t
+    let crossed = false
+    for (let y = top - h; y <= top; y += 2) crossed ||= nearWalk(x, y, z, DRESS.banner.clear)
+    if (crossed) continue
+    const rot = alongX ? 0 : Math.PI / 2
+    const accent = i % 3 === 2 ? d.pal.accent : color
+    d.sheet({ x, y: top - h / 2, z, w: width, h, rot, pitch: 0, color: accent })
+    d.sheet({ x, y: top - h + 0.35, z, w: width * 0.7, h: 0.5, rot, pitch: 0, color: d.pal.tissu[(d.pal.tissu.indexOf(color) + 1) % d.pal.tissu.length]!, t: 0.03 })
+    const half = width / 2 + 0.1
+    d.pipes.push({ a: { x: x - (alongX ? half : 0), y: top, z: z - (alongX ? 0 : half) }, b: { x: x + (alongX ? half : 0), y: top, z: z + (alongX ? 0 : half) }, r: 0.03, color: 0xd9b48f, brackets: 0 })
   }
 }
 
@@ -622,11 +692,12 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
   }
   yield
   dressStreets(d, shell)
-  dressGroves(d, shell, cells)
+  const nearWalk = walkProbe(shell, false)
+  dressGroves(d, shell, cells, nearWalk)
   yield
   dressPaths(d, shell, cells)
   yield
-  dressVoids(d, shell)
+  dressVoids(d, shell, cells, nearWalk, walkProbe(shell, true))
   dressMoods(d, shell)
   const pools: Pool[] = []
   dressWindows(d, shell, cells, pools)
