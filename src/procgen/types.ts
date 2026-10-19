@@ -248,6 +248,9 @@ export interface BuiltPart {
   stats: PartStats
   update?(dt: number, hours: number): void
   dispose(): void
+  // Dressing: lamps for uLamps (live) and the bake, and solid clutter cuboids for the district body.
+  lamps?: readonly LampSpec[]
+  colliders?: readonly ColliderSpec[]
 }
 
 export interface BuiltLayout extends BuiltPart { body: RAPIER.RigidBody }

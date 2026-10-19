@@ -1,0 +1,24 @@
+import type { QualityLevel } from '../../core/types'
+
+export const DRESS = {
+  fill: { onPath: 0.95, offPath: 0.55, voidBonus: 0.2 },
+  voidReach: 6,
+  vignetteChance: 0.14,
+  hueShiftDeg: 8,
+  valueShift: 0.06,
+  tintJitter: 0.08,
+  liveLampsPerCell: 3,
+  lampBake: { radius: 1.15, power: 0.55 },
+  skyGlass: 0.28,
+  ambient: 0.62,
+  pool: { opacity: 0.3, glassOpacity: 0.22, maxDrop: 9 },
+  skin: { pitch: 2.4, rowLift: 1.5, radius: 0.32, offset: 0.04, maxPerDistrict: 900 },
+  ivyLength: 1.5,
+  kelpHeight: 4,
+  emitPerM3: { vapeur: 0.05, poussiere: 0.05, gouttes: 0.5, etincelles: 1.8, bulles: 1.2, braises: 0.15 },
+  emitMax: 500,
+  cloth: { lineSpacing: 0.85, flagSpacing: 0.55, bulbSpacing: 1.5, bulbBakeEvery: 3 },
+  budget: { propTriangles: 100_000, propKinds: 14 },
+  particles: { high: 1, medium: 0.6, low: 0.3 } satisfies Record<QualityLevel, number>,
+  burstMinutes: 4,
+} as const
