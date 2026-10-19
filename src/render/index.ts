@@ -6,7 +6,7 @@ import { createEnvironment, FX_LAYER, type Environment } from './environment'
 import { createGlassFactory, createGlassPassUniforms, GLASS_LAYER, type GlassParams } from './glass'
 import { GlassLights, type GlassLight } from './glasslights'
 import { PALETTE } from './palette'
-import { createPost, type Post } from './post'
+import type { Post } from './post'
 import { createShadowPass, type ShadowPass } from './shadow'
 import { createShafts, type Shafts } from './shafts'
 import { computeSun, createSunState, phaseAt } from './sun'
@@ -132,7 +132,7 @@ export function createRenderSystem(): System {
       renderer.clear(true, true, true)
       renderer.render(scene, camera)
 
-      let color: THREE.Texture = post.sceneTarget.texture
+      let color: THREE.WebGLRenderTarget = post.sceneTarget
       if (frameNo - glassSeenFrame < 30 || glassLights.liveGlass > 0) {
         const merged = post.prepareGlass(renderer, glassPass)
         glassPass.rgLive.value = 1
@@ -143,7 +143,7 @@ export function createRenderSystem(): System {
         renderer.render(scene, camera)
         renderer.autoClear = autoClearG
         glassPass.rgLive.value = 0
-        color = merged.texture
+        color = merged
       }
       camera.layers.mask = layerMask
       frameNo++
@@ -264,7 +264,7 @@ export function createRenderSystem(): System {
 
   return {
     id: 'render',
-    init(ctx) {
+    async init(ctx) {
       const { renderer, scene, camera } = ctx
       lastRenderer = renderer
       renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -285,7 +285,8 @@ export function createRenderSystem(): System {
       env = createEnvironment(scene, shared)
       shafts = createShafts(shared, ctx.rng('render:shafts'), ctx.quality.level)
       shadow = createShadowPass(int, ctx.quality.shadows ? ctx.quality.shadowMapSize : 0)
-      post = createPost(pub, int, ctx.quality)
+      const { createPost } = await import('./post')
+      post = createPost(pub, int, ctx.quality, scene, camera)
 
       unsubs.push(ctx.quality.onChange((q) => {
         shadow?.setSize(q.shadows ? q.shadowMapSize : 0)

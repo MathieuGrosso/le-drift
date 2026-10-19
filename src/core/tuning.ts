@@ -152,5 +152,14 @@ export const NAV = {
   },
 } as const
 
+export const POST = {
+  bloom: { threshold: 1.15, indoorThreshold: 0.3, smoothing: 0.25, levels: 5, radius: 0.75, outdoor: 0.55, indoor: 0.3 },
+  ao: {
+    radius: 1.1, falloff: 1.0, intensity: 2.6, indoorScale: 0.6, tintMix: 0.55, floor: 0.4,
+    levels: { high: { k: 1, mode: 'Medium' }, medium: { k: 0.85, mode: 'Low' }, low: { k: 0, mode: 'Performance' } },
+  },
+  exposureRate: 1.6,
+} as const
+
 // Kenney plants: height per unit of kit.plant scale; light sampled at this fraction of the height.
 export const PROPS = { plantHeight: 0.85, lightProbe: 0.6 } as const
