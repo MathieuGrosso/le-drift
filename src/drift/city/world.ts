@@ -157,7 +157,7 @@ export const SCELLEES: HallDef = {
     { side: 'n', u: 110, y: 0, w: 3.2, h: 3.0 },
   ],
   railGaps: [
-    { side: 'n', y: 6.5, u0: 73.5, u1: 76.5 }, { side: 's', y: 6.5, u0: 73.5, u1: 76.5 },
+    { side: 'n', y: 6.5, u0: 64.5, u1: 67.5 }, { side: 's', y: 6.5, u0: 64.5, u1: 67.5 },
     { side: 'n', y: 6.5, u0: 98.5, u1: 101.5 }, { side: 's', y: 6.5, u0: 98.5, u1: 101.5 },
     { side: 's', y: 6.5, u0: 79.1, u1: 81.5 }, { side: 'n', y: 6.5, u0: 110.5, u1: 113.5 },
   ],
@@ -547,8 +547,8 @@ function stall(k: Kit, id: string, x: number, z: number, face: 1 | -1, awningCol
       k.b.sphere(cx + face * 0.1 + Math.cos(a) * r, 1.22 + (g === 4 ? 0.06 : 0), bz + Math.sin(a) * r, 0.1, 0.07, 0.13, softColor(C(good), 0.7))
     }
   }
-  k.crate(cx - face * 1.3, 0, z + 0.7, 0.6)
-  k.barrel(cx - face * 1.3, 0, z - 0.6, 0.3, 0.8)
+  k.crate(cx - face * 1.3, 0, z + 0.55, 0.6)
+  k.barrel(cx - face * 1.3, 0, z - 0.55, 0.3, 0.8)
   if (k.rand() < 0.6) {
     k.b.with(SURF.fabric, () => k.b.cyl(cx + face * 0.85, 0.16, z + (k.rand() - 0.5) * 1.6, 0.24, 0.32, C(0x9a7650)))
   }
@@ -828,7 +828,7 @@ function scellees(k: Kit): void {
   k.steam.push({ x: 112, y: 0.9, z: -24 })
   for (const x of [109, 115]) k.bench(null, x, 0, -24.2, 1.6, false, x < 112 ? Math.PI / 2 : -Math.PI / 2)
   for (let x = 58; x < 122; x += 11) k.lamp(x, 9, -32, { style: 'cage', radius: 10, bake: x % 2 ? 0.55 : 0.9, hang: 6, color: x % 3 ? PAL.froid : PAL.lampe })
-  for (const x of [75, 100]) {
+  for (const x of [66, 100]) {
     k.slab(x - 1.5, x + 1.5, -39.25, -24.75, 6.5, 'grille')
     k.rail(x - 1.5, -39.25, x - 1.5, -24.75, 6.5)
     k.rail(x + 1.5, -39.25, x + 1.5, -24.75, 6.5)
