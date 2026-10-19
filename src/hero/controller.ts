@@ -30,6 +30,8 @@ const T = {
   zipMax: 9,
   zipCost: 0.03,
   zipHang: 1.95,
+  zipArrivalKeep: 0.35,
+  zipNoGrabSeconds: 0.6,
   zipReach: 0.9,
   toileForward: 5,
   toileFall: 1.2,
@@ -1638,10 +1640,11 @@ export class HeroController {
     this.out.swing = z.swing
     this.out.speed = z.v
     this.out.moving = Math.min(1, z.v / 4)
-    const drop = (vy: number) => {
+    const drop = (vy: number, keep = 1) => {
       this.activity = { kind: 'none' }
       this.zipCoolT = 0.8
-      this.vel.copy(u).multiplyScalar(z.v)
+      this.noWallT = T.zipNoGrabSeconds
+      this.vel.copy(u).multiplyScalar(z.v * keep)
       this.vel.y += vy
       this.jumpT = vy > 1 ? 0 : 99
       this.apexY = this.pos.y
@@ -1662,7 +1665,7 @@ export class HeroController {
     }
     if (z.s <= 0 || z.s >= 1) {
       z.s = THREE.MathUtils.clamp(z.s, 0, 1)
-      drop(1.2)
+      drop(1.2, T.zipArrivalKeep)
       return true
     }
     const hand = this.tmp2.copy(A).lerp(this.toW(z.a.to, new THREE.Vector3()), z.s)
