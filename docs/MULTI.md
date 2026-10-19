@@ -170,6 +170,14 @@ callbacks only write into plain buffers that `update` reads.
   Once welcomed, local writes go to `le-drift:save:v2:online:<playerId>` (`SaveStore.useSlot`), so the
   solo save `le-drift:save:v2` is never overwritten by an online player; the net system flushes the
   debounced server save on dispose (page unload).
+  A player the server has no save for starts a new game, never the tab's solo progress
+  (`net/save.ts` `adoptWelcome` → `core/save.ts` `resetToNewGame`): act 1, no quests, flags, chart,
+  trouvailles, and the new-game inventory; undeclared progress keys (`scellees`, `tubes`…) are dropped.
+  That state is written to the player's slot and flushed to the server at once. Settings, clock, drift
+  and windows are kept. If the welcome lands before the title screen closes, the intro plays as for a
+  new solo game; after it, the intro is skipped and `setAct(1)` reseeds `a1-reveil`. The hero moves to
+  the cabin spawn once the title screen has closed (it restores its own copy of the hero), and only when
+  inside: a hero mid-sortie stays where they swim.
 - Windows: online, `coat()` uses `WINDOWS.sharedRegrowHours` and `net/world.ts` drops local scrub times
   for windows the server has never seen, so every player sees the same coat.
 - Quests stay flag-derived and idempotent (BIBLE §3); nothing in them assumes being alone except the

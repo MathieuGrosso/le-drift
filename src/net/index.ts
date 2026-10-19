@@ -9,7 +9,7 @@ import { EmoteWheel } from './emotes'
 import { loadIdentity, loadProfile, storeProfile } from './identity'
 import { Overlay } from './overlay'
 import { Presence } from './presence'
-import { applyPlayerSave, RemoteSave } from './save'
+import { adoptWelcome, RemoteSave, spawnInCabin } from './save'
 import { Session, type Dispatch } from './session'
 import { netRoot } from './style'
 import { EMOTE_BUBBLE, TEXT } from './text'
@@ -22,6 +22,11 @@ const AVATAR_MODES: ReadonlySet<HeroMode> = new Set<AvatarMode>([
 const PRESENCE_SECONDS = 1
 const NPC_HEAD = 1.9
 const ME = 'moi'
+
+function titleGone(): boolean {
+  const el = document.getElementById('loading')
+  return !el || el.classList.contains('gone')
+}
 
 function avatarMode(m: HeroMode): AvatarMode {
   return AVATAR_MODES.has(m) ? (m as AvatarMode) : 'idle'
@@ -37,6 +42,7 @@ export function createNetSystem(): System {
   let save: RemoteSave | null = null
   let me: PlayerId | null = null
   let canRejoin = false
+  let cabinPending = false
   let starting = false
   let sendTimer = 0
   let presenceTimer = 0
@@ -77,10 +83,8 @@ export function createNetSystem(): System {
       case 'welcome': {
         const w = payload as ServerMessages['welcome']
         me = w.you
-        // Kept after a drop to solo: this tab now carries that player's progress, not the solo one.
-        ctx.save.useSlot(`online:${w.you}`)
-        if (w.save) applyPlayerSave(ctx, w.save)
-        else save?.flush()
+        // The title screen restores its own copy of the hero when it closes, so a new player moves after it.
+        if (adoptWelcome(ctx, w, save, titleGone())) cabinPending = true
         break
       }
       case 'chat': {
@@ -239,6 +243,10 @@ export function createNetSystem(): System {
 
     update(dt, c) {
       if (!ui || !avatars) return
+      if (cabinPending && titleGone()) {
+        cabinPending = false
+        spawnInCabin(c)
+      }
       const online = status() === 'online'
       ui.chat.show(online)
       presenceTimer -= dt
