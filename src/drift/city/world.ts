@@ -918,7 +918,7 @@ function proue(k: Kit): void {
     boxes: [{ x0: X0, x1: X1, y0: 15.7, y1: 23.7, z0: Z0, z1: Z1 }],
     spawn: { x: 0, y: 16, z: -62, yaw: 0 }, air: 0.2, roof: 23.6, pvs: ['proue', 'nef'], glass: true,
   })
-  dome(k, 'dome-proue', 'proue', 0, 24, -61, 7.5, { nom: NOMS.domeProue, pvs: ['proue', 'nef', 'hauts'], deck: 'domes', veille: false })
+  dome(k, 'dome-proue', 'proue', 0, 24, -61, 7.5, { nom: NOMS.domeProue, pvs: ['proue', 'nef', 'hauts'], deck: 'domes', veille: false, door: -0.51 })
   k.cells[k.cells.length - 1]!.boxes.push({ x0: X0, x1: X1, y0: 23.7, y1: 25, z0: Z0, z1: Z1 })
   k.paths.push({ district: 'proue', pts: [{ x: -4, z: -66 }, { x: 4, z: -66 }], y: 16, loop: false, busy: 0.2, work: false })
 }
