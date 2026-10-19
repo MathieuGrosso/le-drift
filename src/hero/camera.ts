@@ -40,6 +40,9 @@ function angleDiff(a: number, b: number): number {
 }
 
 const smooth = (k: number) => k * k * (3 - 2 * k)
+const PULL_IN = 9
+const HOLD = 0.35
+const NEAR_R = 0.14
 
 export class HeroCamera {
   yaw = 0
@@ -71,6 +74,8 @@ export class HeroCamera {
   private gameplayTarget = new THREE.Vector3()
   private ball: RAPIER.Ball | null = null
   private probeT = 0
+  private holdT = 0
+  private freeHit = false
   private fade: WallFade
   private filter: (c: RAPIER.Collider) => boolean
 
@@ -135,13 +140,13 @@ export class HeroCamera {
       const a = 1 - Math.exp(-14 * dt)
       this.yaw += angleDiff(this.yaw, this.recenterYaw) * a
       this.pitch = lerp(this.pitch, 12 * D2R, a)
-    } else if (this.lookIdle > 1.2) {
+    } else if (this.lookIdle > (this.styleK.climb > 0.5 ? 0.5 : 1.2)) {
       if (this.styleK.zip > 0.5) {
         this.yaw += angleDiff(this.yaw, travelYaw) * Math.min(1, dt * 2.2)
         this.pitch = lerp(this.pitch, 14 * D2R, Math.min(1, dt * 1.5))
       } else if (this.styleK.climb > 0.5) {
         this.yaw += angleDiff(this.yaw, f.heroYaw) * Math.min(1, dt * 0.9)
-        this.pitch = lerp(this.pitch, -4 * D2R, Math.min(1, dt * 0.8))
+        this.pitch = lerp(this.pitch, -4 * D2R, Math.min(1, dt * 1.6))
       } else if (f.moving > 0.2 && this.lookIdle > o.recenterHoldSeconds * 0.6) {
         const d = angleDiff(this.yaw, travelYaw)
         const lateral = Math.abs(Math.sin(d))
@@ -190,10 +195,17 @@ export class HeroCamera {
     }
     const allowed = this.collide(want, k > 0.5 ? i.sphereRadius : 0.35)
     const soft = k > 0.5 && !this.pose ? Math.min(allowed, this.whiskers(want, i.sphereRadius)) : allowed
-    if (allowed < this.dist) this.dist = allowed
-    else if (soft < this.dist) this.dist += (soft - this.dist) * Math.min(1, dt * 7)
-    else {
-      const out = Math.min((allowed - this.dist) * 3, lerp(o.easeOut, i.easeOut, k) * (1 + this.styleK.zip * 2))
+    this.holdT = Math.max(0, this.holdT - dt)
+    if (allowed < this.dist - 1e-3) {
+      const glide = this.dist - PULL_IN * dt
+      this.desired.copy(this.pivot).addScaledVector(this.dir, Math.max(allowed, glide))
+      this.dist = glide > allowed && this.free(this.desired, NEAR_R) ? glide : allowed
+      this.holdT = HOLD
+    } else if (soft < this.dist) {
+      this.dist += (soft - this.dist) * Math.min(1, dt * 7)
+      this.holdT = HOLD
+    } else if (this.holdT <= 0) {
+      const out = Math.min((allowed - this.dist) * 2.5, lerp(o.easeOut, i.easeOut, k) * (1 + this.styleK.zip * 2))
       this.dist = Math.min(allowed, this.dist + out * dt)
     }
 
@@ -254,6 +266,23 @@ export class HeroCamera {
     )
     return hit ? hit.time_of_impact : max
   }
+
+  private free(p: THREE.Vector3, radius: number): boolean {
+    const phys = this.ctx.physics
+    const R = phys.rapier
+    if (!this.nearBall || this.nearBall.radius !== radius) this.nearBall = new R.Ball(radius)
+    this.freeHit = false
+    phys.world.intersectionsWithShape(
+      { x: p.x, y: p.y, z: p.z }, { x: 0, y: 0, z: 0, w: 1 }, this.nearBall,
+      () => {
+        this.freeHit = true
+        return false
+      },
+      R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, undefined, undefined, this.filter,
+    )
+    return !this.freeHit
+  }
+  private nearBall: RAPIER.Ball | null = null
 
   private collide(want: number, radius: number): number {
     const d = this.cast(this.pivot, this.dir, want, radius)
