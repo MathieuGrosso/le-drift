@@ -2,7 +2,7 @@ import type * as THREE from 'three'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import type { CameraEnv, DeckId, DistrictId, GameContext, Medium, RoomId, Vec3 } from '../core/types'
 import type { DriftAnchor, DriftServiceV2 } from './index'
-import { toLocal, type DriftPose } from './frame'
+import { toLocal, toWorld, yawToWorld, type DriftPose } from './frame'
 import type { Mats } from './materials'
 import type { DriftNavmesh } from './nav/navmesh'
 import type { NavLink } from './nav/soup'
@@ -83,6 +83,10 @@ export function mountProcgen(ctx: GameContext, root: THREE.Object3D, mats: Mats,
     if (hit) return hit
     const w = world?.spawn(cell)
     return w ? { local: { x: w.x, y: w.y, z: w.z }, yaw: w.yaw } : null
+  }
+  service.roomSpawn = (room) => {
+    const w = world?.spawn(room)
+    return w ? { position: toWorld(pose(), w), yaw: yawToWorld(pose(), w.yaw) } : s.roomSpawn(room)
   }
   service.ceilingAt = (l) => s.ceilingAt(l) ?? world?.cellAt(l)?.roof ?? null
   service.roomCeilingAt = (p) => {
