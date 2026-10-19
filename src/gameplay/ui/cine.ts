@@ -41,10 +41,12 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
       cardT.textContent = title
       cardS.textContent = sub ?? ''
       cardS.classList.toggle('long', (sub ?? '').length > 28)
+      gp.hud.holdPlace(true)
       card.classList.add('show')
       await wait(seconds)
       card.classList.remove('show')
       await wait(1.2)
+      gp.hud.holdPlace(false)
     },
     async narrate(lines) {
       busy++

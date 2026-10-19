@@ -24,6 +24,7 @@ export interface Hud {
   toast(text: string): void
   tip(text: string, seconds?: number): void
   placeName(title: string, sub?: string): void
+  holdPlace(on: boolean): void
   showHud(v: boolean): void
   flashNacre(): void
   counter(owner: string, text: string | null): void

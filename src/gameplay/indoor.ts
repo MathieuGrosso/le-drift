@@ -21,6 +21,7 @@ const SAS = /^(sas|airlock)$/
 const ROOF = /^echelle-toit$/
 const ZIP = /^tyrolienne-/
 const TUBE = /^tube-([a-z]+)-([a-z]+)$/
+const CLIMBING: ReadonlySet<string> = new Set(['ladder', 'climb'])
 
 type HeroExt = HeroService & { zip?(id: string): boolean; activity?(): string }
 
@@ -123,7 +124,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     } else if (tag.kind === 'door' && owner && !ZIP.test(owner) && !TUBE.test(owner)) {
       const open = !!ctx.state.drift.doors[owner]
       out.push({ id: owner, kind: 'door', label: open ? PROMPTS.fermer : PROMPTS.ouvrir, key: 'interact', dist: hit.distance, run: () => ctx.services.drift?.openDoor(owner, !open) })
-    } else if (tag.kind === 'ladder') {
+    } else if (tag.kind === 'ladder' && !CLIMBING.has(hero()?.activity?.() ?? '')) {
       out.push({ id: owner || 'echelle', kind: 'ladder', label: PROMPTS.monter, key: 'interact', dist: hit.distance + 0.3, run: () => undefined })
     }
   }

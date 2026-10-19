@@ -40,6 +40,8 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
   h('div', 'rule', undefined, place)
   const placeS = h('div', 's', '', place)
   let placeTimer = 0
+  let placeHeld = false
+  let heldPlace: [string, string | undefined] | null = null
 
   const nacres = h('div', 'gp-nacres', undefined, hud)
   const nacreDots = [0, 1, 2, 3].map(() => h('div', 'gp-nacre', undefined, nacres))
@@ -230,10 +232,25 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       tipTimer = seconds
     },
     placeName(title, sub) {
+      if (placeHeld) {
+        heldPlace = [title, sub]
+        return
+      }
       placeT.textContent = title
       placeS.textContent = sub ?? ''
       place.classList.add('show')
       placeTimer = 2.6
+    },
+    holdPlace(on) {
+      placeHeld = on
+      if (on) {
+        place.classList.remove('show')
+        placeTimer = 0
+      } else if (heldPlace) {
+        const [title, sub] = heldPlace
+        heldPlace = null
+        api.placeName(title, sub)
+      }
     },
     showHud(vis) {
       hud.classList.toggle('gp-hidden', !vis)
