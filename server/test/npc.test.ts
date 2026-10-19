@@ -80,3 +80,25 @@ test('a private talk never reaches another player prompt, only that someone came
   const again = await w.talk('a', 'Tu te souviens ?')
   assert.match(again, /4417/)
 })
+
+test('an NPC reply to one player reaches only that player, a bark reaches the district', async () => {
+  const inbox = new Map<string, unknown[]>()
+  const client = (id: string) => ({ auth: { id }, send: (type: string, m: unknown) => void inbox.set(id, [...(inbox.get(id) ?? []), [type, m]]) })
+  const broadcasts: NpcSay[] = []
+  const brains = createClaudeBrains(memoryStore(), async () => ({ intent: 'say', target: null, say: 'Rien que pour toi.', mood: 'content', remember: null }), () => true)
+  live.push(brains)
+  const monde = new MondeState()
+  const quartier = new QuartierState({ district: 'ecluse' })
+  brains.rooms.addMonde(monde)
+  brains.rooms.addQuartier({ state: quartier, clients: [client('a'), client('b')], broadcast: (_t, m) => void broadcasts.push(m) })
+  for (const id of ['a', 'b']) {
+    monde.players.set(id, card(id))
+    quartier.avatars.set(id, avatar(id))
+  }
+  await brains.think(NPC, { kind: 'talk', player: 'a', text: 'Psst' })
+  assert.deepEqual(inbox.get('a'), [['npc:say', { npcId: NPC, text: 'Rien que pour toi.', to: 'a' }]])
+  assert.equal(inbox.get('b'), undefined)
+  assert.deepEqual(broadcasts, [])
+  await brains.think(NPC, { kind: 'tick' })
+  assert.deepEqual(broadcasts, [{ npcId: NPC, text: 'Rien que pour toi.', to: null }])
+})

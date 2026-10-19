@@ -82,7 +82,7 @@ Server → client (`ServerMessages`):
 | `welcome` | `{ "you": "<uuid>", "save": PlayerSave \| null, "brains": true }` |
 | `chat` | `{ "from": "<uuid>", "name": "Mila", "text": "…", "at": 1760000000000 }` |
 | `emote` | `{ "from": "<uuid>", "emote": "rire" }` |
-| `npc:say` | `{ "npcId": "cuistot", "text": "…", "to": "<uuid>" \| null }` |
+| `npc:say` | `{ "npcId": "cuistot", "text": "…", "to": "<uuid>" \| null }` (with `to`: sent to that player only) |
 | `npc:give` | `{ "npcId": "cuistot", "item": "pain-du-cuistot", "count": 1 }` (sent to that player only) |
 | `npc:quest` | `{ "npcId": "mme-rouille", "questId": "demande-rouille" }` |
 | `refused` | `{ "reason": "rate", "detail": "…" }` |
@@ -211,7 +211,7 @@ Loop (`npc/` on the server):
    `output_config: { effort, format: { type: 'json_schema', schema } }` for
    `{ intent, target, say, mood }`; `stop_reason === 'refusal'` → null before reading content.
 5. `toActions` validates the JSON again (zod) and maps it to the whitelist; the room applies orders
-   to `quartier.orders`, broadcasts `npc:say`, and sends `npc:give`/`npc:quest` to the one player.
+   to `quartier.orders`, broadcasts a public `npc:say`, and sends a reply `npc:say`, `npc:give`/`npc:quest` to the one player.
 6. Usage (input + output + cache writes) goes to `budget.spend`; `world.json` keeps the day's total.
 
 Credentials only from the environment (`ANTHROPIC_API_KEY`, or an `ant auth login` profile, which the

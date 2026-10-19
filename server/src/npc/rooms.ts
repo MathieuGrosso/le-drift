@@ -4,7 +4,7 @@ import { NpcCard, NpcOrder, type MondeState, type QuartierState } from '../state
 import type { NpcSheet, NpcWorld } from './brain'
 import { SHEETS } from './sheets'
 
-type NpcPrivate = Pick<ServerMessages, 'npc:give' | 'npc:quest'>
+type NpcPrivate = Pick<ServerMessages, 'npc:say' | 'npc:give' | 'npc:quest'>
 
 /** The slice of a Colyseus room the brains need; `QuartierRoom` passes itself. */
 export interface QuartierHandle {
@@ -70,7 +70,8 @@ export class NpcRoomRegistry implements NpcWorld {
     for (const a of actions) {
       switch (a.kind) {
         case 'say':
-          room.broadcast('npc:say', { npcId: sheet.id, text: a.text, to: a.to })
+          if (a.to === null) room.broadcast('npc:say', { npcId: sheet.id, text: a.text, to: null })
+          else this.sendTo(room, a.to, 'npc:say', { npcId: sheet.id, text: a.text, to: a.to })
           break
         case 'walk':
         case 'sit':
