@@ -1,3 +1,62 @@
+# Feel — round 2 (programmeur gameplay)
+
+Build `npm run build`, `vite preview` :4210, Chrome 155 GPU réel (port 9222, onglet dédié), `?debug&nosave`.
+Entrées réelles CDP (`Input.dispatchKeyEvent` tenu, `Input.dispatchMouseEvent`), `mousemove` réels pour le look
+(pointer lock refusé aux onglets CDP). Mesures par frame en coordonnées **locales du Drift** (le Drift avance :
+les « glissades » de M5 au round 1 étaient le navire qui bouge). `clip` = sphère 0,12 m à la caméra qui touche un
+collider solide. `distJerk` = plus grand saut de vitesse de la distance caméra-tête en une frame.
+
+## Checklist traversées (entrée et sortie, avec vraies touches)
+
+| Traversée | Résultat | Mesure |
+|---|---|---|
+| Saut (Espace tenu / tapé) | OK | apex +1,15 m tenu, +0,58 m tapé ; coyote 0,12 s, buffer 0,12 s ; `jump→fall→land` |
+| Saut sur caisses / mantle | OK (corrigé) | pile de caisses de la Nef : était bloqué en `climb` sous un surplomb ; mantle sur le dessus en ~1 s |
+| Escalier, descente / montée | OK (corrigé) | descente 8 m en 3,6 s : 200 frames `run`, 0 `fall` (262/398 en `fall` au round 1) |
+| Échelle, monter par le pied | OK | mât 0-8 : 0 clip, distance min 1,9 m ; puits de l'Écluse 16 m, sortie en haut |
+| Échelle, sortie en haut | OK (corrigé) | recherche d'un point d'appui (par-dessus, derrière, sur les côtés) ; plus de collage au fût (L1) |
+| Échelle, descendre (S) / lâcher (Ctrl) | OK | retour au sol, `fall→land` |
+| Échelle, sauter (Espace) à mi-hauteur / sous plafond | OK (corrigé) | mi-hauteur : retombe à 3 m ; en haut : Espace = sortie ; détection « figé en l'air » (J1) |
+| Tube pneumatique Nef ↔ 5 stations | OK (corrigé) | la caméra restait côté Nef, face à Ilo, W poussait dans la cabine : arrivée caméra derrière, Ilo avancé de 1,3 m hors de la cabine, distance caméra ≥ 1,4 m |
+| Tube retour (Marché → Nef) | OK | E face à la cabine |
+| Tyrolienne Nef ouest | OK | 31 m, `zip` 191 frames, arrivée au sol ; distance caméra min 1,1 m au départ |
+| Toboggan Nef | OK | entrée en marchant dedans, 14 m de descente, sortie en course |
+| Porte de cabine | OK | invite Ouvrir/Fermer, passage sans accroc |
+| Écluse sortie / entrée | OK | tableau → Sortir → nage → « Rentrer » (E maintenu) → rembobinage 4 m/s → sas → air |
+| Nage (W seul) | OK (corrigé) | flottabilité neutre : dy 0 sur 4 s (−0,45 m/s au round 1) ; Espace +1,6 m/s, Ctrl −1,2 m/s |
+| S'asseoir / se lever | OK | banc du Réfectoire, W pour se lever |
+| Porter / poser | OK (API seulement) | saut porté 0,46 m ; aucun système ne déclenche `carry()` en jeu |
+| Échelle du mât 8-16 (caméra) | Partiel | 12 frames de clip sur 500 au passage du plancher annulaire, la caméra suit Ilo par le trou |
+
+## Les 4 bugs de l'orchestrateur
+
+1. **Caméra de cabine** : 2,7–3,0 m, 0 clip en idle, en lacet ±600 px, en tangage et en marche. FOV intérieur 64
+   (+5 dans les pièces étroites), tangage max intérieur 52° (vue zénithale supprimée), Ilo s'estompe sous 0,8 m.
+2. **Espace** : apex +1,15 m. Hauteur variable seulement sur un tap (< 0,16 s), le saut tenu 300 ms donne la hauteur pleine.
+3. **E pendant la narration** : 12 E à 250 ms → plus de menu « Dormir » (1 s de grâce après l'intro, la touche est avalée).
+4. **Intro** : bouger (ZQSD / stick) passe l'intro : contrôle à **1,3 s** après le clic de démarrage. Lignes auto 2,2–4,5 s.
+   Les cartons d'acte ne bloquent plus E / M / Échap (I2) : tube et pause marchent pendant « ACTE II ».
+
+## Autres corrections
+
+- **C1/C2 souris** : tout clic hors d'un contrôle d'UI reverrouille la souris (listener sur `window`, calque des bulles
+  transparent aux clics). Sans verrouillage, glisser clic gauche ou droit oriente la caméra (+0,5 rad mesuré).
+- **C3 caméra** : la caméra glisse vers l'avant à 9 m/s quand un obstacle n'occulte que la vue et ne saute que si elle
+  entrerait dans la géométrie, puis tient 0,35 s avant de ressortir (fin du pompage sous les poutres).
+- **M1/M2 sprint** : 6,0 m/s contre 3,8 m/s en course (+58 %) ; pousser un mur ne vide plus l'endurance.
+- **M4 demi-tour** : plus de bascule de lacet en une frame après un dérapage.
+- **Invites** : « Parler » ne s'affiche que face au PNJ (ou à moins de 1,3 m) ; il volait l'invite de la tyrolienne.
+- `?debug` expose `__heroCtrl` et `__heroCam`.
+
+## Reste à faire
+
+- Caméra au passage d'un plancher par une échelle (mât 8-16).
+- C5 : caméra à 0,5–0,6 m quand Ilo pousse dans un coin ; pas de décalage latéral automatique.
+- I3 : dans le sas, « Lire le tableau » prend E avant « Sortir » tant que la quête l'exige (voulu, mais double invite).
+- I5 : « Dormir » reste la première invite au réveil.
+
+---
+
 # Feel — revue gameplay, round 1
 
 Build `npm run build` du commit `8022d96`, `vite preview` sur :4211, Chrome 155 GPU réel (profil debug, port 9222), viewport 1512×804 @2x.
