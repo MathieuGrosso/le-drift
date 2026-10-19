@@ -6,12 +6,15 @@ import type { Anchor, Mats } from '../../drift/procgen-hook'
 import { ARCHETYPES } from '../archetypes'
 import type { BuildContentFn, ContentPoint, DistrictPlan, Rng, Spot } from '../types'
 import { Kb, buildFar, buildKit, type KitLamp, type KitPalette } from './kits'
+import { MICRO_DEFIS, type MicroDefi } from './tuning'
+import { placeDefi, type DefiMat, type DefiPlaced } from './defis'
 import { COQUE_KIT, districtKits, kitDef, kitScale, landmarkSites } from './landmarks'
 import { KIND_GLOW } from './tuning'
 
 const SHIFT = { hue: 8 / 360, value: 0.06 } as const
 const SIGN = { w: 2.4, h: 0.6, px: 512, row: 96, font: '600 52px Georgia, serif', ink: '#3e3a5a', paper: '#f1e4c8' } as const
-const TROUVAILLE = { bob: 0.12, speed: 1.6, spin: 0.9, size: 0.22, poll: 0.5 } as const
+const TROUVAILLE = { bob: 0.12, speed: 1.6, spin: 0.9, size: 0.22, poll: 0.5, lift: 0.2 } as const
+const NET_MESH = 0.35
 const CORDE = 0xc9a66b
 const SOMBRE = 0x4a3c48
 const VITRE = 0x9fd6d0
@@ -119,6 +122,32 @@ const POINT_KITS: Partial<Record<ContentPoint['kind'], PointKit>> = {
   coque: (k, p, rng) => buildKit(COQUE_KIT, k, p, rng),
 }
 
+const isDefi = (v: unknown): v is MicroDefi => typeof v === 'string' && (MICRO_DEFIS as readonly string[]).includes(v)
+
+export function defiOf(pt: ContentPoint): DefiPlaced | null {
+  const d = pt.data
+  if (!d || !isDefi(d.defi)) return null
+  const n = (k: string) => Number(d[k] ?? 0)
+  return placeDefi(pt.id, d.defi, { x: n('bx'), y: n('by'), z: n('bz'), yaw: n('byaw') }, n('hauteur'))
+}
+
+function drawDefi(k: Kb, d: DefiPlaced, p: KitPalette): void {
+  const color: Record<DefiMat, number> = { bois: p.bois, metal: p.metal, accent: p.accent, tissu: p.tissu[0] ?? p.accent, corde: CORDE, sombre: SOMBRE }
+  if (d.lampLocal) k.lamp(d.lampLocal.x, d.lampLocal.y, d.lampLocal.z, p.lampe, 0.16, 5)
+  for (const part of d.parts) {
+    const { at, size } = part
+    const c = color[part.mat]
+    if (part.shape === 'ring') k.ring(at.x, at.y, at.z, size.x / 2, size.y, c, 'z', 12)
+    else if (part.shape === 'cyl') k.cyl(at.x, at.y, at.z, size.x / 2, size.y, c)
+    else if (part.solid === 'net') {
+      const x0 = at.x - size.x / 2
+      const y0 = at.y - size.y / 2
+      for (let x = x0; x <= x0 + size.x + 1e-3; x += NET_MESH) k.beam([x, y0, at.z], [x, y0 + size.y, at.z], 0.03, c)
+      for (let y = y0; y <= y0 + size.y + 1e-3; y += NET_MESH) k.beam([x0, y, at.z], [x0 + size.x, y, at.z], 0.03, c)
+    } else k.box(at.x, at.y, at.z, size.x, size.y, size.z, c)
+  }
+}
+
 function signTexture(names: readonly string[]): THREE.CanvasTexture | null {
   if (typeof document === 'undefined' || names.length === 0) return null
   const canvas = document.createElement('canvas')
@@ -201,6 +230,12 @@ export const buildContent: BuildContentFn = function* (content, shell, host) {
   const world = new Kb(o, e, new THREE.Matrix4())
   for (const a of content.anchors) if (!a.id.includes('/banc-') && !a.id.includes('/hamac-')) drawAnchor(world, a, pal)
   for (const pt of content.points) {
+    const defi = pt.kind === 'trouvaille' ? defiOf(pt) : null
+    if (defi) {
+      const k = new Kb(o, e, frameOf(defi.at))
+      drawDefi(k, defi, pal)
+      lamps.push(...k.lamps)
+    }
     const fn = POINT_KITS[pt.kind]
     if (!fn) continue
     const k = new Kb(o, e, frameOf(pt.at))
@@ -262,7 +297,7 @@ export const buildContent: BuildContentFn = function* (content, shell, host) {
   const placeTrouvailles = () => {
     if (!trMesh) return
     tr.forEach((p, i) => {
-      dummy.position.set(p.at.x, p.at.y + 0.6 + Math.sin(time * TROUVAILLE.speed + i) * TROUVAILLE.bob, p.at.z)
+      dummy.position.set(p.at.x, p.at.y + TROUVAILLE.lift + Math.sin(time * TROUVAILLE.speed + i) * TROUVAILLE.bob, p.at.z)
       dummy.rotation.set(0, time * TROUVAILLE.spin + i, 0)
       dummy.scale.setScalar(taken.has(p.id) ? 0 : 1)
       dummy.updateMatrix()

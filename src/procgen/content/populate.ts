@@ -10,7 +10,8 @@ import type {
 import { COQUE_KIT, PHARE_KIT, districtKits, kitAnchors, kitBounds, kitColliders, kitDef, kitScale, landmarkSites, phareTier } from './landmarks'
 import { deNom, shipNoms, type DistrictNoms, type Personne } from './noms'
 import { quete, vignette } from './recits'
-import { COUNTS, DEFI_LIFT, MICRO_DEFIS, MOYENS, PACING, PETITS, PHARES, RESERVE, SIGHT, THIRDS_Z } from './tuning'
+import { defiCorners, defiFits, placeDefi, type DefiPlaced } from './defis'
+import { COUNTS, DEFI, MICRO_DEFIS, MOYENS, PACING, PETITS, PHARES, RESERVE, SIGHT, THIRDS_Z } from './tuning'
 
 const FALLBACK = { lanes: 3, steps: 6, sway: 14 } as const
 
@@ -115,6 +116,15 @@ function loopTracks(shell: DistrictShell): Track[] {
     .filter((p): p is readonly [NonNullable<(typeof p)[0]>, NonNullable<(typeof p)[1]>] => !!p[0] && !!p[1])
     .map(([a, b]) => track([{ at: a.at, cell: a.cell }, { at: b.at, cell: b.cell }]))
     .filter((t) => t.length > 6)
+}
+
+function shuffled<T>(xs: readonly T[], rng: Rng): T[] {
+  const out = [...xs]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[out[i], out[j]] = [out[j]!, out[i]!]
+  }
+  return out
 }
 
 function weightedRoundRobin<K extends string>(weights: Readonly<Record<K, number>>) {
@@ -276,19 +286,73 @@ export const populate: PopulateFn = (plan, shell) => {
     return sample(main, main.length)
   }
 
+  const cellById = new Map(shell.cells.map((c) => [c.id, c]))
+  const inCell = (cell: string, p: Vec3) => {
+    const c = cellById.get(cell)
+    return !c || c.boxes.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1 && p.y >= b.y0 - 0.5 && p.y <= b.y1)
+  }
+  const headroom = (cell: string, y: number) => (cellById.get(cell)?.roof ?? y + DEFI.defaultHeadroom) - y - DEFI.clearance
+  const overlaps = (b: Box, r: Box) => b.x0 < r.x1 && b.x1 > r.x0 && b.z0 < r.z1 && b.z1 > r.z0 && b.y0 < r.y1 && b.y1 > r.y0
+  const solids: Box[] = shell.colliders
+    .filter((c) => c.kind !== 'floor')
+    .map((c) => {
+      const h = c.q ? Math.max(c.hx, c.hz) : 0
+      return { x0: c.x - (h || c.hx), x1: c.x + (h || c.hx), y0: c.y - c.hy, y1: c.y + c.hy, z0: c.z - (h || c.hz), z1: c.z + (h || c.hz) }
+    })
+  const blocked = (b: Box) => {
+    const lifted = { ...b, y0: b.y0 + DEFI.clearance }
+    return reserved.some((r) => overlaps(lifted, r)) || solids.some((r) => overlaps(lifted, r))
+  }
+
   const nTr = COUNTS.trouvailles[0] + Math.floor(rng() * (COUNTS.trouvailles[1] - COUNTS.trouvailles[0] + 1))
   for (let i = 0; i < nTr; i++) {
-    const s = total * ((i + 0.5 + (rng() - 0.5) * 0.6) / nTr)
-    const p = at(s)
-    const defi = MICRO_DEFIS[Math.floor(rng() * MICRO_DEFIS.length)]!
-    const spot = side(p.at, p.dir, (i % 2 === 0 ? 1 : -1) * PACING.sideStep * 1.6)
-    push('trouvaille', 'petit', p.cell, { ...spot, y: spot.y + DEFI_LIFT[defi], yaw: Math.atan2(p.dir.x, p.dir.z) }, pools.trouvaille(), { defi }, `tr-${plan.id}-${i + 1}`)
+    const id = `tr-${plan.id}-${i + 1}`
+    const s0 = total * ((i + 0.5 + (rng() - 0.5) * 0.6) / nTr)
+    const order = shuffled(MICRO_DEFIS, rng)
+    let placed: DefiPlaced | null = null
+    let cell = ''
+    search: for (const ds of DEFI.shifts) {
+      const p = at(Math.min(total, Math.max(0, s0 + ds)))
+      for (const sgn of [i % 2 === 0 ? 1 : -1, i % 2 === 0 ? -1 : 1]) {
+        for (const off of DEFI.offsets) {
+          const base = side(p.at, p.dir, sgn * off)
+          const yaw = Math.atan2(p.at.x - base.x, p.at.z - base.z)
+          const room = headroom(p.cell, base.y)
+          for (const defi of order) {
+            if (!defiFits(defi, room)) continue
+            if (!defiCorners({ ...base, yaw }).every((c) => inCell(p.cell, c))) continue
+            const d = placeDefi(id, defi, { ...base, yaw }, room)
+            if (blocked(d.bounds)) continue
+            placed = d
+            cell = p.cell
+            break search
+          }
+        }
+      }
+    }
+    if (placed) {
+      colliders.push(...placed.colliders)
+      anchors.push(...placed.anchors)
+      reserved.push(placed.bounds)
+      const b = placed.at
+      push('trouvaille', 'petit', cell, placed.prize, pools.trouvaille(), { defi: placed.defi, bx: b.x, by: b.y, bz: b.z, byaw: b.yaw, hauteur: headroom(cell, b.y) }, id)
+    } else {
+      const p = at(s0)
+      const spot = side(p.at, p.dir, PACING.sideStep * 0.5)
+      push('trouvaille', 'petit', p.cell, { ...spot, y: spot.y + DEFI.bareLift, yaw: 0 }, pools.trouvaille(), { defi: 'a-decouvert' }, id)
+    }
   }
 
   const petit = weightedRoundRobin(PETITS)
   const moyen = weightedRoundRobin(MOYENS)
   let demandes = 0
   let coques = 0
+  const twin = shipPlan().districts.filter((d) => d.archetype === plan.archetype).findIndex((d) => d.id === plan.id)
+  const addDemande = (cell: string, here: Spot) => {
+    demandes++
+    const who = pools.pnj()
+    push('demande', 'moyen', cell, here, who.nom, { pnj: who.nom, metier: arch.jobs[demandes % arch.jobs.length]!, ...quete(plan.archetype, twin * COUNTS.demandesMax + demandes - 1, who.nom) }, `quete-${plan.id}-${demandes}`)
+  }
   let nextMoyen = PACING.moyenEvery * (0.5 + rng() * 0.5)
   let flip = 1
   for (let s = PACING.startOffset; s < total; s += PACING.petit[0] + rng() * (PACING.petit[1] - PACING.petit[0])) {
@@ -301,11 +365,8 @@ export const populate: PopulateFn = (plan, shell) => {
     if (s >= nextMoyen) {
       nextMoyen += PACING.moyenEvery
       const kind = moyen((k) => (k !== 'demande' || demandes < COUNTS.demandesMax) && (k !== 'coque' || coques < COUNTS.coques))
-      if (kind === 'demande') {
-        demandes++
-        const who = pools.pnj()
-        push('demande', 'moyen', p.cell, here, who.nom, { pnj: who.nom, metier: arch.jobs[demandes % arch.jobs.length]!, ...quete(plan.archetype, demandes - 1, who.nom) }, `quete-${plan.id}-${demandes}`)
-      } else if (kind === 'coque') {
+      if (kind === 'demande') addDemande(p.cell, here)
+      else if (kind === 'coque') {
         coques++
         push('coque', 'moyen', p.cell, here, `La Coque scellée ${deNom(plan.nom)}`, { regle: arch.rule, kit: COQUE_KIT }, `coque-${plan.id}`)
       } else if (kind === 'raccourci') {
@@ -344,6 +405,12 @@ export const populate: PopulateFn = (plan, shell) => {
       default:
         push(kind, 'petit', p.cell, here, null)
     }
+  }
+
+  for (let i = 0; demandes < COUNTS.demandesMin && i < 8; i++) {
+    const p = at(total * (0.3 + 0.1 * i))
+    const spot = side(p.at, p.dir, -PACING.sideStep)
+    if (!near(spot, 4)) addDemande(p.cell, { ...spot, yaw: Math.atan2(p.dir.z, -p.dir.x) })
   }
 
   if (coques < COUNTS.coques) {

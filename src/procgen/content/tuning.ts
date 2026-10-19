@@ -18,20 +18,26 @@ export const MOYENS: Readonly<Record<'demande' | 'raccourci' | 'hamac' | 'coque'
 export const COUNTS = {
   trouvailles: [5, 7] as const,
   pnjMin: 4,
+  demandesMin: 1,
   demandesMax: 2,
   coques: 1,
 } as const
 
 export const SIGHT = { range: 120, cone: Math.cos((32 * Math.PI) / 180), vistaRadius: 3.5, entryMargin: 0, pollEvery: 0.25 } as const
 
+export const TOUCH = { trouvaille: 1.3, demande: 4, chest: 0.6 } as const
+
 export const RESERVE = { margin: 0.8, trouvaille: 0.6, point: 0.9 } as const
 
 export const MICRO_DEFIS = ['sur-une-lampe', 'dans-un-tuyau', 'derriere-une-trappe', 'au-bout-d-une-poutre', 'sous-une-passerelle', 'en-haut-d-un-filet', 'dans-un-nid-de-chat'] as const
 export type MicroDefi = (typeof MICRO_DEFIS)[number]
-export const DEFI_LIFT: Readonly<Record<MicroDefi, number>> = {
-  'sur-une-lampe': 3.4, 'dans-un-tuyau': 1.2, 'derriere-une-trappe': 0, 'au-bout-d-une-poutre': 4.2,
-  'sous-une-passerelle': -1.6, 'en-haut-d-un-filet': 3.8, 'dans-un-nid-de-chat': 2.2,
-}
+export const DEFI = {
+  offsets: [3.4, 2.6] as const,
+  shifts: [0, 7, -7, 14, -14] as const,
+  clearance: 0.6,
+  defaultHeadroom: 5,
+  bareLift: 0.2,
+} as const
 
 export const PHARES: Readonly<Record<WingId, readonly [ArrondissementId, ArrondissementId, ArrondissementId]>> = {
   babord: ['vigies-babord', 'sechoirs', 'quais-babord'],

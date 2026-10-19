@@ -38,6 +38,10 @@ const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {
   observatoires: [
     { titre: 'Le reflet perdu', texte: '{p} a vu un reflet étrange dans la grande lentille. Trouve d’où il vient.', objet: 'éclat de lentille' },
     { titre: 'La carte inachevée', texte: '{p} n’a jamais fini sa carte des reflets. Il lui manque trois hublots.', objet: 'croquis de hublot' },
+    { titre: 'L’horloge des marées', texte: '{p} a laissé l’horloge des marées s’arrêter. Il faut une clé de remontoir, quelque part en haut.', objet: 'clé de remontoir' },
+    { titre: 'Le cahier de quart', texte: '{p} s’est endormie pendant son quart et a perdu son cahier. Personne ne doit le savoir.', objet: 'cahier de quart' },
+    { titre: 'Le banc de poissons-lanternes', texte: '{p} veut savoir où passe le banc de poissons-lanternes cette nuit. Regarde par toutes les lunettes.', objet: 'note d’observation' },
+    { titre: 'La lentille fêlée', texte: '{p} a fêlé une lentille. Un souffleur de verre des Forges pourrait la refaire.', objet: 'lentille neuve' },
   ],
   corderie: [
     { titre: 'Le grelin trop court', texte: '{p} a besoin de trois bobines de chanvre avant la torsion de dix heures.', objet: 'bobine de chanvre' },
@@ -54,10 +58,14 @@ const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {
   bazar: [
     { titre: 'L’objet sans nom', texte: '{p} a repêché un objet que personne ne comprend. Montre-le aux anciens.', objet: 'objet repêché' },
     { titre: 'Le troc en chaîne', texte: '{p} échange une horloge contre « quelque chose de bleu ». À toi de trouver.', objet: 'horloge arrêtée' },
+    { titre: 'Le parapluie qui s’ouvre seul', texte: '{p} a vendu un parapluie qui s’ouvre tout seul. L’acheteur veut le rendre.', objet: 'parapluie capricieux' },
+    { titre: 'La boîte à musique', texte: '{p} cherche la clé d’une boîte à musique repêchée. Elle joue peut-être une chanson de la surface.', objet: 'petite clé dorée' },
   ],
   fourneaux: [
     { titre: 'L’épice oubliée', texte: '{p} a oublié l’épice du bouillon du soir. Elle pousse dans les potagers.', objet: 'sachet d’épices' },
     { titre: 'Le goûteur', texte: '{p} veut un avis honnête sur sa soupe. Goûte-la, puis trouve ce qui manque.', objet: 'louche de soupe' },
+    { titre: 'Le pain du veilleur', texte: '{p} doit porter une miche chaude au veilleur des dortoirs avant qu’elle refroidisse.', objet: 'miche chaude' },
+    { titre: 'Le chaudron percé', texte: '{p} a un chaudron percé et cent bols à remplir. Il faut un rivet et vite.', objet: 'rivet de cuivre' },
   ],
   forges: [
     { titre: 'Le rivet d’or', texte: '{p} a laissé tomber un rivet d’or dans les tôles. Il brille encore.', objet: 'rivet d’or' },
@@ -66,6 +74,8 @@ const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {
   dortoirs: [
     { titre: 'Le doudou perdu', texte: 'L’enfant de {p} ne dort pas sans son doudou. Il est quelque part dans les coques.', objet: 'doudou' },
     { titre: 'La veilleuse éteinte', texte: '{p} demande qu’on rallume une veilleuse tout en haut du mur.', objet: 'mèche neuve' },
+    { titre: 'La berceuse du sixième', texte: 'Au sixième, un bébé pleure. {p} dit qu’une vieille dame connaît la seule berceuse qui marche.', objet: 'berceuse' },
+    { titre: 'Les pantoufles égarées', texte: '{p} a retrouvé une pantoufle. L’autre est quelque part, et son propriétaire a froid aux pieds.', objet: 'pantoufle' },
   ],
   noye: [
     { titre: 'La cloche muette', texte: '{p} dit que la cloche engloutie ne sonne plus. Quelque chose bloque le battant.', objet: 'battant de cloche' },
@@ -74,16 +84,24 @@ const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {
   quais: [
     { titre: 'Le filet déchiré', texte: '{p} a un filet déchiré avant la remontée. Trouve du fil de soie.', objet: 'fil de soie' },
     { titre: 'Le mousse en retard', texte: 'Le mousse de {p} dort quelque part. Réveille-le avant les filets du soir.', objet: 'sifflet' },
+    { titre: 'La bouée peinte', texte: '{p} a perdu la bouée peinte par sa fille. Elle flotte encore dans un bassin.', objet: 'bouée peinte' },
+    { titre: 'Le poisson qui parle', texte: '{p} jure avoir pêché un poisson qui parle. Il s’est sauvé dans les viviers.', objet: 'seau d’eau de mer' },
   ],
   citernes: [
     { titre: 'La fuite', texte: '{p} entend une fuite mais ne la trouve pas. Suis le bruit de l’eau.', objet: 'joint en cuir' },
+    { titre: 'Le manomètre fou', texte: '{p} a un manomètre qui s’affole. Lis les trois autres et rapporte les chiffres.', objet: 'relevé de pression' },
+    { titre: 'Le chat de la citerne', texte: 'Un chat est coincé au fond d’une citerne vide. {p} n’ose pas descendre.', objet: 'panier' },
+    { titre: 'La vanne grippée', texte: '{p} n’arrive plus à tourner la vanne du bas. Il faut de la graisse de la Cathédrale.', objet: 'pot de graisse' },
   ],
   chapelle: [
     { titre: 'Le cierge du marin', texte: '{p} veut allumer un cierge pour un marin parti. Il en faut un neuf.', objet: 'cierge' },
+    { titre: 'L’ex-voto tombé', texte: 'Un ex-voto en forme de poisson est tombé dans la grille du vitrail. {p} voudrait le raccrocher.', objet: 'ex-voto' },
   ],
   laminaires: [
     { titre: 'La graine qui flotte', texte: '{p} a perdu une graine de laminaire dans les rigoles.', objet: 'graine de laminaire' },
     { titre: 'L’arrosage du matin', texte: '{p} a mal au dos. Porte trois arrosoirs jusqu’aux bacs du haut.', objet: 'arrosoir' },
+    { titre: 'Les escargots gourmands', texte: '{p} voit ses frondes grignotées chaque nuit. Trouve qui mange le jardin.', objet: 'escargot de verre' },
+    { titre: 'La lampe du bassin', texte: '{p} a une lampe de bassin éteinte, juste au-dessus de l’eau.', objet: 'mèche de lampe' },
   ],
   nurserie: [
     { titre: 'Cache-cache', texte: 'Trois enfants de {p} se sont cachés. Trouve-les tous.', objet: 'ruban' },
@@ -99,9 +117,11 @@ const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {
   ],
   theatre: [
     { titre: 'La marionnette sans fil', texte: '{p} a besoin d’un fil pour la représentation de vingt heures.', objet: 'fil de marionnette' },
+    { titre: 'Le souffleur aphone', texte: 'Le souffleur de {p} n’a plus de voix. Il lui faut un sirop de miel des Fourneaux.', objet: 'sirop de miel' },
   ],
   viviers: [
     { titre: 'L’anguille évadée', texte: 'Une anguille de {p} s’est échappée par un tuyau.', objet: 'épuisette' },
+    { titre: 'Les œufs de seiche', texte: '{p} attend des œufs de seiche des Quais pour le grand bassin.', objet: 'grappe d’œufs' },
   ],
   cathedrale: [
     { titre: 'La burette du graisseur', texte: '{p} a perdu sa burette près du grand volant.', objet: 'burette d’huile' },

@@ -271,4 +271,10 @@ export interface ProcgenEvents {
   'procgen:entered': { id: ArrondissementId; nom: string; quartier: DistrictId; archetype: ArchetypeId }
   'procgen:decouverte': { id: string; nom: string; kind: 'quartier' | 'repere' | 'merveille' | 'vista'; district: ArrondissementId }
   'procgen:phare': { id: string; district: ArrondissementId }
+  // Hero touched a procgen trouvaille (`tr-<district>-<n>`); gameplay records it in state.trouvailles.
+  'procgen:trouvaille': { id: string; nom: string; district: ArrondissementId; defi: string }
+  // Hero came near a side-request NPC; the quest text rides in the ContentPoint data.
+  'procgen:demande': { id: string; pnj: string; titre: string; texte: string; objet: string; district: ArrondissementId }
+  // An archetype's hourly wonder starts in a district near the hero.
+  'procgen:evenement': { id: string; nom: string; district: ArrondissementId; quartier: string; repere: string | null }
 }

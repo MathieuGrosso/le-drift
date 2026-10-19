@@ -4,7 +4,7 @@ import { toWorld } from '../../drift/frame'
 import type { ProcgenHost } from '../../drift/procgen-hook'
 import type { ContentSet, DistrictPlan, ProcgenEvents } from '../types'
 import { PHARE_KIT, kitDef, kitScale } from './landmarks'
-import { SIGHT } from './tuning'
+import { SIGHT, TOUCH } from './tuning'
 
 const MERVEILLE_RADIUS = 8
 const PHARE_TOP_RADIUS = 4
@@ -12,8 +12,12 @@ const SIGHT_HEIGHT = 0.6
 
 export type DecouverteKind = ProcgenEvents['procgen:decouverte']['kind']
 
-export function toastFor(kind: DecouverteKind | 'phare', nom: string): { titre: string; sous: string } {
+export function toastFor(kind: DecouverteKind | 'phare' | 'evenement' | 'trouvaille', nom: string): { titre: string; sous: string } {
   switch (kind) {
+    case 'evenement':
+      return { titre: nom, sous: 'Ça commence tout près' }
+    case 'trouvaille':
+      return { titre: nom, sous: 'Une trouvaille' }
     case 'quartier':
       return { titre: nom, sous: 'Nouvel arrondissement' }
     case 'repere':
@@ -41,8 +45,10 @@ export function createDecouvertes(host: ProcgenHost, plans: readonly DistrictPla
   const bus = host.ctx.bus as unknown as { emit<K extends keyof ProcgenEvents>(k: K, p: ProcgenEvents[K]): void }
   const known = new Set<string>(host.ctx.state.chart.reperes)
   const byId = new Map(plans.map((p) => [p.id, p]))
+  const emitted = new Set<string>()
   let current: string | null = null
   let wait = 0
+  let lastHour = host.ctx.state.time.hours
   const cam = new THREE.Vector3()
   const fwd = new THREE.Vector3()
   const tmp: Vec3 = { x: 0, y: 0, z: 0 }
@@ -75,6 +81,30 @@ export function createDecouvertes(host: ProcgenHost, plans: readonly DistrictPla
           discover(here.id, here.nom, 'quartier', here.id)
         }
       }
+      const hour = host.ctx.state.time.hours
+      const crossed = (h: number) => (lastHour <= hour ? h > lastHour && h <= hour : h > lastHour || h <= hour)
+      for (const set of sets) {
+        const plan = byId.get(set.district)
+        if (!plan) continue
+        for (const ev of set.events) {
+          if (!ev.hours.some(crossed)) continue
+          const site = set.points.find((p) => p.kind === 'merveille' && p.data?.evenement === ev.id)
+          bus.emit('procgen:evenement', { id: `${plan.id}/${ev.id}`, nom: ev.nom, district: plan.id, quartier: plan.quartier, repere: site ? String(site.data?.repere) : null })
+        }
+        for (const p of set.points) {
+          if (emitted.has(p.id)) continue
+          const d = Math.hypot(p.at.x - hero.x, p.at.y - hero.y - TOUCH.chest, p.at.z - hero.z)
+          if (p.kind === 'trouvaille' && d < TOUCH.trouvaille && !host.ctx.state.trouvailles.includes(p.id)) {
+            emitted.add(p.id)
+            bus.emit('procgen:trouvaille', { id: p.id, nom: p.nom ?? 'Une trouvaille', district: plan.id, defi: String(p.data?.defi ?? '') })
+          } else if (p.kind === 'demande' && d < TOUCH.demande) {
+            emitted.add(p.id)
+            const s = (k: string) => String(p.data?.[k] ?? '')
+            bus.emit('procgen:demande', { id: p.id, pnj: s('pnj'), titre: s('titre'), texte: s('texte'), objet: s('objet'), district: plan.id })
+          }
+        }
+      }
+      lastHour = hour
       wait -= dt
       if (wait > 0) return
       wait = SIGHT.pollEvery
