@@ -1,22 +1,278 @@
-import type { NetService, System } from '../core/types'
+import * as THREE from 'three'
+import { NET } from '../core/tuning'
+import type { GameContext, HeroMode, NetService, NetStatus, System } from '../core/types'
+import type { AvatarMode, ClientMessages, EmoteId, PlayerCardView, PlayerId, Profile, ServerMessages } from '../shared/protocol'
+import { RemoteAvatars } from './avatars'
+import { ChatBox } from './chat'
+import { probe, serverEndpoint } from './connect'
+import { EmoteWheel } from './emotes'
+import { loadIdentity, loadProfile, storeProfile } from './identity'
+import { Overlay } from './overlay'
+import { Presence } from './presence'
+import { applyPlayerSave, RemoteSave } from './save'
+import { Session, type Dispatch } from './session'
+import { netRoot } from './style'
+import { EMOTE_BUBBLE, TEXT } from './text'
+import { askProfile } from './welcome'
+import { SharedWorld } from './world'
 
-/** Solo until client-net lands: the game must behave exactly as before when no server answers. */
+const AVATAR_MODES: ReadonlySet<HeroMode> = new Set<AvatarMode>([
+  'idle', 'walk', 'swim', 'climb', 'scrub', 'ladder', 'sit', 'lean', 'sleep', 'fall', 'cutscene', 'airlock',
+])
+const PRESENCE_SECONDS = 1
+const NPC_HEAD = 1.9
+const ME = 'moi'
+
+function avatarMode(m: HeroMode): AvatarMode {
+  return AVATAR_MODES.has(m) ? (m as AvatarMode) : 'idle'
+}
+
+/** Multiplayer. Solo is the default and the fallback: nothing here ever awaits the network in the frame loop. */
 export function createNetSystem(): System {
-  const service: NetService = {
-    status: () => 'solo',
-    me: () => null,
-    players: () => [],
-    chat: () => undefined,
-    emote: () => undefined,
-    talk: () => false,
+  let ctx: GameContext | null = null
+  let session: Session | null = null
+  let ui: { root: HTMLDivElement; chat: ChatBox; wheel: EmoteWheel; presence: Presence; overlay: Overlay } | null = null
+  let avatars: RemoteAvatars | null = null
+  let world: SharedWorld | null = null
+  let save: RemoteSave | null = null
+  let me: PlayerId | null = null
+  let canRejoin = false
+  let starting = false
+  let sendTimer = 0
+  let presenceTimer = 0
+  let lastMove = ''
+  const unsubs: (() => void)[] = []
+  const v = new THREE.Vector3()
+  const eye = new THREE.Vector3()
+
+  const status = (): NetStatus => session?.status ?? 'solo'
+  const players = (): PlayerCardView[] => {
+    const out: PlayerCardView[] = []
+    session?.mondeState?.players.forEach((p) => out.push(p))
+    return out
   }
+
+  const service: NetService = {
+    status,
+    me: () => me,
+    players,
+    chat: (text) => session?.send('chat', { text }),
+    emote: (emote) => session?.send('emote', { emote }),
+    talk(npcId, text) {
+      if (status() !== 'online' || !session) return false
+      session.send('talk', { npcId, text })
+      return true
+    },
+  }
+
+  const sayOver = (id: PlayerId, text: string) => {
+    if (!ctx || !ui) return
+    const head = id === me ? ctx.services.hero?.headPosition() : avatars?.head(id, v)
+    if (head) ui.overlay.say(id === me ? ME : id, v.set(head.x, head.y, head.z), text, ctx.clock.elapsed)
+  }
+
+  const onMessage: Dispatch = (type, payload) => {
+    if (!ctx || !ui) return
+    switch (type) {
+      case 'welcome': {
+        const w = payload as ServerMessages['welcome']
+        me = w.you
+        if (w.save) applyPlayerSave(ctx, w.save)
+        else save?.flush()
+        break
+      }
+      case 'chat': {
+        const c = payload as ServerMessages['chat']
+        const card = session?.mondeState?.players.get(c.from)
+        ui.chat.line(c.name, c.text, card?.color ?? 0)
+        sayOver(c.from, c.text)
+        ctx.bus.emit('net:chat', c)
+        break
+      }
+      case 'emote': {
+        const e = payload as ServerMessages['emote']
+        avatars?.emote(e.from, e.emote)
+        sayOver(e.from, EMOTE_BUBBLE[e.emote])
+        ctx.bus.emit('net:emote', e)
+        break
+      }
+      case 'npc:say': {
+        const s = payload as ServerMessages['npc:say']
+        const p = ctx.services.drift?.npcPosition(s.npcId)
+        if (p) ui.overlay.say(`npc:${s.npcId}`, v.set(p.x, p.y + NPC_HEAD, p.z), s.text, ctx.clock.elapsed)
+        if (s.to === me) ui.chat.line(null, s.text)
+        break
+      }
+      case 'npc:give': {
+        const g = payload as ServerMessages['npc:give']
+        ctx.services.gameplay?.giveItem(g.item, g.count)
+        break
+      }
+      case 'npc:quest': {
+        const q = payload as ServerMessages['npc:quest']
+        if (ctx.state.quests[q.questId]) break
+        ctx.state.quests[q.questId] = 'proposee'
+        ctx.bus.emit('quest:step', { questId: q.questId, step: 'proposee' })
+        ui.chat.line(null, TEXT.quest)
+        break
+      }
+      case 'refused': {
+        const r = payload as ServerMessages['refused']
+        ui.chat.line(null, TEXT.refused[r.reason])
+        break
+      }
+    }
+  }
+
+  const goSolo = () => {
+    avatars?.clear()
+    ui?.overlay.clear()
+    world?.release()
+    save?.cancel()
+    me = null
+  }
+
+  const connect = async () => {
+    if (!ctx || !ui || starting || session) return
+    starting = true
+    try {
+      const endpoint = serverEndpoint()
+      if (!(await probe(endpoint))) {
+        canRejoin = true
+        return
+      }
+      let profile: Profile | null = loadProfile()
+      if (!profile) {
+        const picked = await askProfile(ui.root, loadProfile())
+        if (!picked) {
+          canRejoin = true
+          return
+        }
+        profile = storeProfile(picked)
+      }
+      const c = ctx
+      const s: Session = new Session(endpoint, loadIdentity(), profile, {
+        status: (st) => {
+          c.bus.emit('net:status', { status: st })
+          if (st === 'solo') goSolo()
+        },
+        message: onMessage,
+        lost: () => {
+          if (session !== s) return
+          session = null
+          void s.stop().then(() => connect())
+        },
+      })
+      session = s
+      if (!(await s.start(c.state.hero.district))) {
+        session = null
+        canRejoin = true
+      } else canRejoin = false
+    } finally {
+      starting = false
+    }
+  }
+
+  const sendMove = (c: GameContext) => {
+    const h = c.state.hero
+    const drift = c.services.drift
+    if (!drift || !session) return
+    const local = h.localPosition ?? drift.toLocal(h.position)
+    const move: ClientMessages['move'] = {
+      p: [local.x, local.y, local.z], yaw: h.yaw - drift.pose().heading, mode: avatarMode(h.mode), outside: c.state.mode === 'sortie',
+    }
+    const key = `${move.p.map((x) => x.toFixed(2)).join()}|${move.yaw.toFixed(2)}|${move.mode}|${move.outside}`
+    if (key === lastMove) return
+    lastMove = key
+    session.send('move', move)
+  }
+
+  const markTags = (c: GameContext) => {
+    if (!ui || !avatars) return
+    const views = session?.quartierState?.avatars
+    for (const id of avatars.ids()) {
+      const view = views?.get(id)
+      const head = avatars.head(id, v)
+      if (view && head) ui.overlay.mark(id, head, view.name, view.color)
+    }
+    const mine = c.services.hero?.headPosition()
+    if (mine) ui.overlay.mark(ME, v.set(mine.x, mine.y, mine.z), null)
+  }
+
   return {
     id: 'net',
-    init(ctx) {
-      ctx.services.net = service
-      ctx.bus.emit('net:status', { status: 'solo' })
+    init(c) {
+      ctx = c
+      c.services.net = service
+      const root = netRoot(c.uiRoot)
+      const online = () => status() === 'online'
+      ui = {
+        root,
+        overlay: new Overlay(root, c.camera),
+        chat: new ChatBox(root, (text) => service.chat(text), online),
+        wheel: new EmoteWheel(root, (emote: EmoteId) => service.emote(emote), online),
+        presence: new Presence(root, () => void connect()),
+      }
+      avatars = new RemoteAvatars(c)
+      world = new SharedWorld(c.state, (m) => session?.send('scrub', m))
+      save = new RemoteSave(c.state, (m) => session?.send('save', m))
+      unsubs.push(
+        c.bus.on('district:entered', ({ district }) => {
+          session?.enter(district).catch(() => undefined)
+        }),
+        c.bus.on('save:written', () => {
+          if (status() === 'online') save?.schedule()
+        }),
+        c.bus.on('scrub:progress', ({ windowId, coat }) => {
+          const m = session?.mondeState
+          if (m && status() === 'online') world?.scrubbed(m, windowId, coat)
+        }),
+      )
+      c.bus.emit('net:status', { status: 'solo' })
+      if (new URLSearchParams(location.search).has('debug')) {
+        Object.assign(window as unknown as Record<string, unknown>, { __net: { service, connect: () => connect() } })
+      }
+      void connect()
     },
-    update() {},
-    dispose() {},
+
+    update(dt, c) {
+      if (!ui || !avatars) return
+      const online = status() === 'online'
+      ui.chat.show(online)
+      presenceTimer -= dt
+      if (presenceTimer <= 0) {
+        presenceTimer = PRESENCE_SECONDS
+        ui.presence.render(status(), players(), me, canRejoin)
+      }
+      if (online && session) {
+        const m = session.mondeState
+        if (m && world) world.apply(dt, m)
+        sendTimer -= dt
+        if (sendTimer <= 0) {
+          sendTimer = 1 / NET.sendHz
+          sendMove(c)
+        }
+      }
+      avatars.update(dt, online ? session?.quartierState?.avatars ?? null : null, me)
+      markTags(c)
+      c.camera.getWorldPosition(eye)
+      ui.overlay.flush(c.clock.elapsed, eye)
+    },
+
+    dispose() {
+      unsubs.splice(0).forEach((u) => u())
+      void session?.stop()
+      session = null
+      avatars?.clear()
+      if (ui) {
+        ui.chat.dispose()
+        ui.wheel.dispose()
+        ui.presence.dispose()
+        ui.overlay.dispose()
+        ui.root.remove()
+      }
+      ui = null
+      ctx = null
+    },
   }
 }
