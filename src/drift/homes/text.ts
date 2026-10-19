@@ -35,7 +35,7 @@ export const NOM_TEMPLATE: Record<TemplateId, (famille: string, prenom: string) 
   echoppe: (f) => `Échoppe ${f}`,
   'salon-the': (_, p) => `Le thé de ${p}`,
   'chambre-enfants': (f) => `Les petits ${f}`,
-  'vieux-marin': (_, p) => `Le vieux ${p}`,
+  'vieux-marin': (_, p) => `Le repaire de ${p}`,
 }
 
 export const ROLE_TEMPLATE: Record<TemplateId, Role> = {
