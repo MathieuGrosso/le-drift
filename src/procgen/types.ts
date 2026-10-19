@@ -235,6 +235,10 @@ export interface ContentSet {
   chart: readonly ChartEntry[]
   events: readonly HourlyEvent[]
   reserved: readonly Box[]
+  // Landmark ladders, zips, seats; the streamer adds them to the district's anchors.
+  anchors: readonly Anchor[]
+  // Landmark cuboids; the streamer appends them to shell.colliders before buildLayout.
+  colliders: readonly ColliderSpec[]
 }
 
 export interface PartStats { draws: number; triangles: number; geometries: number; buildMs: number }
