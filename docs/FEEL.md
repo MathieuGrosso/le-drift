@@ -1,3 +1,50 @@
+# Feel — round 4 (programmeur gameplay)
+
+Build `main` reconstruit dans un worktree propre (l'arbre principal contient le travail en cours d'autres
+agents), `vite preview` :4210, Chrome 155 GPU réel (port 9222, mon onglet CDP, refermé). Entrées réelles CDP
+(touches tenues, `mousemove` avec `movementX`), `input.pointerLocked` forcé après le clic. `cd` = distance
+caméra-tête par frame, `clip` = frames où une sphère de 0,1 m à la caméra touche un collider solide.
+
+## Caméra, avant → après (`bd130a2`, caméra coincée qui pivote vers l'espace libre)
+
+| Scénario | cd min | frames cd < 0,8 m | saut de cd max (1 frame) | clip |
+|---|---|---|---|---|
+| Cabine, S 2 s + A 1 s + S 1 s (Ilo marche vers la caméra) | 0,11 → **0,39** | 375/496 → **205/500** | 0,35 → 0,20 | 0 → 0 |
+| Coursive, W + souris ±500/1000 px, puis W+D | 0,76 → **1,02** | 17/492 → **0/519** | 1,01 → **0,34** | 0 → 0 |
+| Cabine, orbite 1600 px + tangage | 2,03 → 2,04 | 0 → 0 | 0,45 → 0,46 | 0 → 0 |
+| Échelle du mât, montée + lacet 1500 px + regarder en haut | 0,19 → 0,20 | 238/602 → 184/633 | 1,04 → 1,66 | 0 → 0 |
+
+Saut (Espace tenu 300 ms, cabine) : apex **+1,22 m**. Échap pendant l'intro : contrôle en ~1,5 s.
+
+## Traversées (entrée réelle, `?debug&nosave`, acte 3 + poulie)
+
+| Traversée | Résultat | Mesure |
+|---|---|---|
+| Tubes pneumatiques, les 10 (5 Nef → district, 5 retours) | **OK** | invite à 3,0–3,9 m de face et à ±35°, E → arrivée 34–95 m plus loin en `idle`, W/S marchent aussitôt (2,5–4,7 m en 1,2 s), cd stable à l'arrivée (saut ≤ 0,15) |
+| Tube, E rappuyé 0,4 s après l'arrivée | **OK** | pas de voyage retour involontaire (grâce de 0,5 s après une cinématique) |
+| Tyrolienne Écluse | **corrigé** (`fix(hero)` zip) | avant : arrivée en `climb` collé au poteau, W 0,03 m. Après : posé à 0,9 m du bout, `none`, W 2,7 m |
+| Tyroliennes Nef ouest, Marché | **OK** | arrivée à 0,1–0,2 m du bout, marche ensuite |
+| Toboggans Nef, Marché | **OK** | entrée en courant (W), sortie en `none` à ~3,5 m après le dernier point |
+| Échelles `mat-0-8`, `dome-ecluse-hauts` | **OK** | accroche à W, sommet à ≤ 0,07 m, sortie posée |
+| Échelle `puits-echelle-ecluse` (16 m) | **non conclu** | encore sur l'échelle à 0,9 m du sommet après 9 s (test plafonné) |
+| Échelle `echelle-cs-01` (coque scellée) | **KO à revoir** | accroche mais ne monte pas (sommet à −2,77 m) |
+| Saut depuis une échelle | **OK** | lâche à 2,7 m, réception au sol en `none` |
+| Bancs (asseoir / se lever) | **OK** | E → `sit`, W → debout |
+| Cartons au réveil | **corrigé** | le nom de lieu attend la fin du carton d'acte au lieu de s'y superposer |
+| Invite « Monter » sur l'échelle | **corrigé dans le code** | plus proposée en `ladder`/`climb`; ma mesure lit encore le texte DOM de l'invite masquée, à revérifier à l'œil |
+| Portes, écluse (sortie, longe, retour) | **non testé ce round** | voir round 3 |
+| Porter / poser, hisse sur rebord | **non testé ce round** | hisse OK au round 3 |
+
+## Reste à faire
+
+- Échelle : la caméra se rapproche encore d'Ilo en regardant en haut contre un fût (184 frames < 0,8 m), et
+  la rentrée y saute de 1,66 m en une frame.
+- `echelle-cs-01` ne se monte pas.
+- Constantes de `HeroController` (`T`) et de la caméra (sondes, angles de rappel) encore locales au module,
+  à déplacer dans `src/core/tuning.ts`.
+- Défauts du round 3 non traités : C4 (coupure caméra à la réception d'une chute), J1 (banc au bord de la
+  trémie), S1 (sortie longue, dos à la coque), I3 (tableau de l'écluse), U2 (frottoir).
+
 # Feel — revue gameplay, round 3 (relecteur)
 
 Build de `d11e877` (`npm run build`, copie figée de `dist/` servie par `vite preview` :4211), Chrome 155 GPU
