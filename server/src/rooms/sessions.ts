@@ -34,12 +34,4 @@ export class Sessions {
     const id = this.byClient.get(client.sessionId)
     return id && this.byPlayer.get(id)?.sessionId === client.sessionId ? id : null
   }
-
-  clientOf(id: PlayerId): Client | undefined {
-    return this.byPlayer.get(id)
-  }
-
-  players(): PlayerId[] {
-    return [...this.byPlayer.keys()]
-  }
 }
