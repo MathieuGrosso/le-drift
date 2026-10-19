@@ -442,7 +442,11 @@ export function mast(k: Kit, x: number, z: number, y0: number, y1: number, r: nu
     }
     k.lamps.push({ x, y: ry - 0.3, z, color: PAL.lampe, radius: 16, live: false, bake: 1.1 })
   }
-  k.cols.push({ kind: 'pipe', climbable: true, x, y: (y0 + y1) / 2, z, hx: r + 0.2, hy: (y1 - y0) / 2, hz: r + 0.2 })
+  const R = r + 0.2
+  for (let i = 0; i < 4; i++) {
+    const q = new THREE.Quaternion().setFromAxisAngle(UP, (i * Math.PI) / 8)
+    k.cols.push({ kind: 'pipe', climbable: true, x, y: (y0 + y1) / 2, z, hx: R, hy: (y1 - y0) / 2, hz: R * Math.tan(Math.PI / 8), q })
+  }
 }
 
 export function engine(k: Kit, x: number, y: number, z: number, rot: number): void {
