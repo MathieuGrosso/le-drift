@@ -6,6 +6,7 @@ import { toLocal, toWorld, yawToWorld, type DriftPose } from './frame'
 import type { Mats } from './materials'
 import type { DriftNavmesh } from './nav/navmesh'
 import type { NavLink } from './nav/soup'
+import type { ChartEntry } from '../procgen/types'
 
 export type { Anchor } from './city/kit'
 export type { DriftPose } from './frame'
@@ -41,6 +42,8 @@ export interface ProcgenWorld {
   anchorsNear(local: Vec3, r: number): DriftAnchor[]
   glassVisible(): number
   nav(district: string): DriftNavmesh | null
+  ride(id: string): boolean
+  chart(): readonly ChartEntry[]
   dispose(): void
 }
 
@@ -103,6 +106,9 @@ export function mountProcgen(ctx: GameContext, root: THREE.Object3D, mats: Mats,
   service.mediumAt = (p): Medium => (world?.cellAt(local(p), MEDIUM_MARGIN) ? 'air' : s.mediumAt(p))
   service.districtAt = (l) => world?.cellAt(l)?.quartier ?? s.districtAt(l)
   service.cameraEnv = () => (camCell ? env : s.cameraEnv())
+  service.openDoor = (id, open) => {
+    if (!world?.ride(id)) s.openDoor(id, open)
+  }
   service.glassPortalsVisible = () => (camCell ? world?.glassVisible() ?? 0 : s.glassPortalsVisible())
 
   return {

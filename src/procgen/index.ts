@@ -2,13 +2,18 @@ import * as THREE from 'three'
 import type { Vec3 } from '../core/types'
 import type { DriftAnchor } from '../drift'
 import type { DriftNavmesh, ProcgenCell, ProcgenHost, ProcgenWorld } from '../drift/procgen-hook'
+import { auditWalk, type AuditReport } from './audit'
 import { buildContent, buildFarLandmarks, createDecouvertes, populate } from './content'
 import { dress } from './dressing'
+import { districtCrowd } from './foule'
+import { buildPiece, piece, returnBooth, staticLiaisons, type BuiltPiece, type RideTarget } from './liaisons'
+import { RIDE_ACT } from './liaisons/tuning'
 import { buildLayout, layout, massing } from './layout'
 import { buildSilhouette } from './layout/silhouette'
 import { STREAM } from './layout/tuning'
 import { planShip } from './ship'
-import type { BuiltLayout, BuiltPart, CellSpec, ContentSet, DistrictPlan, DistrictShell, Job } from './types'
+import type { Crowd } from '../drift/city/crowd'
+import type { BuiltLayout, BuiltPart, CellSpec, ChartEntry, ContentSet, DistrictPlan, DistrictShell, Job } from './types'
 
 interface Built {
   shell: DistrictShell
@@ -20,6 +25,8 @@ interface Built {
   group: THREE.Group
   nav: Promise<DriftNavmesh | null> | null
   navReady: DriftNavmesh | null
+  rides: ReadonlyMap<string, RideTarget>
+  crowd: Crowd | null
 }
 
 interface Slot {
@@ -63,6 +70,11 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   const far = buildFarLandmarks(ship.districts, host.mats)
   root.add(far.group)
   const decouvertes = createDecouvertes(host, ship.districts)
+  const links = staticLiaisons(ship)
+  const linksBuilt: BuiltPiece = buildPiece(links, host, 'liaisons', null)
+  root.add(linksBuilt.group)
+  const charted = new Map<string, ChartEntry>()
+  let heroSlot: Slot | null = null
   const debug = new URLSearchParams(location.search).has('procgen')
   let camCell: CellSpec | null = null
   let clock = 0
@@ -77,7 +89,9 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     yield
     const built = yield* buildLayout(shell, host)
     const parts: BuiltPart[] = []
-    const dressed = yield* dress({ shell, keepOut: content.reserved }, host)
+    const station = piece()
+    const stationBox = returnBooth(station, shell)
+    const dressed = yield* dress({ shell, keepOut: [...content.reserved, stationBox] }, host)
     parts.push(dressed)
     if (dressed.colliders?.length) {
       const R = ctx.physics.rapier
@@ -89,6 +103,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     }
     yield
     parts.push(yield* buildContent(content, shell, host))
+    parts.push(buildPiece(station, host, `station:${shell.plan.id}`, built.body))
     const group = new THREE.Group()
     group.name = `arrondissement:${shell.plan.id}`
     group.add(built.group, ...parts.map((p) => p.group))
@@ -98,12 +113,13 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
       const tris = built.stats.triangles + parts.reduce((s, p) => s + p.stats.triangles, 0)
       console.info(`[procgen] ${shell.plan.id} built in ${(performance.now() - t0).toFixed(0)} ms (wall), ${draws} draws, ${(tris / 1000).toFixed(0)}k tris, ${shell.colliders.length} colliders, ${cells.length} cells, geometries +${ctx.renderer.info.memory.geometries - geoBefore}`)
     }
-    return { shell, content, cells, anchors: [...shell.anchors], layout: built, parts, group, nav: null, navReady: null }
+    return { shell, content, cells, anchors: [...shell.anchors, ...station.anchors], layout: built, parts, group, nav: null, navReady: null, rides: station.rides, crowd: null }
   }
 
   const attach = (slot: Slot, b: Built) => {
     slot.built = b
     root.add(b.group)
+    for (const e of b.content.chart) if (e.reveal === 'toujours') charted.set(e.id, e)
     silhouette.hide(slot.index, true)
     far.hide(slot.plan.id, true)
   }
@@ -112,6 +128,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     const b = slot.built
     if (!b) return
     slot.built = null
+    b.crowd?.dispose()
     for (const p of b.parts) p.dispose()
     b.layout.dispose()
     b.group.removeFromParent()
@@ -166,16 +183,53 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   }
 
   const cellOf = (l: Vec3, margin = 0): CellSpec | null => {
+    for (const c of links.cells) if (c.boxes.some((b) => inBox(b, l, margin))) return c
     const s = builtAt(l, margin)
     if (!s?.built) return null
     for (const c of s.built.cells) if (c.boxes.some((b) => inBox(b, l, margin))) return c
     return null
   }
 
+  const bake = (b: Built, district: string): Promise<DriftNavmesh | null> => {
+    const t0 = performance.now()
+    return host
+      .bakeNav([b.layout.body], b.shell.links.map((k) => ({ from: k.from, to: k.to, both: k.both })))
+      .then((n) => {
+        if (slots.every((s) => s.built !== b)) {
+          n.dispose()
+          return null
+        }
+        b.navReady = n
+        if (debug) console.info(`[procgen] ${district} navmesh ${n.polys} polys in ${(performance.now() - t0).toFixed(0)} ms`)
+        return n
+      })
+      .catch((err: unknown) => {
+        console.warn(`[procgen] nav ${district}`, err)
+        return null
+      })
+  }
+
   const toCell = (c: CellSpec): ProcgenCell => ({ id: c.id, district: c.district, quartier: c.quartier, deck: c.deck, roof: c.roof, air: c.air, glass: c.glass })
 
   const arr = new URLSearchParams(location.search).get('arr')
   let pendingArr = arr && slots.some((s) => s.plan.id === arr) ? arr : null
+
+  if (debug) {
+    const audit = (id: string, step = 1, stuck = false): AuditReport | null => {
+      const slot = slots.find((s) => s.plan.id === id)
+      if (!slot) return null
+      if (!slot.built) finish(slot)
+      const b = slot.built!
+      const sp = b.cells.find((c) => c.id === id)!.spawn
+      const targets = [
+        ...b.shell.ports.map((p) => ({ id: p.port, at: p.at })),
+        ...b.content.points.map((p) => ({ id: p.id, at: p.at })),
+      ]
+      return auditWalk(ctx, host.pose(), { box: slot.plan.bounds, step, seed: sp, targets, stuckCheck: stuck })
+    }
+    const built = () => slots.filter((s) => s.built).map((s) => s.plan.id)
+    Object.assign(window as unknown as Record<string, unknown>, { __procgen: { audit, auditBox: (o: Parameters<typeof auditWalk>[2]) => auditWalk(ctx, host.pose(), o), built, plan: ship } })
+  }
 
   console.info(`[procgen] ${ship.districts.length} arrondissements, seed ${ship.seed.toString(16)} v${ship.version}, quality ${ctx.quality.level}`)
 
@@ -197,6 +251,22 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
       step(STREAM.budgetMs[ctx.quality.level])
       const pose = host.pose()
       _q.setFromAxisAngle(UP, -pose.heading)
+      linksBuilt.body!.setNextKinematicTranslation(pose.position)
+      linksBuilt.body!.setNextKinematicRotation(_q)
+      heroSlot = slots.find((s) => s.built && inBox(s.plan.bounds, heroLocal)) ?? null
+      const hb = heroSlot?.built
+      if (hb) {
+        for (const e of hb.content.chart) if (e.reveal === 'visite') charted.set(e.id, e)
+        hb.crowd ??= districtCrowd(hb.shell, host.mats, ctx.quality.level)
+        if (!hb.crowd.group.parent) hb.group.add(hb.crowd.group)
+        if (!hb.navReady && !hb.nav) {
+          const crowd = hb.crowd
+          hb.nav = bake(hb, heroSlot!.plan.id).then((n) => {
+            if (n && hb.crowd === crowd) crowd.useNav(n)
+            return n
+          })
+        }
+      }
       const sets: ContentSet[] = []
       for (const s of slots) {
         const b = s.built
@@ -204,6 +274,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
         b.layout.body.setNextKinematicTranslation(pose.position)
         b.layout.body.setNextKinematicRotation(_q)
         for (const p of b.parts) p.update?.(dt, hours)
+        b.crowd?.update(dt, hours)
         sets.push(b.content)
       }
       decouvertes.update(dt, heroLocal, sets)
@@ -222,6 +293,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     },
     anchorsNear(l, r) {
       const out: DriftAnchor[] = []
+      for (const a of links.anchors) if (anchorDist(a, l) <= r) out.push(a)
       for (const s of slots) {
         if (!s.built || boxDist(s.plan, l) > r) continue
         for (const a of s.built.anchors) if (anchorDist(a, l) <= r) out.push(a)
@@ -232,16 +304,24 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     nav(district) {
       const b = slots.find((s) => s.plan.id === district)?.built
       if (!b) return null
-      b.nav ??= host
-        .bakeNav([b.layout.body], b.shell.links.map((k) => ({ from: k.from, to: k.to, both: k.both })))
-        .then((n) => (b.navReady = n))
-        .catch((err: unknown) => {
-          console.warn(`[procgen] nav ${district}`, err)
-          return null
-        })
+      b.nav ??= bake(b, district)
       return b.navReady
     },
+    ride(id) {
+      const to = links.rides.get(id) ?? slots.find((s) => s.built?.rides.has(id))?.built?.rides.get(id)
+      if (!to) return false
+      if (ctx.state.act < RIDE_ACT) return true
+      const at = 'local' in to ? to.local : this.spawn(to.district)
+      if (!at) return true
+      const hero = ctx.services.hero as (typeof ctx.services.hero & { tube?(to: Vec3, yaw: number): Promise<void> }) | undefined
+      ;(ctx.bus as unknown as { emit(k: string, p: unknown): void }).emit('tube:travel', { from: id, to: at })
+      if (hero?.tube) void hero.tube({ x: at.x, y: at.y, z: at.z }, at.yaw)
+      else hero?.teleportLocal({ x: at.x, y: at.y + 0.1, z: at.z }, at.yaw)
+      return true
+    },
+    chart: () => [...charted.values()],
     dispose() {
+      linksBuilt.dispose()
       for (const s of slots) release(s)
       silhouette.dispose()
       far.dispose()

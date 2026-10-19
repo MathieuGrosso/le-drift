@@ -114,11 +114,10 @@ function portsBetween(a: Row, ab: Box, b: Row, bb: Box): PortPlan | null {
   return null
 }
 
+// Only the halls whose end wall faces the gap have a door there; the marché and serres sides are hull rows.
 const CORE_GATES: readonly { quartier: DistrictId; z: number }[] = [
-  { quartier: 'ateliers', z: -45 },
-  { quartier: 'marche', z: 60 },
-  { quartier: 'scellees', z: -45 },
-  { quartier: 'serres', z: 60 },
+  { quartier: 'ateliers', z: -32 },
+  { quartier: 'scellees', z: -32 },
 ]
 
 function corePort(row: Row, b: Box): PortPlan | null {
