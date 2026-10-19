@@ -87,6 +87,11 @@ export const CAMERA = {
     fadeOpacity: 0.25,
     transitionSeconds: 1,
   },
+  atrium: { distance: 5, fov: 62 },
+  ride: { distance: 6, fov: 66 },
+  sortie: { distance: 6, fov: 55 },
+  collision: { pullInPerSecond: 9, holdSeconds: 0.35, nearRadius: 0.14, hardRadius: 0.16, outsideRadius: 0.35 },
+  swing: { below: 1.4, idleSeconds: 0.25, gain: 0.35, offsets: [0.6, -0.6, 1.2, -1.2, 1.9, -1.9], gainPerRadian: 2.2, maxRate: 2.4, response: 5 },
 } as const
 
 export const HAZE_BY_VISIBILITY: Readonly<Record<number, number>> = { 30: 170, 60: 280, 90: 400, 999: 620 }

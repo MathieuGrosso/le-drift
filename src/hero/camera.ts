@@ -25,9 +25,7 @@ export interface CameraFrame {
 }
 
 const EXCLUDE: readonly ColliderKind[] = ['trigger', 'fauna', 'kelp', 'net', 'seat']
-const ATRIUM = { distance: 5, fov: 62 }
-const ZIP = { distance: 6, fov: 66 }
-const SORTIE = { distance: 6, fov: 55 }
+const { atrium: ATRIUM, ride: ZIP, sortie: SORTIE, collision: COLL, swing: SWING } = CAMERA
 const PROBES: readonly [number, number, number][] = [
   [0, 1, 0], [1, 0.25, 0], [-1, 0.25, 0], [0, 0.35, 1], [0.7, 0.5, 0.7], [-0.7, 0.5, 0.7], [0, 0.2, -1],
 ]
@@ -40,10 +38,6 @@ function angleDiff(a: number, b: number): number {
 }
 
 const smooth = (k: number) => k * k * (3 - 2 * k)
-const PULL_IN = 9
-const HOLD = 0.35
-const NEAR_R = 0.14
-const HARD_R = 0.16
 
 export class HeroCamera {
   yaw = 0
@@ -163,6 +157,7 @@ export class HeroCamera {
     const pMin = lerp(o.pitchMinDeg, i.pitchMinDeg, k) * D2R
     const pMax = lerp(o.pitchMaxDeg, i.pitchMaxDeg, k) * D2R
     this.pitch = THREE.MathUtils.clamp(this.pitch, pMin, pMax)
+    if (k > 0.5 && !this.pose && !f.freeze) this.swing(dt)
 
     const pivotH = lerp(o.pivotHeight, i.pivotHeight, k) - this.styleK.zip * 0.3
     this.lead.set(f.velocity.x, 0, f.velocity.z).multiplyScalar(0.07 * (1 - this.styleK.climb))
@@ -208,7 +203,7 @@ export class HeroCamera {
         if (free < len) this.pivot.copy(this.pivotBase).addScaledVector(head, Math.max(0, free - 0.02))
       }
     }
-    const allowed = this.collide(want, k > 0.5 ? HARD_R : 0.35)
+    const allowed = this.collide(want, k > 0.5 ? COLL.hardRadius : COLL.outsideRadius)
     const roomy = k > 0.5 ? Math.min(allowed, this.collide(want, i.sphereRadius)) : allowed
     let soft = k > 0.5 && !this.pose ? Math.min(roomy, Math.max(this.whiskers(want, i.sphereRadius, pitch), Math.min(want, 1.6))) : allowed
     if (k > 0.5 && !this.pose) soft = Math.min(soft, Math.max(this.ahead(want, i.sphereRadius, pitch, dt), allowed * 0.5))
@@ -220,13 +215,13 @@ export class HeroCamera {
       this.side = sideGoal
       this.assist = assistGoal
     } else if (allowed < this.dist - 1e-3) {
-      const glide = this.dist - PULL_IN * dt
+      const glide = this.dist - COLL.pullInPerSecond * dt
       this.desired.copy(this.pivot).addScaledVector(this.dir, Math.max(allowed, glide))
-      this.dist = glide > allowed && this.free(this.desired, NEAR_R) ? glide : allowed
-      this.holdT = HOLD
+      this.dist = glide > allowed && this.free(this.desired, COLL.nearRadius) ? glide : allowed
+      this.holdT = COLL.holdSeconds
     } else if (soft < this.dist) {
       this.dist += (soft - this.dist) * Math.min(1, dt * 12)
-      this.holdT = HOLD
+      this.holdT = COLL.holdSeconds
     } else if (this.holdT <= 0) {
       const out = Math.min((allowed - this.dist) * 2.5, lerp(o.easeOut, i.easeOut, k) * (1 + this.styleK.zip * 2))
       this.dist = Math.min(allowed, this.dist + out * dt)
@@ -362,6 +357,28 @@ export class HeroCamera {
       m = Math.min(m, this.cast(this.pivot, this.aheadDir, want, radius))
     }
     return Math.max(0.05, m - 0.02)
+  }
+
+  private swingDir = new THREE.Vector3()
+  private swingRate = 0
+  // A pinned camera turns towards the roomiest yaw instead of sinking into Ilo's head.
+  private swing(dt: number): void {
+    let goal = 0
+    if (this.dist < SWING.below && this.lookIdle > SWING.idleSeconds) {
+      const cp = Math.cos(this.pitch)
+      let best = this.dist + SWING.gain
+      for (const off of SWING.offsets) {
+        const y = this.yaw + off
+        this.swingDir.set(-Math.sin(y) * cp, Math.sin(this.pitch), Math.cos(y) * cp)
+        const d = this.cast(this.pivot, this.swingDir, CAMERA.indoor.distance, CAMERA.indoor.sphereRadius)
+        if (d > best) {
+          best = d
+          goal = THREE.MathUtils.clamp(off * SWING.gainPerRadian, -SWING.maxRate, SWING.maxRate)
+        }
+      }
+    }
+    this.swingRate += (goal - this.swingRate) * Math.min(1, dt * SWING.response)
+    this.yaw += this.swingRate * dt
   }
 
   private sideTmp = new THREE.Vector3()
