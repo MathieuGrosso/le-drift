@@ -163,6 +163,7 @@ function createRuntime(ctx: GameContext): Runtime {
 
   let hintId: string | null = null
   let introState: 'waiting' | 'playing' | 'done' = 'waiting'
+  let introGrace = 0
   let musicTimer = 0
   let music: MusicCue | null = null
   const candidates: Candidate[] = []
@@ -180,6 +181,7 @@ function createRuntime(ctx: GameContext): Runtime {
         gp.lock.count--
       }
       gp.heroMode('idle')
+      introGrace = 1
       ctx.state.flags['intro'] = true
       gp.hud.showHud(true)
       gp.quests.start()
@@ -250,7 +252,8 @@ function createRuntime(ctx: GameContext): Runtime {
       }
 
       candidates.length = 0
-      const canInteract = !wasBusy && !gp.busy() && !paused && introState === 'done'
+      introGrace = Math.max(0, introGrace - dt)
+      const canInteract = !wasBusy && !gp.busy() && !paused && introState === 'done' && introGrace <= 0
       if (canInteract) {
         uses.candidates(candidates)
         gp.collect.candidates(candidates)

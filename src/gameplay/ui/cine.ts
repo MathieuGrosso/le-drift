@@ -38,7 +38,6 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
       await wait(seconds)
     },
     async card(title, sub, seconds = 3.2) {
-      busy++
       cardT.textContent = title
       cardS.textContent = sub ?? ''
       cardS.classList.toggle('long', (sub ?? '').length > 28)
@@ -46,7 +45,6 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
       await wait(seconds)
       card.classList.remove('show')
       await wait(1.2)
-      busy--
     },
     async narrate(lines) {
       busy++
@@ -63,13 +61,13 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
         if (skip) break
         p.textContent = line
         p.classList.add('show')
-        const auto = Math.min(5.5, Math.max(2.6, 1.4 + line.length * 0.035))
+        const auto = Math.min(4.5, Math.max(2.2, 1.0 + line.length * 0.03))
         let t = 0
         await new Promise<void>((resolve) => {
           tick = (dt) => {
             t += dt
             const go = advancePressed() || clicked
-            if (input.pressed('pause')) skip = true
+            if (input.pressed('pause') || Math.hypot(input.move.x, input.move.y) > 0.3) skip = true
             input.consume('interact', 'up', 'pause')
             clicked = false
             if ((go && t > 0.35) || t > auto || skip) {

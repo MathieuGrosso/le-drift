@@ -182,7 +182,9 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
           const np = drift.npcPosition(id)
           if (!np) continue
           const d = dist3(p, np)
-          if (d < NPC_REACH) out.push({ id, kind: 'npc', label: PROMPTS.parler, key: 'interact', dist: d - 0.6, run: () => gp.quests.talk(id) })
+          const f = gp.heroForward()
+          const facing = ((np.x - p.x) * f.x + (np.z - p.z) * f.z) / Math.max(d, 1e-3)
+          if (d < NPC_REACH && (facing > 0.2 || d < 1.3)) out.push({ id, kind: 'npc', label: PROMPTS.parler, key: 'interact', dist: d - 0.6 * facing, run: () => gp.quests.talk(id) })
         }
       } else if (h.room) {
         const byRoom: Partial<Record<RoomId, string>> = { sas: 'mme-rouille', cuisine: 'cuistot', rebord: 'mila', 'salle-des-cartes': 'grand-pere' }
