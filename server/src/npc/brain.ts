@@ -1,23 +1,45 @@
-import type { NpcAction, PlayerId } from '../../../src/shared/protocol'
+import type { DistrictId } from '../../../src/core/types'
+import type { Mood, NpcAction, NpcDecision, NpcGift, NpcPlace, PlayerId, SideQuestId } from '../../../src/shared/protocol'
+import type { NpcRoomRegistry } from './rooms'
 
 export type NpcTrigger =
   | { kind: 'tick' }
   | { kind: 'talk'; player: PlayerId; text: string | null }
-  | { kind: 'event'; text: string }
 
 export interface NpcSheet {
   id: string
   name: string
-  district: string
-  /** Character sheet + world bible excerpt: byte-stable so it stays in the prompt cache. */
-  system: string
+  district: DistrictId
+  home: NpcPlace
+  /** Character only; the shared world excerpt is a separate cached block placed before it. */
+  persona: string
   scripted: readonly string[]
+  gifts: readonly NpcGift[]
+  quest: SideQuestId | null
+}
+
+/** The model's JSON: the protocol decision plus the rewritten memory of the player it talked to. */
+export interface NpcThought extends NpcDecision {
+  remember: string | null
+}
+
+export type Effort = 'low' | 'medium'
+export type DecideFn = (sheet: NpcSheet, context: string, effort: Effort) => Promise<unknown>
+
+/** The rooms as the brains see them; implemented by `NpcRoomRegistry`. */
+export interface NpcWorld {
+  playersIn(district: DistrictId): readonly PlayerId[]
+  districtOf(player: PlayerId): DistrictId | null
+  nameOf(player: PlayerId): string | null
+  setCard(npcId: string, patch: { mood?: Mood; place?: NpcPlace; thinking?: boolean }): void
+  apply(sheet: NpcSheet, actions: readonly NpcAction[], untilMs: number): void
 }
 
 export interface NpcBrains {
   readonly enabled: boolean
+  readonly rooms: NpcRoomRegistry
   think(npcId: string, trigger: NpcTrigger): Promise<NpcAction[]>
+  /** Something a player did or said in a district; the NPCs there remember the last few. */
+  observe(district: DistrictId, text: string): void
   dispose(): void
 }
-
-export type DecideFn = (sheet: NpcSheet, context: string, effort: 'low' | 'medium') => Promise<unknown>

@@ -1,8 +1,10 @@
 import type { WorldRecord } from '../persist'
 
+const MINUTE_MS = 60_000
+
 export interface Budget {
-  /** False when the day's tokens or the per-minute call rate are spent: NPCs fall back to scripts. */
-  allow(): boolean
+  /** Reserves one call; false when the day's tokens or the per-minute rate are spent (NPCs fall back to scripts). */
+  take(): boolean
   spend(tokens: number): void
 }
 
@@ -13,15 +15,16 @@ export function createBudget(world: WorldRecord, dailyTokens: number, callsPerMi
     if (world.tokens.day !== today()) world.tokens = { day: today(), used: 0 }
   }
   return {
-    allow() {
+    take() {
       roll()
       const now = Date.now()
-      while (calls.length && now - calls[0]! > 60_000) calls.shift()
-      return world.tokens.used < dailyTokens && calls.length < callsPerMinute
+      while (calls.length && now - calls[0]! > MINUTE_MS) calls.shift()
+      if (world.tokens.used >= dailyTokens || calls.length >= callsPerMinute) return false
+      calls.push(now)
+      return true
     },
     spend(tokens) {
       roll()
-      calls.push(Date.now())
       world.tokens.used += tokens
     },
   }
