@@ -11,6 +11,7 @@ import { LOCK_OUTSIDE, PORTHOLES, RECT_WINDOWS, partById } from './interiors/lay
 import { Quarter } from './interiors/quarter'
 import { createMats, type Mats } from './materials'
 import type { DriftNavmesh } from './nav/navmesh'
+import { CITY_UNIFORMS } from './city/glow'
 import { ladderLink } from './nav/soup'
 import { Npcs } from './npcs'
 import { PAL } from './palette'
@@ -379,6 +380,7 @@ export function createDriftSystem(): System {
     },
     ceilingAt: (l) => quarter?.ceilingAt(l) ?? city?.ceilingAt(l) ?? null,
     navmesh: () => nav,
+    home: (id) => city?.homes.info(id) ?? null,
     lockAnchor: (lockId: LockId) => {
       const key = lockId === 'sas-ecluse' ? 'sas' : lockId
       const a = key === 'sas' || key === 'echelle-toit' ? LOCK_ANCHORS[key] : null
@@ -635,6 +637,7 @@ export function createDriftSystem(): System {
       updateCulling(ctx)
       hulls?.update(dt, pose, jumped)
       city?.update(dt, pose, jumped)
+      city?.homes.update(dt, heroLocal, CITY_UNIFORMS.uCitySky.value)
       quarter.update(dt, pose, heroLocal, camLocal, jumped)
       const inQuarter = quarter.roomAt(camLocal) !== null
       const cc = inQuarter ? null : cityCell(camLocal) ?? cityCell(heroLocal)

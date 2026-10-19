@@ -290,6 +290,16 @@ export interface DriftService {
   cycleAirlock(lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void>
   roomCeilingAt(p: Vec3): number | null
   navmesh(): DriftNav | null
+  home(id: string): HomeInfo | null
+}
+export interface HomeRequest { item: string; ask: string; thanks: string; reward: string }
+export interface HomeInfo {
+  id: string
+  nom: string
+  owner: string | null
+  lines: readonly string[]
+  note: string | null
+  request: HomeRequest | null
 }
 export interface FaunaService {
   choseDive(target: Vec3, close: boolean): Promise<void>

@@ -20,7 +20,7 @@ export interface HullDef {
 }
 
 export interface Gangway { a: Vec3; b: Vec3; r: number }
-export interface PlacedHull extends HullDef { inside: boolean }
+export interface PlacedHull extends HullDef { inside: boolean; hollow?: boolean }
 export interface Box3 { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }
 
 const ROW = 12
@@ -396,7 +396,7 @@ export class Hulls {
       )
       dm.body = body
       this.defs.forEach((d, i) => {
-        if (d.district !== id) return
+        if (d.district !== id || (d as PlacedHull).hollow) return
         const r = Math.min(d.w, d.h) * 0.4
         const hq = new THREE.Quaternion().setFromAxisAngle(UP, -d.yaw)
         const desc = R.ColliderDesc.roundCuboid(Math.max(0.05, d.w / 2 - r), Math.max(0.05, d.h / 2 - r), Math.max(0.05, d.l * 0.45 - r), r)

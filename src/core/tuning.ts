@@ -212,3 +212,23 @@ export const PROPS = {
   chairGap: 0.55,
   chairHalf: 0.22,
 } as const
+
+export const HOMES = {
+  open: { nef: 14, marche: 10, serres: 9, ateliers: 9, scellees: 8 } as Partial<Record<string, number>>,
+  buildRadius: 24,
+  disposeRadius: 32,
+  maxBuilt: 5,
+  holes: 8,
+  doorReach: 2.4,
+  doorSpeed: 2.2,
+  doorW: 1.1,
+  doorH: 2.05,
+  halfLen: 3.4,
+  endPad: 0.8,
+  backD: 0.3,
+  frontPad: 0.14,
+  wallT: 0.12,
+  heightMin: 2.3,
+  heightMax: 2.75,
+  noteChance: 0.75,
+} as const

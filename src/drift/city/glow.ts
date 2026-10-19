@@ -32,7 +32,7 @@ function onShader(shader: THREE.WebGLProgramParametersWithUniforms): void {
   }
 }
 
-export function glowMaterial(mats: Mats, opts: { side?: THREE.Side; rim?: number } = {}): THREE.Material {
+export function glowMaterial(mats: Mats, opts: { side?: THREE.Side; rim?: number; patch?: (shader: THREE.WebGLProgramParametersWithUniforms) => void } = {}): THREE.Material {
   return mats.cel({
     color: 0xffffff,
     vertexColors: true,
@@ -40,7 +40,12 @@ export function glowMaterial(mats: Mats, opts: { side?: THREE.Side; rim?: number
     rim: opts.rim ?? 0.35,
     shadowColor: 0x6a5a7a,
     ...(opts.side !== undefined ? { side: opts.side } : {}),
-    onShader,
+    onShader: opts.patch
+      ? (shader) => {
+          onShader(shader)
+          opts.patch!(shader)
+        }
+      : onShader,
   })
 }
 

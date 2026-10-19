@@ -25,6 +25,7 @@ import { createProue } from './world/proue'
 import { createScrub } from './scrub'
 import { createSites } from './world/sites'
 import { createUses } from './world/uses'
+import { createHomes } from './world/homes'
 
 interface Runtime {
   gp: Gp
@@ -139,6 +140,7 @@ function createRuntime(ctx: GameContext): Runtime {
   gp.domes = createDomes(gp, uses)
   gp.scellees = createScellees(gp, uses)
   gp.collect = createCollectibles(gp, uses)
+  createHomes(gp, uses)
   gp.scrub = createScrub(gp)
   gp.proue = createProue(gp, gp.scrub)
   gp.gather = createGather(gp)

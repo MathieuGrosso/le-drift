@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { DistrictId } from '../../core/types'
-import type { HullDef } from '../hulls'
+import type { PlacedHull } from '../hulls'
+import type { ClosedDoor, HomeDef } from '../homes/plan'
 import { PAL } from '../palette'
 import { softColor } from '../figure'
 import { SURF } from '../surface'
@@ -13,7 +14,9 @@ import { ringFloor, ringRail, ringWall } from './rings'
 export interface CityBuild {
   kits: Map<DistrictId, Kit>
   links: Kit
-  hulls: (HullDef & { inside: boolean })[]
+  hulls: PlacedHull[]
+  homes: HomeDef[]
+  closed: ClosedDoor[]
   halls: HallDef[]
   reserved: { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number }[]
 }
@@ -175,8 +178,15 @@ export function buildCity(): CityBuild {
   const kits = new Map<DistrictId, Kit>()
   for (const d of ALL) kits.set(d, new Kit(d, SEEDS[d]))
   const K = (d: DistrictId) => kits.get(d)!
-  const hulls: (HullDef & { inside: boolean })[] = []
-  for (const h of HALLS) hulls.push(...buildHall(K(h.district), h).hulls)
+  const hulls: PlacedHull[] = []
+  const homes: HomeDef[] = []
+  const closed: ClosedDoor[] = []
+  for (const h of HALLS) {
+    const out = buildHall(K(h.district), h)
+    hulls.push(...out.hulls)
+    homes.push(...out.homes)
+    closed.push(...out.closed)
+  }
 
   nef(K('nef'))
   puits(K('machines'))
@@ -214,7 +224,7 @@ export function buildCity(): CityBuild {
     { x0: 10, x1: 30, y0: -24, y1: -14, z0: -8, z1: 8 },
     { x0: -30, x1: -10, y0: -24, y1: -14, z0: -8, z1: 8 },
   ]
-  return { kits, links, hulls, halls: HALLS, reserved }
+  return { kits, links, hulls, homes, closed, halls: HALLS, reserved }
 }
 
 function nef(k: Kit): void {

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import type { DeckId, DistrictId } from '../../core/types'
-import type { HullDef } from '../hulls'
+import type { PlacedHull } from '../hulls'
+import { bakeHomes, type ClosedDoor, type DoorSlot, type HomeDef, type WallFrame } from '../homes/plan'
 import { DISTRICT_BY_ID } from '../../core/layout'
 import { PAL } from '../palette'
 import { SURF } from '../surface'
@@ -42,7 +43,9 @@ export const GALLERY_D = 6.75
 export const HULL_W = 6.5
 
 export interface HallOut {
-  hulls: (HullDef & { inside: boolean })[]
+  hulls: PlacedHull[]
+  homes: HomeDef[]
+  closed: ClosedDoor[]
   inward: Record<Side, { x: number; z: number }>
   roofAt(x: number, z: number): number
 }
@@ -59,6 +62,10 @@ export function wallPoint(h: HallDef, s: Side, u: number, y: number, depth: numb
   const p = plane(h, s)
   const n = INWARD[s]
   return s === 'n' || s === 's' ? new THREE.Vector3(u, y, p + n.z * depth) : new THREE.Vector3(p + n.x * depth, y, u)
+}
+
+function wallFrame(h: HallDef, s: Side): WallFrame {
+  return { along: s === 'n' || s === 's', plane: plane(h, s), inX: INWARD[s].x, inZ: INWARD[s].z }
 }
 
 function nextLevel(h: HallDef, y: number): number {
@@ -82,7 +89,8 @@ function openingHit(h: HallDef, s: Side, u0: number, u1: number, y0: number, y1:
 
 export function buildHall(k: Kit, h: HallDef): HallOut {
   const D = h.depth ?? GALLERY_D
-  const hulls: (HullDef & { inside: boolean })[] = []
+  const hulls: PlacedHull[] = []
+  const slots: DoorSlot[] = []
   const peak = h.spring + h.rise
 
   k.cell({
@@ -124,7 +132,7 @@ export function buildHall(k: Kit, h: HallDef): HallOut {
             kind: keel ? 'keel' : 'barrel', district: h.district, x: p.x, y: cy, z: p.z,
             yaw: along ? Math.PI / 2 : 0, w, h: hh, l: len, paint, row: n, tier: ty, inside: true,
           })
-          facade(k, h, s, u, len, ty, hh, w, keel)
+          facade(k, h, s, u, len, ty, hh, w, keel, hulls.length - 1, slots)
           n++
         }
         u += len + 2.2 + k.rand() * 2.4
@@ -139,8 +147,12 @@ export function buildHall(k: Kit, h: HallDef): HallOut {
     }
   }
 
+  const baked = bakeHomes(k, h, slots)
+  for (const i of baked.hollow) hulls[i]!.hollow = true
   return {
     hulls,
+    homes: baked.homes,
+    closed: baked.closed,
     inward: INWARD,
     roofAt: (x, z) => vaultY(h, x, z),
   }
@@ -441,8 +453,10 @@ function buildGallery(k: Kit, h: HallDef, s: Side, y: number, D: number): void {
   }
 }
 
-function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number, hh: number, w: number, keel: boolean): void {
+function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number, hh: number, w: number, keel: boolean, hull: number, slots: DoorSlot[]): void {
   const cy = ty + hh * 0.3
+  const frame = wallFrame(h, s)
+  const reachable = ty === h.floorY || h.levels.includes(ty)
   const face = (y: number) => {
     const r = (y - cy) / (hh / 2)
     return (w / 2) * Math.sqrt(Math.max(0, 1 - r * r))
@@ -452,15 +466,8 @@ function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number,
   const doors = len >= 22 ? 2 : 1
   for (let i = 0; i < doors; i++) {
     const du = u + len * ((i + 0.5) / doors) + (k.rand() - 0.5) * 2
-    const dy = ty + 1.0
-    const off = face(dy) + 0.03
-    const p = wallPoint(h, s, du, dy, off)
-    const open = k.rand() < 0.35
-    const sx = along ? 1.05 : 0.08
-    const sz = along ? 0.08 : 1.05
-    k.b.box(p.x, dy, p.z, along ? 1.3 : 0.1, 2.25, along ? 0.1 : 1.3, C(PAL.laiton, 0.9))
-    if (open) k.e.box(p.x, dy - 0.05, p.z, sx, 1.95, sz, C(0xffb870, 1.15))
-    else k.b.box(p.x, dy - 0.05, p.z, sx * 1.02, 1.95, sz * 1.02, C(k.pick([PAL.teal, PAL.tissu3, PAL.rouille, PAL.vertDoux, PAL.tissu1]), 0.95))
+    const off = face(ty + 1.0) + 0.03
+    slots.push({ hull, frame, u: du, floor: ty, reachable, hullU0: u, hullU1: u + len, cy, hh, w })
     const lp = wallPoint(h, s, du + 0.85, ty + 2.35, face(ty + 2.35) + 0.25)
     k.e.sphere(lp.x, lp.y, lp.z, 0.09, 0.11, 0.09, C(PAL.lampe, 1.6))
     k.lamps.push({ x: lp.x, y: lp.y, z: lp.z, color: PAL.lampe, radius: 4.5, live: false, bake: 0.5 })

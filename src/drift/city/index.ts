@@ -13,6 +13,8 @@ import { Folk } from './folk'
 import type { PropLight } from './props'
 import { bakeGlow, CITY_UNIFORMS, glowMaterial, LampGrid, lightAt, skyAt, type BakeLamp, type SkyBake } from './glow'
 import type { Anchor, PropSpec, CellDef, DoorSpec, Kit, LadderSpec, LockRule, PlaceSpec, RideSpec, ScelleeSpec, SeatSpec, SignSpec, WaterSpec } from './kit'
+import { holePatch } from '../homes/holes'
+import { Homes } from '../homes'
 import { buildCity, type CityBuild } from './world'
 
 export type { Anchor, CellDef, PlaceSpec, ScelleeSpec } from './kit'
@@ -224,6 +226,7 @@ export class City {
   private slow = 0
   private visible: ReadonlySet<DistrictId> | null = null
   readonly insideHullMat: THREE.Material
+  readonly homes: Homes
 
   constructor(private readonly ctx: GameContext, mats: Mats, parent: THREE.Object3D, pose: { position: Vec3; heading: number }) {
     this.group.name = 'drift-ville'
@@ -231,7 +234,7 @@ export class City {
     this.build = buildCity()
     const glow = glowMaterial(mats)
     const glow2 = glowMaterial(mats, { side: THREE.DoubleSide, rim: 0.2 })
-    this.insideHullMat = glowMaterial(mats, { rim: 0.6 })
+    this.insideHullMat = glowMaterial(mats, { rim: 0.6, patch: holePatch })
     const emissive = mats.water(new THREE.MeshBasicMaterial({ vertexColors: true }))
     const skinMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: surfacePatch })
     const hallDistricts = new Set<GroupKey>(this.build.halls.map((h) => h.district))
@@ -323,6 +326,7 @@ export class City {
       this.portals.push(...k.portals)
     }
     this.cells = allCells.sort((a, b) => vol(a) - vol(b))
+    this.homes = new Homes(mats, this.group, this.build.homes, this.build.closed, glow, emissive)
     import('./props')
       .then(async ({ loadProps, propMeshes }) => {
         const geos = await loadProps()
@@ -943,6 +947,7 @@ export class City {
   }
 
   dispose(): void {
+    this.homes.dispose()
     for (const d of this.districts.values()) {
       try {
         for (let i = 0; i < d.body.numColliders(); i++) this.ctx.physics.untag(d.body.collider(i))
