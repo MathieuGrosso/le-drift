@@ -4,6 +4,8 @@ import { BloomEffect, EffectPass, SMAAEffect } from 'postprocessing'
 import { POST } from '../core/tuning'
 import type { QualitySettings } from '../core/types'
 import { GradeEffect } from './grade'
+import type { MoodInputs } from './lut'
+import { PALETTE } from './palette'
 import type { GlassPassUniforms } from './glass'
 import type { InternalUniforms, PublicUniforms } from './uniforms'
 
@@ -64,6 +66,7 @@ void main() {
 }
 `
 
+const E = Object.fromEntries(Object.entries(POST.exposure).map(([k, v]) => [k, v.toFixed(3)])) as Record<keyof typeof POST.exposure, string>
 const EXPOSURE_FS = /* glsl */ `
 uniform sampler2D tSrc;
 uniform sampler2D tPrev;
@@ -84,8 +87,10 @@ void main() {
     }
   }
   float avg = exp(acc / wsum);
-  float key = mix(0.36, 0.3, uIndoor);
-  float target = clamp(key / max(avg, 1e-3), mix(0.86, 0.82, uIndoor), mix(1.18, mix(1.1, 1.0, uNight), uIndoor));
+  float key = mix(${E.keyOut}, ${E.keyIn}, uIndoor);
+  float lo = mix(${E.minOut}, ${E.minIn}, uIndoor);
+  float hi = mix(${E.maxOut}, mix(${E.maxIn}, ${E.maxInNight}, uNight), uIndoor);
+  float target = clamp(key / max(avg, 1e-3), lo, hi);
   float prev = texture2D(tPrev, vec2(0.5)).r;
   if (prev <= 0.0) prev = 1.0;
   float e = mix(prev, target, uK);
@@ -107,8 +112,7 @@ export interface Post {
 
 export interface PostFrame {
   sunDir: THREE.Vector3
-  warm: number
-  night: number
+  mood: MoodInputs
   dt: number
   snap: boolean
   color: THREE.WebGLRenderTarget
@@ -167,10 +171,11 @@ export function createPost(
     gammaCorrection: false, screenSpaceRadius: false, colorMultiply: true,
   })
   const aoTint = new THREE.Color()
+  const seaShadow = new THREE.Color(PALETTE.rocheOmbre)
   const plum = new THREE.Color()
   const white = new THREE.Color(1, 1, 1)
 
-  const grade = new GradeEffect(pub, int, { depth: depthTex, shafts: shaftTarget.texture, radial: radialTarget.texture }, POST.bloom)
+  const grade = new GradeEffect(pub, int, { depth: depthTex, shafts: shaftTarget.texture, radial: radialTarget.texture })
   const gradePass = new EffectPass(mainCamera, grade)
   const smaaPass = new EffectPass(mainCamera, new SMAAEffect())
   for (const p of [gradePass, smaaPass]) p.fullscreenMaterial.dithering = true
@@ -246,14 +251,14 @@ export function createPost(
       const autoClear = renderer.autoClear
       renderer.autoClear = false
       const indoor = pub.uIndoor.value
-      expMat.uniforms.uNight!.value = f.night
+      expMat.uniforms.uNight!.value = f.mood.night
       radialMat.uniforms.tScene!.value = f.color.texture
 
       if (!softFresh) soft(renderer, f.color.texture)
       const prev = exposure[expIdx]!
       expIdx = 1 - expIdx
       expMat.uniforms.tPrev!.value = f.snap ? null : prev.texture
-      expMat.uniforms.uK!.value = f.snap ? 1 : 1 - Math.exp(-f.dt * POST.exposureRate)
+      expMat.uniforms.uK!.value = f.snap ? 1 : 1 - Math.exp(-f.dt * POST.exposure.rate)
       pass(renderer, expMat, exposure[expIdx]!, false)
 
       if (settings.godRayPass) {
@@ -272,7 +277,7 @@ export function createPost(
       const aoK = POST.ao.levels[settings.level].k
       if (aoK > 0) {
         plum.copy(int.rdInterieur.value).multiplyScalar(1 / Math.max(int.rdInterieur.value.r, int.rdInterieur.value.g, int.rdInterieur.value.b))
-        aoTint.copy(grade.shadowTone).multiplyScalar(1 / Math.max(grade.shadowTone.r, grade.shadowTone.g, grade.shadowTone.b))
+        aoTint.copy(seaShadow).multiplyScalar(1 / Math.max(seaShadow.r, seaShadow.g, seaShadow.b))
         aoTint.lerp(plum, indoor).lerp(white, 1 - POST.ao.tintMix).multiplyScalar(POST.ao.floor)
         ao.configuration.color.copy(aoTint).convertLinearToSRGB()
         ao.configuration.intensity = POST.ao.intensity * aoK * THREE.MathUtils.lerp(POST.ao.indoorScale, 1, indoor)
@@ -283,7 +288,7 @@ export function createPost(
 
       bloom.luminanceMaterial.threshold = POST.bloom.threshold + indoor * POST.bloom.indoorThreshold
       bloom.update(renderer, f.color, f.dt)
-      grade.setFrame(cam, bloom.texture, exposure[expIdx]!.texture, f.warm, f.night)
+      grade.setFrame(cam, bloom.texture, exposure[expIdx]!.texture, f.mood, f.dt, f.snap)
       const smaa = sceneTarget.samples === 0
       gradePass.renderToScreen = !smaa
       gradePass.render(renderer, color, smaa ? gradedTarget : null)

@@ -1,9 +1,12 @@
 import * as THREE from 'three'
 import { Effect, EffectAttribute } from 'postprocessing'
+import { POST } from '../core/tuning'
 import type { QualitySettings } from '../core/types'
+import { createLutAtlas, LUT_GLSL, MoodMixer, type MoodInputs } from './lut'
 import type { InternalUniforms, PublicUniforms } from './uniforms'
 
 const GRADE_FS = /* glsl */ `
+${LUT_GLSL}
 uniform sampler2D tDepth;
 uniform sampler2D tBloom;
 uniform sampler2D tShafts;
@@ -13,13 +16,12 @@ uniform float uNear;
 uniform float uFar;
 uniform float uIndoor;
 uniform float uAirHaze;
-uniform float uWarm;
-uniform float uNight;
 uniform float uBloomOut;
 uniform float uBloomIn;
 uniform vec3 uProfond;
-uniform vec3 uShadowTone;
-uniform vec3 uHighTone;
+uniform float uShoulder;
+uniform float uVignetteOut;
+uniform float uVignetteIn;
 uniform vec3 uInterieur;
 
 float viewZ(vec2 uv) {
@@ -100,29 +102,15 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 #endif
   col += texture2D(tBloom, uv).rgb * mix(uBloomOut, uBloomIn * mix(1.0, 1.5, clamp(uAirHaze, 0.0, 1.0)), uIndoor);
 
-  float l = luma(col);
-  vec3 shadowTone = mix(uShadowTone, uInterieur, uIndoor);
-  col = mix(col, col * shadowTone * 1.6, (1.0 - smoothstep(0.0, 0.3, l)) * mix(0.22, 0.16, uIndoor));
-  col = mix(col, col * uHighTone, smoothstep(0.45, 1.2, l) * mix(0.18 + 0.2 * uWarm, 0.08, uIndoor));
-  float lc = max(luma(col), 1e-4);
-  float pivot = 0.22;
-  float lcC = pivot * pow(lc / pivot, 1.0 + 0.3 * uIndoor);
-  col *= mix(1.0, lcC / lc, smoothstep(0.0, 0.02, lc));
-  l = luma(col);
-  float mid = smoothstep(0.03, 0.15, l) * (1.0 - smoothstep(0.45, 0.85, l));
-  col *= mix(vec3(1.0), vec3(1.05, 1.0, 0.92), mid * uIndoor);
-  col = mix(vec3(l), col, 1.06 - uIndoor * (0.02 + 0.12 * mid) - 0.1 * uNight - 0.08 * smoothstep(0.5, 1.0, l));
   float m = max(col.r, max(col.g, col.b));
-  if (m > 0.82) col *= (0.82 + 0.18 * (1.0 - exp(-(m - 0.82) / 0.18))) / m;
-
-  col *= mix(vec3(1.0), vec3(0.72, 0.84, 1.12), uNight * (1.0 - 0.75 * uIndoor));
+  float sh = uShoulder;
+  if (m > sh) col *= (sh + (1.0 - sh) * (1.0 - exp(-(m - sh) / (1.0 - sh)))) / m;
   vec2 vq = uv - 0.5;
   float vig = smoothstep(0.25, 0.95, length(vq * vec2(1.15, 1.0)));
   vec3 plumHue = uInterieur / max(max(uInterieur.r, uInterieur.g), uInterieur.b);
   vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * plumHue * 0.5, uIndoor);
-  col = mix(col, vigCol, vig * mix(0.35, 0.5, uIndoor));
-  vec3 toe = vec3(0.027, 0.023, 0.058);
-  col = max(col, toe * 0.5) + toe * 0.5 * (1.0 - smoothstep(0.0, 0.05, luma(col)));
+  col = mix(col, vigCol, vig * mix(uVignetteOut, uVignetteIn, uIndoor));
+  col = applyLut(col);
 #ifdef PAINTERLY
   col += (hash(floor(uv / texelSize / 2.0)) - 0.5) * 0.004;
 #endif
@@ -140,8 +128,10 @@ export class GradeEffect extends Effect {
   private readonly u: Map<string, THREE.Uniform>
   private readonly pub: PublicUniforms
   private readonly int: InternalUniforms
+  private readonly moods = new MoodMixer()
 
-  constructor(pub: PublicUniforms, int: InternalUniforms, inputs: GradeInputs, bloom: { outdoor: number; indoor: number }) {
+  constructor(pub: PublicUniforms, int: InternalUniforms, inputs: GradeInputs) {
+    const lut = createLutAtlas()
     const uniforms = new Map<string, THREE.Uniform>([
       ['tDepth', new THREE.Uniform(inputs.depth)],
       ['tBloom', new THREE.Uniform(null)],
@@ -152,23 +142,21 @@ export class GradeEffect extends Effect {
       ['uFar', new THREE.Uniform(4000)],
       ['uIndoor', new THREE.Uniform(0)],
       ['uAirHaze', new THREE.Uniform(0)],
-      ['uWarm', new THREE.Uniform(0)],
-      ['uNight', new THREE.Uniform(0)],
-      ['uBloomOut', new THREE.Uniform(bloom.outdoor)],
-      ['uBloomIn', new THREE.Uniform(bloom.indoor)],
+      ['uShoulder', new THREE.Uniform(POST.shoulder)],
+      ['uVignetteOut', new THREE.Uniform(POST.vignette.outdoor)],
+      ['uVignetteIn', new THREE.Uniform(POST.vignette.indoor)],
+      ['tLut', new THREE.Uniform(lut)],
+      ['uLutMood', new THREE.Uniform(new THREE.Vector4())],
+      ['uLutWeight', new THREE.Uniform(new THREE.Vector4(1, 0, 0, 0))],
+      ['uBloomOut', new THREE.Uniform(POST.bloom.outdoor)],
+      ['uBloomIn', new THREE.Uniform(POST.bloom.indoor)],
       ['uProfond', new THREE.Uniform(new THREE.Color())],
-      ['uShadowTone', new THREE.Uniform(new THREE.Color(0x45507a))],
-      ['uHighTone', new THREE.Uniform(new THREE.Color(1.08, 1.0, 0.86))],
       ['uInterieur', new THREE.Uniform(new THREE.Color())],
     ])
     super('DriftGrade', GRADE_FS, { attributes: EffectAttribute.CONVOLUTION, uniforms })
     this.u = uniforms
     this.pub = pub
     this.int = int
-  }
-
-  get shadowTone(): THREE.Color {
-    return this.u.get('uShadowTone')!.value as THREE.Color
   }
 
   setFeatures(q: QualitySettings): void {
@@ -179,16 +167,20 @@ export class GradeEffect extends Effect {
     this.setChanged()
   }
 
-  setFrame(camera: THREE.PerspectiveCamera, bloom: THREE.Texture, exposure: THREE.Texture, warm: number, night: number): void {
+  setFrame(camera: THREE.PerspectiveCamera, bloom: THREE.Texture, exposure: THREE.Texture, mood: MoodInputs, dt: number, snap: boolean): void {
+    this.moods.update(mood, dt, snap, this.u.get('uLutMood')!.value as THREE.Vector4, this.u.get('uLutWeight')!.value as THREE.Vector4)
     this.u.get('uNear')!.value = camera.near
     this.u.get('uFar')!.value = camera.far
     this.u.get('tBloom')!.value = bloom
     this.u.get('tExposure')!.value = exposure
-    this.u.get('uWarm')!.value = warm
-    this.u.get('uNight')!.value = night
     this.u.get('uIndoor')!.value = this.pub.uIndoor.value
     this.u.get('uAirHaze')!.value = this.pub.uAirHaze.value
     ;(this.u.get('uProfond')!.value as THREE.Color).copy(this.int.rdProfond.value)
     ;(this.u.get('uInterieur')!.value as THREE.Color).copy(this.int.rdInterieur.value)
+  }
+
+  override dispose(): void {
+    ;(this.u.get('tLut')!.value as THREE.Texture).dispose()
+    super.dispose()
   }
 }

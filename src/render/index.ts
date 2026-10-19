@@ -1,10 +1,11 @@
 import * as THREE from 'three'
 import { BLOOM_HAZE_MUL, HAZE_BY_VISIBILITY } from '../core/tuning'
-import type { DayPhase, GameContext, RenderService, System, Vec3 } from '../core/types'
+import type { DayPhase, DistrictId, GameContext, RenderService, System, Vec3 } from '../core/types'
 import { createCelFactory, createPatchWater, type CelParams } from './cel'
 import { createEnvironment, FX_LAYER, type Environment } from './environment'
 import { createGlassFactory, createGlassPassUniforms, GLASS_LAYER, type GlassParams } from './glass'
 import { GlassLights, type GlassLight } from './glasslights'
+import type { MoodInputs } from './lut'
 import { PALETTE } from './palette'
 import type { Post } from './post'
 import { createShadowPass, type ShadowPass } from './shadow'
@@ -42,7 +43,7 @@ const BASE = {
   clair: C(PALETTE.clair), plafond: C(PALETTE.plafond), nuit: C(PALETTE.nuit), plancton: C(PALETTE.plancton),
   aube: C(PALETTE.soleilAube), airBrume: C(PALETTE.airBrume),
 }
-const AIR_TINT: Record<string, { color: THREE.Color; k: number }> = {
+const AIR_TINT: Partial<Record<DistrictId, { color: THREE.Color; k: number }>> = {
   serres: { color: C(0xb9d98a), k: 0.3 },
   machines: { color: C(0xc98e5e), k: 0.22 },
   scellees: { color: C(0x8fb8b0), k: 0.2 },
@@ -69,6 +70,7 @@ export function createRenderSystem(): System {
   let wipeIdx = 0
   let seaVis = true
   const glassPass = createGlassPassUniforms()
+  const mood: MoodInputs = { indoor: 0, night: 0, warm: 0, district: null }
   let glassSeenFrame = -1000
   let frameNo = 0
   const glassFactory = createGlassFactory(shared, glassPass, () => {
@@ -161,7 +163,10 @@ export function createRenderSystem(): System {
       renderer.autoClear = autoClear
       renderer.setClearColor(int.rdAbysse.value, 1)
 
-      post.finish(renderer, camera, { sunDir: pub.uSunDir.value, warm: sun.warm, night: sun.night, dt: lastDt, snap: snapFrame, color })
+      mood.indoor = pub.uIndoor.value
+      mood.night = sun.night
+      mood.warm = sun.warm
+      post.finish(renderer, camera, { sunDir: pub.uSunDir.value, mood, dt: lastDt, snap: snapFrame, color })
       snapFrame = false
       renderer.setRenderTarget(null)
       lastMs = performance.now() - t0
@@ -222,7 +227,8 @@ export function createRenderSystem(): System {
     const airHaze = camEnv?.airHaze ?? 0
     pub.uAirHaze.value += (airHaze - pub.uAirHaze.value) * k
     pub.uGlassDist.value = camEnv?.glassDist ?? 4
-    const tint = AIR_TINT[camEnv?.district ?? ''] ?? null
+    mood.district = camEnv?.district ?? null
+    const tint = (mood.district && AIR_TINT[mood.district]) || null
     int.rdAirBrume.value.lerp(BASE.airBrume, k)
     const at = int.rdAirTint.value
     if (tint) at.set(at.x + (tint.color.r - at.x) * k, at.y + (tint.color.g - at.y) * k, at.z + (tint.color.b - at.z) * k, at.w + (tint.k - at.w) * k)
