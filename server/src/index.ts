@@ -6,11 +6,12 @@ import { createScriptedBrains } from './npc'
 import { openStore } from './persist'
 import { createMondeRoom } from './rooms/monde'
 import { createQuartierRoom } from './rooms/quartier'
+import { createPlayerLimits } from './rooms/limits'
 import { createRegistry } from './rooms/registry'
 import type { RoomDeps } from './rooms/deps'
 
 const store = await openStore(CONFIG.dataDir)
-const deps: RoomDeps = { store, brains: createScriptedBrains(), registry: createRegistry() }
+const deps: RoomDeps = { store, brains: createScriptedBrains(), registry: createRegistry(), limits: createPlayerLimits() }
 
 const server = defineServer({
   transport: new WebSocketTransport(),

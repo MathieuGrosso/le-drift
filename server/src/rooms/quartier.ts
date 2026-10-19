@@ -6,10 +6,8 @@ import { NET } from '../../../src/core/tuning'
 import { DISTRICT_BY_ID, type DistrictDef } from '../../../src/core/layout'
 import type { DistrictId } from '../../../src/core/types'
 import { authenticate } from '../identity'
-import { GUARDS } from '../config'
 import { Avatar, QuartierState } from '../state'
 import { clientMessages, quartierCreateOptions, quartierJoinOptions } from '../validate'
-import { createRateLimit } from '../rate'
 import { createGuard, refuse } from './guard'
 import { constrainMove, type Tracked } from './movement'
 import { Sessions } from './sessions'
@@ -24,9 +22,6 @@ export function createQuartierRoom(deps: RoomDeps) {
     override maxMessagesPerSecond = LIMITS.messagesPerSecond
     private readonly sessions = new Sessions()
     private readonly guard = createGuard()
-    private readonly chatLimit = createRateLimit(LIMITS.chatPerTenSeconds, GUARDS.chatWindowMs)
-    private readonly talkLimit = createRateLimit(LIMITS.chatPerTenSeconds, GUARDS.chatWindowMs)
-    private readonly actionLimit = createRateLimit(GUARDS.actionsPerWindow, GUARDS.actionWindowMs)
     private readonly tracked = new Map<PlayerId, Tracked>()
     private district!: DistrictId
     private box!: DistrictDef
@@ -59,7 +54,7 @@ export function createQuartierRoom(deps: RoomDeps) {
       chat: this.guard.guarded(clientMessages.chat, (client, m) => {
         const a = this.avatarOf(client)
         if (!a) return
-        if (!this.chatLimit.allow(a.id)) return refuse(client, 'rate', 'Doucement, laisse parler les autres.')
+        if (!deps.limits.chat.allow(a.id)) return refuse(client, 'rate', 'Doucement, laisse parler les autres.')
         const line: ChatLine = { from: a.id, name: a.name, text: m.text, at: Date.now() }
         this.broadcast('chat', line)
         deps.brains.observe(this.district, { player: a.id, name: a.name, text: m.text })
@@ -67,13 +62,13 @@ export function createQuartierRoom(deps: RoomDeps) {
       emote: this.guard.guarded(clientMessages.emote, (client, m) => {
         const a = this.avatarOf(client)
         if (!a) return
-        if (!this.actionLimit.allow(a.id)) return refuse(client, 'rate', 'Doucement.')
+        if (!deps.limits.action.allow(a.id)) return refuse(client, 'rate', 'Doucement.')
         this.broadcast('emote', { from: a.id, emote: m.emote })
       }),
       sit: this.guard.guarded(clientMessages.sit, (client, m) => {
         const a = this.avatarOf(client)
         if (!a) return
-        if (!this.actionLimit.allow(a.id)) return refuse(client, 'rate', 'Doucement.')
+        if (!deps.limits.action.allow(a.id)) return refuse(client, 'rate', 'Doucement.')
         const seat = m.seatId ?? ''
         const taken = seat !== '' && [...this.state.avatars.values()].some((o) => o.id !== a.id && o.seatId === seat)
         if (taken) return refuse(client, 'invalid', 'Cette place est prise.')
@@ -82,7 +77,7 @@ export function createQuartierRoom(deps: RoomDeps) {
       talk: this.guard.guarded(clientMessages.talk, (client, m) => {
         const id = this.sessions.playerOf(client)
         if (!id) return
-        if (!this.talkLimit.allow(id)) return refuse(client, 'rate', 'Laisse-lui le temps de répondre.')
+        if (!deps.limits.talk.allow(id)) return refuse(client, 'rate', 'Laisse-lui le temps de répondre.')
         deps.brains.think(m.npcId, { kind: 'talk', player: id, text: m.text })
           .catch((e: unknown) => console.error(`PNJ ${m.npcId} : ${e instanceof Error ? e.message : 'erreur'}`))
       }),
@@ -140,9 +135,6 @@ export function createQuartierRoom(deps: RoomDeps) {
       if (!id) return
       this.state.avatars.delete(id)
       this.tracked.delete(id)
-      this.chatLimit.forget(id)
-      this.talkLimit.forget(id)
-      this.actionLimit.forget(id)
     }
 
     private avatarOf(client: Client): Avatar | undefined {
