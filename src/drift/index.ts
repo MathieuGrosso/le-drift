@@ -19,6 +19,7 @@ import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from
 import { drawingsTexture, menuTexture } from './textures'
 import { Windows } from './windows'
 import { quarterPoint, quarterPoints } from '../core/quarter'
+import { mountProcgen, type ProcgenAware, type ProcgenSlot } from './procgen-hook'
 
 export type DriftAnchor = Anchor | { kind: 'ring'; id: string; at: Vec3 }
 export type DriftSiteKind = 'dome' | 'scellee' | 'trouvaille' | 'couchette' | 'etal' | 'table-carte'
@@ -294,6 +295,7 @@ export function createDriftSystem(): System {
   }
 
   let nav: DriftNavmesh | null = null
+  let procgen: ProcgenSlot | null = null
   // Baked once at load from the colliders; the WASM chunk stays out of the main bundle.
   const bakeNav = async (ctx: GameContext) => {
     if (!city || !quarter) return
@@ -593,6 +595,7 @@ export function createDriftSystem(): System {
 
       registerDriftPoses(ctx, () => pose)
       ctx.services.drift = service
+      procgen = mountProcgen(ctx, root, mats, () => pose, service as DriftServiceV2 & ProcgenAware)
       bakeNav(ctx).catch((err) => console.error('[drift] navmesh', err))
 
       const loose = ctx.bus as unknown as { on(k: string, fn: (p: never) => void): () => void }
@@ -655,6 +658,7 @@ export function createDriftSystem(): System {
         sfx(ctx, 'hull-groan', st.hero.position)
       }
       chatterUpdate(ctx, dt, indoor)
+      procgen?.update(dt, heroLocal, camLocal)
 
       if (fallbackLights.length > 0) {
         const lamps = quarter.nearestLamps(st.hero.position, fallbackLights.length)
@@ -676,6 +680,8 @@ export function createDriftSystem(): System {
       quarter?.dispose()
       hulls?.dispose()
       city?.dispose()
+      procgen?.dispose()
+      procgen = null
       nav?.dispose()
       nav = null
       root.removeFromParent()
