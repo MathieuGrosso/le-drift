@@ -37,6 +37,15 @@ vec3 rd_vault(vec3 albedo, vec3 P, vec3 n) {
   return c;
 }
 
+// Hand-painted wall: vertical brush drags and broad mottling in world space, faded out where it would alias.
+vec3 rd_paintWall(vec3 albedo, vec3 W, vec3 n) {
+  float u = abs(n.x) > abs(n.z) ? W.z : W.x;
+  float aa = 1.0 - smoothstep(0.02, 0.09, length(fwidth(W)));
+  float drag = rd_noise(vec2(u * 2.2, W.y * 0.35)) * 0.65 + rd_noise(vec2(u * 7.0, W.y * 0.9)) * 0.35;
+  float mott = rd_noise(vec2(u, W.y) * 0.4 + 5.3);
+  return albedo * (0.95 + 0.1 * drag * aa + 0.1 * (mott - 0.5));
+}
+
 vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   vec3 L = rdSunDir;
   float ndl = dot(N, L);
@@ -48,6 +57,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
 #ifdef CEL_INDOOR
   float overhead = smoothstep(0.2, 0.55, -N.y) * smoothstep(1.7, 2.3, W.y - rdHeroPos.y);
   if (overhead > 0.0 && dot(vRdLN, vRdLN) > 1e-6) albedo = mix(albedo, rd_vault(albedo, vRdL, normalize(vRdLN)), overhead);
+  albedo = mix(albedo, rd_paintWall(albedo, W, N), smoothstep(0.75, 0.9, length(N.xz)));
   float floorUp = smoothstep(0.75, 0.95, N.y);
   albedo = mix(albedo, albedo * vec3(1.07, 1.0, 0.86), floorUp * 0.75);
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
