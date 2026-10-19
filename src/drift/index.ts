@@ -414,8 +414,9 @@ export function createDriftSystem(): System {
   const updateStreaming = (ctx: GameContext) => {
     const st = ctx.state
     const ref = st.mode === 'inside' && st.hero.localPosition ? st.hero.localPosition : heroLocal
-    const here = cityCell(ref)?.district ?? districtAt(ref)
-    if (here !== district && !inDistrict(DISTRICT_BY_ID[district], ref, 20)) {
+    const cell = cityCell(ref)
+    const here = cell?.district ?? districtAt(ref)
+    if (here !== district && (cell || !inDistrict(DISTRICT_BY_ID[district], ref, 20))) {
       const from = district
       district = here
       st.hero.district = here

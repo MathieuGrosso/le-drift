@@ -641,6 +641,9 @@ function marche(k: Kit): void {
   k.rail(-94.85, 15.1, -94.85, 17.5, 13)
   k.rail(-97.25, 15.1, -94.85, 15.1, 13)
 
+  k.slab(-90.8, -85.2, 38.6, 42.5, 13, 'bois')
+  k.rail(-90.8, 38.6, -90.8, 42.5, 13)
+  k.rail(-85.2, 38.6, -85.2, 42.5, 13)
   zipline(k, 'tyrolienne-marche', V(-88, 15.0, 40.2), V(-88, 1.9, 4))
   k.toboggan('toboggan-marche', [V(-98.8, 13.05, 31.6), V(-96.4, 12.75, 31.6), V(-96.4, 12.4, 33), V(-96.4, 0.55, 52.4), V(-96.4, 0.05, 54)], 0xd8644e)
   const flags = [PAL.tissu1, PAL.tissu2, PAL.tissu3, 0x8fbf6a, PAL.creme, 0xd8644e]

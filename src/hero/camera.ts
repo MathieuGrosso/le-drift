@@ -54,6 +54,9 @@ export class HeroCamera {
   private atriumGoal = 0
   private corridorK = 0
   private tightK = 0
+  private smallK = 0
+  private assist = 0
+  private snapped = true
   private side = 0
   private pivotBase = new THREE.Vector3()
   private pivotTmp = new THREE.Vector3()
@@ -95,6 +98,8 @@ export class HeroCamera {
     this.yaw = yaw
     this.pitch = 16 * D2R
     this.hasFocus = false
+    this.snapped = true
+    this.probeT = 0
   }
 
   update(dt: number, f: CameraFrame): void {
@@ -172,14 +177,23 @@ export class HeroCamera {
     want += this.styleK.climb * 0.6
     if (f.style === 'swim' && !f.indoor) want = SORTIE.distance + (f.fast ? 0.8 : 0)
 
-    const cp = Math.cos(this.pitch)
-    this.dir.set(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp)
+    let assistGoal = 0
+    if (k > 0.5 && !this.pose && this.styleK.zip < 0.5) {
+      const cu = Math.cos(this.pitch)
+      this.dir.set(-Math.sin(this.yaw) * cu, Math.sin(this.pitch), Math.cos(this.yaw) * cu)
+      const base = this.collide(want, i.sphereRadius)
+      assistGoal = THREE.MathUtils.clamp((1.8 - base) / 1.1, 0, 1) * Math.max(0, pMax - 6 * D2R - this.pitch) * 0.7 * THREE.MathUtils.clamp((this.pitch + 10 * D2R) / (15 * D2R), 0, 1)
+    }
+    this.assist += (assistGoal - this.assist) * Math.min(1, dt * (assistGoal > this.assist ? 5 : 1.5))
+    const pitch = this.pitch + this.assist
+    const cp = Math.cos(pitch)
+    this.dir.set(-Math.sin(this.yaw) * cp, Math.sin(pitch), Math.cos(this.yaw) * cp)
     const room = k > 0.5 && !this.pose ? this.collide(want, i.sphereRadius) : want
     const tightGoal = k > 0.5 && !this.pose ? 1 - THREE.MathUtils.clamp((room - 1.4) / 1.6, 0, 1) : 0
     this.tightK += (tightGoal - this.tightK) * Math.min(1, dt * (tightGoal > this.tightK ? 6 : 2))
-    this.pivot.y += this.tightK * 0.22
+    this.pivot.y += this.tightK * 0.22 + this.smallK * 0.12
     this.right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw))
-    const sideGoal = this.sideClear(i.shoulderOffset * this.tightK)
+    const sideGoal = this.sideClear(i.shoulderOffset * Math.max(this.tightK, this.smallK * 0.85, 0.65 * (1 - this.atriumK) * k) * (1 - this.styleK.zip))
     if (sideGoal * this.side < 0 || Math.abs(sideGoal) < Math.abs(this.side)) this.side = sideGoal
     else this.side += (sideGoal - this.side) * Math.min(1, dt * 5)
     this.pivot.addScaledVector(this.right, this.side)
@@ -194,9 +208,14 @@ export class HeroCamera {
       }
     }
     const allowed = this.collide(want, k > 0.5 ? i.sphereRadius : 0.35)
-    const soft = k > 0.5 && !this.pose ? Math.min(allowed, this.whiskers(want, i.sphereRadius)) : allowed
+    const soft = k > 0.5 && !this.pose ? Math.min(allowed, Math.max(this.whiskers(want, i.sphereRadius, pitch), Math.min(want, 1.6))) : allowed
     this.holdT = Math.max(0, this.holdT - dt)
-    if (allowed < this.dist - 1e-3) {
+    if (this.snapped) {
+      this.snapped = false
+      this.dist = Math.min(allowed, soft)
+      this.side = sideGoal
+      this.assist = assistGoal
+    } else if (allowed < this.dist - 1e-3) {
       const glide = this.dist - PULL_IN * dt
       this.desired.copy(this.pivot).addScaledVector(this.dir, Math.max(allowed, glide))
       this.dist = glide > allowed && this.free(this.desired, NEAR_R) ? glide : allowed
@@ -216,6 +235,18 @@ export class HeroCamera {
       const ceil = ceilingLocal(ctx, this.desired)
       if (ceil !== null) this.desired.y = Math.min(this.desired.y, ceil - i.ceilingMargin)
     }
+    if (k > 0.5 && !this.free(this.desired, 0.15) && !this.nudgeFree(this.desired)) {
+      let lo = 0
+      let hi = 1
+      for (let n = 0; n < 7; n++) {
+        const mid = (lo + hi) / 2
+        this.pivotTmp.lerpVectors(this.pivotBase, this.desired, mid)
+        if (this.free(this.pivotTmp, 0.15)) lo = mid
+        else hi = mid
+      }
+      this.desired.lerpVectors(this.pivotBase, this.desired, lo)
+      this.dist = Math.min(this.dist, this.desired.distanceTo(this.pivot))
+    }
     this.closeness = THREE.MathUtils.clamp((Math.min(this.desired.distanceTo(f.head), this.desired.distanceTo(f.chest)) - 0.6) / 0.8, 0, 1)
 
     this.gameplayPos.copy(this.desired)
@@ -223,7 +254,7 @@ export class HeroCamera {
     let fov = lerp(f.fast ? o.fovFast : SORTIE.fov, lerp(i.fov, ATRIUM.fov, this.atriumK), k)
     fov = lerp(fov, ZIP.fov, this.styleK.zip)
     if (f.fast && k > 0.5) fov += 3
-    fov += this.tightK * 5
+    fov += Math.max(this.tightK * 5, this.smallK * 3)
 
     this.poseK = THREE.MathUtils.clamp(this.poseK + (this.pose ? dt : -dt) / 0.6, 0, 1)
     const pk = smooth(this.poseK)
@@ -284,18 +315,28 @@ export class HeroCamera {
   }
   private nearBall: RAPIER.Ball | null = null
 
+  private nudgeFree(p: THREE.Vector3): boolean {
+    const y = p.y
+    for (const dy of [-0.12, 0.12, -0.25, 0.25, -0.4, 0.4, -0.6, 0.6]) {
+      p.y = y + dy
+      if (this.free(p, 0.15)) return true
+    }
+    p.y = y
+    return false
+  }
+
   private collide(want: number, radius: number): number {
     const d = this.cast(this.pivot, this.dir, want, radius)
     return d < want ? Math.max(0.05, d - 0.02) : want
   }
 
   private whiskerDir = new THREE.Vector3()
-  private whiskers(want: number, radius: number): number {
+  private whiskers(want: number, radius: number, pitch: number): number {
     let m = want
-    const cp = Math.cos(this.pitch)
+    const cp = Math.cos(pitch)
     for (const off of [-0.25, 0.25]) {
       const y = this.yaw + off
-      this.whiskerDir.set(-Math.sin(y) * cp, Math.sin(this.pitch), Math.cos(y) * cp)
+      this.whiskerDir.set(-Math.sin(y) * cp, Math.sin(pitch), Math.cos(y) * cp)
       const d = this.cast(this.pivot, this.whiskerDir, want, radius)
       m = Math.min(m, THREE.MathUtils.lerp(d, want, 0.5))
     }
@@ -320,6 +361,7 @@ export class HeroCamera {
     if (!indoor) {
       this.atriumGoal = 0
       this.corridorK = 0
+      this.smallK = 0
       return
     }
     const env = this.ctx.services.drift?.cameraEnv?.()
@@ -339,6 +381,8 @@ export class HeroCamera {
     this.atriumGoal = Math.max(probe, env && env.indoor > 0.5 ? env.airHaze * 0.85 : 0)
     const corridor = THREE.MathUtils.clamp((2.6 - sideMin) / 1.6, 0, 1) * (1 - probe)
     this.corridorK += (corridor - this.corridorK) * 0.5
+    const small = THREE.MathUtils.clamp((5 - open) / 2.2, 0, 1) * (1 - probe)
+    this.smallK += (small - this.smallK) * (this.snapped ? 1 : 0.4)
   }
 
   dispose(): void {

@@ -164,6 +164,7 @@ function createRuntime(ctx: GameContext): Runtime {
   let hintId: string | null = null
   let introState: 'waiting' | 'playing' | 'done' = 'waiting'
   let introGrace = 0
+  let wakeT = 0
   let musicTimer = 0
   let music: MusicCue | null = null
   const candidates: Candidate[] = []
@@ -181,7 +182,8 @@ function createRuntime(ctx: GameContext): Runtime {
         gp.lock.count--
       }
       gp.heroMode('idle')
-      introGrace = 1
+      introGrace = 1.2
+      wakeT = 40
       ctx.state.flags['intro'] = true
       gp.hud.showHud(true)
       gp.quests.start()
@@ -252,7 +254,9 @@ function createRuntime(ctx: GameContext): Runtime {
       }
 
       candidates.length = 0
+      if (introGrace > 0 && input.down('interact')) introGrace = Math.max(introGrace, 0.4)
       introGrace = Math.max(0, introGrace - dt)
+      if (wakeT > 0) wakeT = Math.hypot(input.move.x, input.move.y) > 0.3 ? 0 : wakeT - dt
       const canInteract = !wasBusy && !gp.busy() && !paused && introState === 'done' && introGrace <= 0
       if (canInteract) {
         uses.candidates(candidates)
@@ -263,7 +267,7 @@ function createRuntime(ctx: GameContext): Runtime {
         gp.quests.candidates(candidates)
       }
       let best: Candidate | null = null
-      for (const c of candidates) if (!best || c.dist < best.dist) best = c
+      for (const c of candidates) if ((!best || c.dist < best.dist) && !(wakeT > 0 && c.kind === 'bed')) best = c
       const outsideScrub = canInteract ? gp.scrub.target() : null
       if (outsideScrub && (!best || best.kind === 'airlock')) {
         gp.hud.prompt({ key: input.keyLabel('scrub'), label: PROMPTS.frotter })
