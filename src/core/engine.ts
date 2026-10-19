@@ -23,6 +23,7 @@ const LOADING_LABELS: Record<System['id'], string> = {
   hero: 'Ilo se réveille…',
   gameplay: 'Grand-père sort la carte…',
   audio: 'La mer se met à chanter…',
+  net: 'On cherche les autres…',
 }
 
 export interface BootOptions {

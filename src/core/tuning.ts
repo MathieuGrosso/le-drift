@@ -101,3 +101,21 @@ export const INPUT = {
 
 export const AUTOSAVE_SECONDS = 60
 export const AUTO_QUALITY = { frameMs: 24, windowSeconds: 5 } as const
+
+export const WINDOWS = {
+  initialCoat: 0.9,
+  regrowHours: 20,
+  regrowHoursAct2: 12,
+  northFactor: 0.5,
+  sharedRegrowHours: 16,
+} as const
+
+export const NET = {
+  sendHz: 12,
+  interpDelayMs: 150,
+  probeTimeoutMs: 1200,
+  reconnectSeconds: 20,
+  chatBubbleSeconds: 6,
+  nameTagMaxDistance: 30,
+  saveDebounceMs: 2000,
+} as const

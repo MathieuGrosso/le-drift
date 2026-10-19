@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "server": "npm --prefix server start",
+    "typecheck:server": "npm --prefix server run typecheck"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

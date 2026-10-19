@@ -1,9 +1,10 @@
 import type * as THREE from 'three'
 import type RAPIER from '@dimforge/rapier3d-compat'
+import type { ChatLine, EmoteId, PlayerCardView, PlayerId } from '../shared/protocol'
 
 export type Vec3 = { x: number; y: number; z: number }
 export type Act = 1 | 2 | 3
-export type SystemId = 'render' | 'world' | 'flora' | 'drift' | 'fauna' | 'hero' | 'gameplay' | 'audio'
+export type SystemId = 'render' | 'world' | 'flora' | 'drift' | 'fauna' | 'hero' | 'gameplay' | 'audio' | 'net'
 export type RegionId = 'prairie' | 'laminaires' | 'pilier' | 'cheminee' | 'coques' | 'blanc' | 'bleu'
 export type DayPhase = 'aube' | 'jour' | 'crepuscule' | 'nuit'
 export type QualityLevel = 'low' | 'medium' | 'high'
@@ -69,6 +70,7 @@ export interface Services {
   hero?: HeroService
   gameplay?: GameplayService
   audio?: AudioService
+  net?: NetService
   debug: DebugRegistry
 }
 
@@ -169,6 +171,9 @@ export interface GameEvents {
   'save:written': {}
   'debug:pose': { name: string }
   'ondine:rejoindre': {}
+  'net:status': { status: NetStatus }
+  'net:chat': ChatLine
+  'net:emote': { from: PlayerId; emote: EmoteId }
 }
 export interface EventBus {
   on<K extends keyof GameEvents>(k: K, fn: (p: GameEvents[K]) => void): () => void
@@ -305,6 +310,15 @@ export interface GameplayService {
   setWeather(env: Partial<EnvState>): void
   sleepUntil(hour: number): Promise<void>
   chartCanvas(): HTMLCanvasElement | null
+}
+export type NetStatus = 'solo' | 'connecting' | 'online' | 'reconnecting'
+export interface NetService {
+  status(): NetStatus
+  me(): PlayerId | null
+  players(): readonly PlayerCardView[]
+  chat(text: string): void
+  emote(emote: EmoteId): void
+  talk(npcId: string, text: string | null): boolean
 }
 export interface AudioService { cue(c: MusicCue): void; sfx(id: string, at?: Vec3): void; unlock(): Promise<void> }
 export type MusicCue = 'explore' | 'drift' | 'sonde' | 'shallow' | 'danger' | 'night' | 'wonder' | 'rain' | 'silence'
