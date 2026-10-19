@@ -7,6 +7,8 @@ export const DRESS = {
   maxClusters: 240,
   bay: { min: 2.4, max: 4.6, gap: 0.5, split: 5 },
   roomTint: 0.6,
+  facade: { window: 0.7, glow: 3.2, garland: 0.55, garlandSpan: [4, 14] as const, garlandY: 3.3 },
+  wall: { decor: 0.5, pipe: 0.35, pipeMin: 4, pipeY: [2.5, 3.3] as const, bracketEvery: 1.6, sign: 0.45 },
   dustRoom: 0.6,
   hueShiftDeg: 8,
   valueShift: 0.06,

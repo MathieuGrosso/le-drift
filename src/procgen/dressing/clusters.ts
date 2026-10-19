@@ -40,6 +40,10 @@ function lampOf(f: Frame, kind: LampKind, u: number, v: number, floorY: number):
       break
     }
     case 'applique':
+      if (slot.kind !== 'mur' && slot.kind !== 'seuil') {
+        lampOf(f, 'suspension', u, v, floorY)
+        break
+      }
       d.lamp({ kind, cell: slot.cell, x: p.x, y: floorY + 2.1, z: p.z, rot: f.rot(), color, radius: 5, drop: 0 })
       break
     case 'lampadaire':
@@ -219,12 +223,102 @@ const rebord = (f: Frame) => {
   if (d.recipe.goods.includes('lunette') && slot.d > 0.8) put(f, 'lunette', 0, 0.6, -Math.min(slot.at.y, 0), 0)
 }
 
+// Seuil frame: the door is at v = -slot.d, the street beyond v = 0.
 const seuil = (f: Frame) => {
   const { d, slot } = f
-  rug(f, 0, 0.5, 1.0, 0.6)
-  if (d.rng() < 0.7) put(f, pickOne(d.rng, ['panier', 'seau', 'sac', 'epuisette'] as const), slot.w / 2 - 0.25, 0.25, 0, d.rng())
-  lampOf(f, 'applique', -slot.w / 2 + 0.2, 0.05, slot.at.y)
+  const wall = -slot.d
+  rug(f, 0, wall + 0.5, 1.0, 0.6)
+  if (d.rng() < 0.7) put(f, pickOne(d.rng, ['panier', 'seau', 'sac', 'epuisette'] as const), slot.w / 2 - 0.25, wall + 0.35, 0, d.rng())
+  if (d.rng() < 0.6) put(f, pickOne(d.rng, d.recipe.plants), -slot.w / 2 + 0.1, wall + 0.3, 0, d.rng() * 6, 0.8 + d.rng() * 0.4)
+  lampOf(f, 'applique', -slot.w / 2 + 0.2, wall + 0.05, slot.at.y)
+  if (d.rng() < DRESS.wall.sign) enseigne(f, slot.w / 2 + 0.15, wall)
 }
+
+// A shop sign on an iron arm, perpendicular to the wall so it reads from down the street.
+function enseigne(f: Frame, u: number, wall: number): void {
+  const { d } = f
+  const board = d.tissu(f.slot.cell)
+  const arm = f.at(u, wall + 0.45, 2.95)
+  d.pipes.push({ a: f.at(u, wall, 2.95), b: arm, r: 0.025, color: 0x3e3a4a, brackets: 0 })
+  const w = 0.6 + d.rng() * 0.3
+  const h = 0.4 + d.rng() * 0.2
+  const c = f.at(u, wall + 0.5, 2.9 - h / 2)
+  d.sheet({ ...c, w: 0.04, h, rot: f.rot(), pitch: 0, color: 0x5e4a3a, t: w + 0.06 })
+  for (const side of [-1, 1]) {
+    const p = f.at(u + side * 0.025, wall + 0.5, 2.9 - h / 2)
+    d.sheet({ ...p, w: w - 0.08, h: h - 0.08, rot: f.rot(Math.PI / 2), pitch: 0, color: board, t: 0.01 })
+  }
+}
+
+// Wall-height dressing above whatever stands on the floor: posters, a frame, ivy, a clock.
+export const murDecor = (f: Frame) => {
+  const { d, slot } = f
+  const wall = -0.47
+  const kind = d.rng()
+  if (kind < 0.45) {
+    const n = 1 + Math.floor(d.rng() * Math.min(3, slot.w / 0.8))
+    for (const u of spread(f, n, 0.5)) {
+      const h = 0.45 + d.rng() * 0.35
+      const p = f.at(u, wall, 1.55 + d.rng() * 0.4)
+      d.sheet({ ...p, w: h * 0.72, h, rot: f.rot((d.rng() - 0.5) * 0.08), pitch: 0, color: pickOne(d.rng, PAPER), t: 0.006 })
+      const band = f.at(u, wall + 0.006, p.y - slot.at.y + h * 0.18)
+      d.sheet({ ...band, w: h * 0.6, h: h * 0.16, rot: f.rot(), pitch: 0, color: d.tissu(slot.cell), t: 0.006 })
+    }
+  } else if (kind < 0.7) {
+    const w = 0.7 + d.rng() * 0.6
+    const u = (d.rng() - 0.5) * Math.max(0, slot.w - w - 0.6)
+    d.sheet({ ...f.at(u, wall, 1.8), w: w + 0.12, h: w * 0.75 + 0.12, rot: f.rot(), pitch: 0, color: 0x5e4a3a, t: 0.04 })
+    d.sheet({ ...f.at(u, wall + 0.03, 1.8), w, h: w * 0.75, rot: f.rot(), pitch: 0, color: pickOne(d.rng, [0x6e8fb0, 0x8fb59a, d.pal.accent, 0xc9a66b]), t: 0.02 })
+  } else if (kind < 0.88) {
+    for (const u of spread(f, 2 + Math.floor(d.rng() * 3), 0.3)) {
+      const s = 0.7 + d.rng() * 0.6
+      put(f, 'lierre', u, wall + 0.08, slot.h - DRESS.ivyLength * s, d.rng() * 6, s)
+    }
+  } else {
+    put(f, 'horloge', (d.rng() - 0.5) * slot.w * 0.5, wall + 0.2, 0, 0, 0.9)
+  }
+}
+
+// A pipe along the whole wall run, on brackets, sometimes doubled; the Drift's walls are never bare.
+export const pipeRun = (f: Frame) => {
+  const { d, slot } = f
+  const [lo, hi] = DRESS.wall.pipeY
+  const y = Math.min(lo + d.rng() * (hi - lo), d.roof(slot.cell, slot.at.y + 4) - slot.at.y - 0.3)
+  const color = pickOne(d.rng, [d.pal.metal, 0xc98a5a, 0x8a8f99])
+  const n = d.rng() < 0.4 ? 2 : 1
+  for (let i = 0; i < n; i++) {
+    const r = 0.05 + d.rng() * 0.05
+    const yy = y - i * 0.24
+    d.pipes.push({ a: f.at(-slot.w / 2, -0.38, yy), b: f.at(slot.w / 2, -0.38, yy), r, color, brackets: Math.max(1, Math.floor(slot.w / DRESS.wall.bracketEvery)) })
+  }
+}
+
+// Street face around a door: painted windows with shutters and a sill garden, lit from inside or not.
+export const facade = (f: Frame) => {
+  const { d, slot } = f
+  const wall = -slot.d + 0.03
+  for (const side of [-1, 1]) {
+    if (d.rng() > DRESS.facade.window) continue
+    const u = side * (slot.w / 2 + 0.8 + d.rng() * 0.7)
+    const w = 0.8 + d.rng() * 0.4
+    const h = 1 + d.rng() * 0.3
+    const y = 1.35 + h / 2
+    d.sheet({ ...f.at(u, wall, y), w: w + 0.16, h: h + 0.16, rot: f.rot(), pitch: 0, color: d.pal.boisOmbre, t: 0.05 })
+    const lit = d.rng() < d.recipe.skinLit
+    d.sheet({ ...f.at(u, wall + 0.03, y), w, h, rot: f.rot(), pitch: 0, color: lit ? 0xffc27a : 0x34505e, t: 0.02 })
+    d.sheet({ ...f.at(u, wall + 0.04, y), w: 0.04, h, rot: f.rot(), pitch: 0, color: d.pal.boisOmbre, t: 0.02 })
+    if (lit) d.bake(slot.cell, f.at(u, wall + 0.6, y), d.pal.lampe, DRESS.facade.glow)
+    const shutter = d.tissu(slot.cell)
+    for (const s of [-1, 1]) {
+      const open = d.rng() * 0.9
+      d.sheet({ ...f.at(u + s * (w / 2 + 0.2 + Math.sin(open) * 0.05), wall + 0.05 + Math.sin(open) * 0.2, y), w: 0.4, h: h + 0.1, rot: f.rot(s * open), pitch: 0, color: shutter, t: 0.03 })
+    }
+    d.sheet({ ...f.at(u, wall + 0.12, 1.3), w: w + 0.2, h: 0.2, rot: f.rot(), pitch: 0, color: d.pal.bois, t: 0.22 })
+    for (let i = 0; i < 3; i++) if (d.rng() < 0.75) put(f, pickOne(d.rng, d.recipe.plants.filter((p) => p !== 'laminaire').concat('herbes')), u - w / 2 + 0.15 + i * (w - 0.3) / 2, wall + 0.12, 1.4, d.rng() * 6, 0.55)
+  }
+}
+
+const PAPER = [0xf1e4c8, 0xefe3c4, 0xe9dcc2, 0xf4f1e6] as const
 
 const rambarde = (f: Frame) => {
   const { d, slot } = f

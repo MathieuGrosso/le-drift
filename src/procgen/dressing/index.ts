@@ -7,7 +7,7 @@ import { SURF } from '../../drift/surface'
 import { ARCHETYPES } from '../archetypes'
 import type { BuiltPart, DressFn, DistrictShell, LampSpec } from '../types'
 import { buildLamps } from './lamps'
-import { collidersOf, isSolid, planDressing, type Bulb, type DressPlan, type PropKind, type PropPlacement } from './plan'
+import { collidersOf, isSolid, planDressing, type Bulb, type Pipe, type DressPlan, type PropKind, type PropPlacement } from './plan'
 import { buildProp } from './props'
 import { DRESS } from './tuning'
 import { buildVfx, type VfxUniforms } from './vfx'
@@ -126,7 +126,7 @@ function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
   b.with(SURF.fabric, () => {
     for (const c of plan.cloth) {
       _q.setFromEuler(_e.set(c.pitch, c.rot, 0, 'YXZ'))
-      b.add(UNIT.box, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, 0.018)), c.color)
+      b.add(UNIT.box, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, c.t ?? 0.018)), c.color)
     }
   })
   const dir = new THREE.Vector3()
@@ -140,8 +140,31 @@ function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
   return b.build()
 }
 
+function pipeGeometry(b: GeoBuilder, pipes: readonly Pipe[]): void {
+  const dir = new THREE.Vector3()
+  b.with(SURF.steel, () => {
+    for (const p of pipes) {
+      dir.set(p.b.x - p.a.x, p.b.y - p.a.y, p.b.z - p.a.z)
+      const len = dir.length()
+      if (len < 1e-3) continue
+      dir.divideScalar(len)
+      _q.setFromUnitVectors(UP, dir)
+      b.add(UNIT.cylLow, _m.compose(_p.set((p.a.x + p.b.x) / 2, (p.a.y + p.b.y) / 2, (p.a.z + p.b.z) / 2), _q, _s.set(p.r, len, p.r)), p.color)
+      if (p.brackets === 0) continue
+      const yaw = Math.atan2(dir.x, dir.z)
+      for (let i = 0; i <= p.brackets; i++) {
+        const t = i / p.brackets
+        const x = p.a.x + (p.b.x - p.a.x) * t
+        const z = p.a.z + (p.b.z - p.a.z) * t
+        b.box(x, p.a.y, z, 0.12, p.r * 2 + 0.06, 0.06, 0x3e3a4a, yaw)
+        b.add(UNIT.cylLow, _m.compose(_p.set(x, p.a.y, z), _q, _s.set(p.r * 1.3, 0.06, p.r * 1.3)), p.color === 0xc98a5a ? 0xd9b48f : 0x52576a)
+      }
+    }
+  })
+}
+
 function bulbMesh(bulbs: readonly Bulb[], mat: THREE.Material): THREE.InstancedMesh {
-  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat, bulbs.length)
+  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), mat, bulbs.length)
   bulbs.forEach((b, i) => {
     im.setMatrixAt(i, _m.compose(_p.set(b.x, b.y, b.z), _q.identity(), _s.setScalar(b.size)))
     im.setColorAt(i, _c.set(b.color).multiplyScalar(1.7))
@@ -237,6 +260,7 @@ export const dress: DressFn = function* (input, host) {
   merged(clothGeometry(plan), 'habillage:tissus')
   yield
   const fittings = new GeoBuilder()
+  pipeGeometry(fittings, plan.pipes)
   const bulbs = [...plan.bulbs, ...buildLamps(fittings, plan.lamps, plan.palette)]
   merged(fittings, 'habillage:luminaires')
   yield

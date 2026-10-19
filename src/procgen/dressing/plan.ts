@@ -2,7 +2,7 @@ import { hashString, mulberry32 } from '../../core/rng'
 import type { Vec3 } from '../../core/types'
 import { ARCHETYPES } from '../archetypes'
 import type { ArchetypeDef, Box, CellSpec, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
-import { CLUSTERS, type Frame } from './clusters'
+import { CLUSTERS, facade, murDecor, pipeRun, type Frame } from './clusters'
 import { MOODS, type Mood } from './moods'
 import { RECIPES, type ClusterId, type Recipe, type Weighted } from './recipes'
 import { DRESS } from './tuning'
@@ -21,7 +21,8 @@ export type EmitterKind = 'vapeur' | 'poussiere' | 'gouttes' | 'etincelles' | 'b
 export interface DressPalette { mur: number; bois: number; boisOmbre: number; metal: number; tissu: readonly number[]; accent: number; lampe: number }
 
 export interface PropPlacement { kind: PropKind; x: number; y: number; z: number; rot: number; s: number; tint: number; glass: boolean }
-export interface ClothPiece { x: number; y: number; z: number; w: number; h: number; rot: number; pitch: number; color: number }
+export interface ClothPiece { x: number; y: number; z: number; w: number; h: number; rot: number; pitch: number; color: number; t?: number }
+export interface Pipe { a: Vec3; b: Vec3; r: number; color: number; brackets: number }
 export interface Wire { a: Vec3; b: Vec3; r: number }
 export interface Bulb { x: number; y: number; z: number; color: number; size: number }
 export interface DressLamp { kind: LampKind; cell: string; x: number; y: number; z: number; rot: number; color: number; radius: number; drop: number; live: boolean }
@@ -34,6 +35,7 @@ export interface DressPlan {
   ambient: number
   props: readonly PropPlacement[]
   cloth: readonly ClothPiece[]
+  pipes: readonly Pipe[]
   wires: readonly Wire[]
   bulbs: readonly Bulb[]
   lamps: readonly DressLamp[]
@@ -111,6 +113,7 @@ function inside(b: Box, x: number, y: number, z: number, pad = 0): boolean {
 export class Dresser {
   readonly props: PropPlacement[] = []
   readonly cloth: ClothPiece[] = []
+  readonly pipes: Pipe[] = []
   readonly wires: Wire[] = []
   readonly bulbs: Bulb[] = []
   readonly lamps: DressLamp[] = []
@@ -251,6 +254,22 @@ function bays(slot: DressSlot, rng: Rng): DressSlot[] {
     u += w
   }
   return out
+}
+
+// Doors make the street: every seuil gets a facade, and neighbouring doors are strung together.
+function dressStreets(d: Dresser, shell: DistrictShell): void {
+  const doors = shell.slots.filter((s) => s.kind === 'seuil')
+  for (const s of doors) facade(frameOf(s, d))
+  const [near, far] = DRESS.facade.garlandSpan
+  doors.forEach((a, i) => {
+    const b = doors.slice(i + 1).find((o) => o.cell === a.cell && Math.abs(o.at.y - a.at.y) < 1 && Math.hypot(o.at.x - a.at.x, o.at.z - a.at.z) > near && Math.hypot(o.at.x - a.at.x, o.at.z - a.at.z) < far)
+    if (!b || d.rng() > DRESS.facade.garland) return
+    const y = DRESS.facade.garlandY
+    const back = (s: DressSlot) => ({ x: s.at.x - Math.sin(s.yaw) * (s.d - 0.2), y: s.at.y + y, z: s.at.z - Math.cos(s.yaw) * (s.d - 0.2) })
+    const pa = back(a)
+    const pb = back(b)
+    d.line(d.rng() < 0.5 ? 'ampoules' : 'fanions', pa, pb, Math.hypot(pb.x - pa.x, pb.z - pa.z) * 0.06, a.cell)
+  })
 }
 
 function dressMoods(d: Dresser, shell: DistrictShell): void {
@@ -437,6 +456,7 @@ export function planDressing(input: DressInput): DressPlan {
     const base = slot.onPath ? DRESS.fill.onPath : DRESS.fill.offPath
     return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
   }
+  for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe) pipeRun(frameOf(s, d))
   const slots = shell.slots.flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
   const fills = slots.map(fillOf)
   const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
@@ -451,6 +471,7 @@ export function planDressing(input: DressInput): DressPlan {
     if (cluster === last.get(slot.cell) && cluster !== 'vide') cluster = roll()
     last.set(slot.cell, cluster)
     CLUSTERS[cluster](frameOf(slot, d))
+    if (slot.kind === 'mur' && rng() < DRESS.wall.decor * mood.fill) murDecor(frameOf(slot, d))
     if (slot.kind === 'atelier' && recipe.emitters.atelier) {
       const a = slot.at
       d.emit(recipe.emitters.atelier, { x0: a.x - 0.6, x1: a.x + 0.6, y0: a.y + 0.9, y1: a.y + 3.5, z0: a.z - 0.6, z1: a.z + 0.6 }, 1)
@@ -460,6 +481,7 @@ export function planDressing(input: DressInput): DressPlan {
       d.emit(recipe.emitters.plafond, { x0: a.x - 1, x1: a.x + 1, y0: a.y - Math.max(2, slot.h), y1: a.y, z0: a.z - 1, z1: a.z + 1 }, 1)
     }
   })
+  dressStreets(d, shell)
   dressVoids(d, shell)
   dressMoods(d, shell)
   const pools: Pool[] = []
@@ -474,6 +496,7 @@ export function planDressing(input: DressInput): DressPlan {
     ambient: DRESS.ambient,
     props,
     cloth: d.cloth,
+    pipes: d.pipes,
     wires: d.wires,
     bulbs: d.bulbs,
     lamps: d.lamps,
