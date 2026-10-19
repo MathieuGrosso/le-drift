@@ -77,7 +77,7 @@ type SlideA = Extract<HeroAnchor, { kind: 'slide' }>
 
 type Activity =
   | { kind: 'none' }
-  | { kind: 'sit'; seatId: string; anchor: THREE.Vector3; yaw: number; stage: 'approach' | 'down' | 'sit' | 'up'; t: number; standAt: THREE.Vector3 }
+  | { kind: 'sit'; seatId: string; anchor: THREE.Vector3; yaw: number; stage: 'approach' | 'down' | 'sit' | 'up'; t: number; standAt: THREE.Vector3; anchorL: Vec3; yawL: number; standL: Vec3 | null }
   | { kind: 'lean'; target: THREE.Vector3; stage: 'in' | 'lean' | 'up'; t: number }
   | { kind: 'sleep'; stage: 'down' | 'sleep' | 'up'; t: number; bed: Vec3 | null; bedYaw: number; from: THREE.Vector3 }
   | { kind: 'ladder'; a: LadderA; s: number; topT: number; mountT: number; from: THREE.Vector3; exit: THREE.Vector3 }
@@ -163,6 +163,11 @@ export class HeroController {
   private mantleT = -1
   private mantleFrom = new THREE.Vector3()
   private mantleTo = new THREE.Vector3()
+  private mantleFromL: Vec3 = { x: 0, y: 0, z: 0 }
+  private mantleToL: Vec3 = { x: 0, y: 0, z: 0 }
+  private ladderFromL: Vec3 = { x: 0, y: 0, z: 0 }
+  private ladderExitL: Vec3 = { x: 0, y: 0, z: 0 }
+  private sleepFromL: Vec3 = { x: 0, y: 0, z: 0 }
   private ledge = new THREE.Vector3()
   private landT = 99
   private hatchT = 99
@@ -389,7 +394,10 @@ export class HeroController {
   sit(seatId: string): void {
     const seat = this.ctx.services.drift?.seat(seatId)
     if (!seat) return
-    this.activity = { kind: 'sit', seatId, anchor: v3(seat.position), yaw: seat.yaw, stage: 'approach', t: 0, standAt: new THREE.Vector3() }
+    const drift = this.ctx.services.drift
+    const heading = drift?.pose().heading ?? 0
+    const anchorL = drift ? drift.toLocal(seat.position) : seat.position
+    this.activity = { kind: 'sit', seatId, anchor: v3(seat.position), yaw: seat.yaw, stage: 'approach', t: 0, standAt: new THREE.Vector3(), anchorL, yawL: seat.yaw - heading, standL: null }
   }
 
   lean(target: Vec3): void {
@@ -977,14 +985,17 @@ export class HeroController {
       this.letGo(1.2)
       return
     }
-    const head = ctx.physics.raycast({ x: this.pos.x, y: this.pos.y + 1.6, z: this.pos.z }, { x: 0, y: 1, z: 0 }, 0.35, { excludeKinds: [...IGNORE] })
-    if (head && (my > 0 || input.pressed('up'))) {
+    const head = ctx.physics.raycast({ x: this.pos.x + n.x * 0.2, y: this.pos.y + 1.6, z: this.pos.z + n.z * 0.2 }, { x: 0, y: 1, z: 0 }, 0.35, { excludeKinds: [...IGNORE] })
+    if (head && my > 0) {
       my = 0
       this.climbBlockedT += dt
-      if (this.climbBlockedT > 0.3 || input.pressed('up')) {
+      if (this.climbBlockedT > 0.4) {
         this.climbBlockedT = 0
         if (this.findLedge(n, 2.4) !== null) this.beginMantle()
-        else this.letGo(0.8)
+        else {
+          this.letGo(0.8)
+          this.noWallT = 0.7
+        }
         return
       }
     }
@@ -1076,12 +1087,19 @@ export class HeroController {
     this.climbing = false
     this.mantleFrom.copy(this.pos)
     this.mantleTo.copy(this.ledge)
+    this.mantleFromL = this.localNow()
+    const drift = this.ctx.services.drift
+    this.mantleToL = drift ? drift.toLocal(this.ledge) : { x: this.ledge.x, y: this.ledge.y, z: this.ledge.z }
     this.mantleT = 0
     this.vel.set(0, 0, 0)
     this.publish('climb')
   }
 
   private updateMantle(dt: number): void {
+    if (this.medium === 'air') {
+      this.toW(this.mantleFromL, this.mantleFrom)
+      this.toW(this.mantleToL, this.mantleTo)
+    }
     const h = Math.max(0.3, this.mantleTo.y - this.mantleFrom.y)
     this.mantleT += dt / (0.3 + h * 0.18)
     const k = Math.min(1, this.mantleT)
@@ -1359,7 +1377,7 @@ export class HeroController {
   }
 
   private tryAirGrab(): boolean {
-    if (!this.wallAhead(0.35, true)) return false
+    if (this.noWallT > 0 || !this.wallAhead(0.35, true)) return false
     if (this.findLedge(this.climbN, 1.6) !== null && this.vel.y < 2) {
       this.beginMantle()
       return true
@@ -1446,6 +1464,8 @@ export class HeroController {
     this.out.style = 'ladder'
     if (a.topT >= 0) {
       a.topT += dt
+      this.toW(this.ladderFromL, a.from)
+      this.toW(this.ladderExitL, a.exit)
       const k = Math.min(1, a.topT / 0.75)
       const s = k * k * (3 - 2 * k)
       this.pos.lerpVectors(a.from, a.exit, s)
@@ -1540,6 +1560,9 @@ export class HeroController {
       if (drift && drift.mediumAt(this.tmp.set(x, hit.point.y + 1, z)) === 'water') continue
       a.from.copy(this.pos)
       a.exit.set(x, hit.point.y + 0.02, z)
+      this.ladderFromL = this.localNow()
+      const dr = this.ctx.services.drift
+      this.ladderExitL = dr ? dr.toLocal(a.exit) : { x, y: a.exit.y, z }
       a.topT = 0
       return true
     }
@@ -1754,6 +1777,7 @@ export class HeroController {
         bedYaw = a.yaw
       }
     }
+    this.sleepFromL = local
     this.activity = { kind: 'sleep', stage: 'down', t: 0, bed, bedYaw, from: this.pos.clone() }
     this.vel.set(0, 0, 0)
   }
@@ -1823,6 +1847,7 @@ export class HeroController {
       }
       case 'sleep': {
         a.t += dt
+        this.toW(this.sleepFromL, a.from)
         this.vel.set(0, 0, 0)
         this.out.speed = 0
         this.out.moving = 0
@@ -1864,12 +1889,25 @@ export class HeroController {
   private updateSit(dt: number, a: Extract<Activity, { kind: 'sit' }>, wishLen: number, wantsUp: boolean): boolean {
     a.t += dt
     this.out.style = 'rest'
+    const heading = this.ctx.services.drift?.pose().heading ?? 0
+    this.toW(a.anchorL, a.anchor)
+    a.yaw = a.yawL + heading
+    if (a.standL) this.toW(a.standL, a.standAt)
     if (a.stage === 'approach') {
-      const to = this.tmp.copy(a.anchor).sub(this.pos)
+      if (a.t <= dt) {
+        const f = forward(a.yaw, this.tmp3)
+        if ((this.pos.x - a.anchor.x) * f.x + (this.pos.z - a.anchor.z) * f.z < 0) {
+          a.yawL += Math.PI
+          a.yaw += Math.PI
+        }
+      }
+      const front = forward(a.yaw, this.tmp3).multiplyScalar(0.58).add(a.anchor)
+      const to = this.tmp.copy(front).sub(this.pos)
       to.y = 0
       const d = to.length()
-      if (d < 0.5 || a.t > 3) {
+      if (d < 0.2 || a.t > 2.2) {
         a.standAt.copy(this.pos)
+        a.standL = this.localNow()
         this.yaw = a.yaw
         a.stage = 'down'
         a.t = 0
@@ -1877,9 +1915,9 @@ export class HeroController {
         this.syncLocal()
       } else {
         this.wish.copy(to).normalize()
-        this.steerHorizontal(dt, Math.min(INDOOR.walk, d * 3), 12, 12)
-        this.vel.y = 0
-        this.moveKcc(dt, INDOOR.stepHeight)
+        this.steerHorizontal(dt, Math.min(INDOOR.walk, d * 3 + 0.3), 12, 12)
+        this.vel.y = this.grounded ? 0 : this.vel.y + this.gravity.y * dt
+        this.moveKcc(dt, 0.2)
         this.phase += (Math.hypot(this.vel.x, this.vel.z) * dt) / 1.15
         this.stepCheck()
         this.publish('walk')

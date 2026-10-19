@@ -193,9 +193,10 @@ export class HeroCamera {
     this.tightK += (tightGoal - this.tightK) * Math.min(1, dt * (tightGoal > this.tightK ? 6 : 2))
     this.pivot.y += this.tightK * 0.22 + this.smallK * 0.12
     this.right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw))
-    const sideGoal = this.sideClear(i.shoulderOffset * Math.max(this.tightK, this.smallK * 0.85, 0.65 * (1 - this.atriumK) * k) * (1 - this.styleK.zip))
-    if (sideGoal * this.side < 0 || Math.abs(sideGoal) < Math.abs(this.side)) this.side = sideGoal
-    else this.side += (sideGoal - this.side) * Math.min(1, dt * 5)
+    const sideGoal = this.sideClear(i.shoulderOffset * Math.max(this.tightK, this.smallK, 0.9 * (1 - this.atriumK) * k) * (1 - this.styleK.zip) * (1 - this.corridorK * 0.75))
+    if (sideGoal * this.side < 0) this.side = 0
+    else if (Math.abs(sideGoal) < Math.abs(this.side)) this.side = sideGoal
+    else this.side += (sideGoal - this.side) * Math.min(1, dt * 4)
     this.pivot.addScaledVector(this.right, this.side)
     if (k > 0.5) {
       this.pivotBase.set(this.smoothFocus.x, f.focus.y + 0.9, this.smoothFocus.z)
@@ -250,7 +251,7 @@ export class HeroCamera {
     this.closeness = THREE.MathUtils.clamp((Math.min(this.desired.distanceTo(f.head), this.desired.distanceTo(f.chest)) - 0.6) / 0.8, 0, 1)
 
     this.gameplayPos.copy(this.desired)
-    this.gameplayTarget.copy(this.pivot)
+    this.gameplayTarget.copy(this.pivot).addScaledVector(this.right, this.side * 0.8)
     let fov = lerp(f.fast ? o.fovFast : SORTIE.fov, lerp(i.fov, ATRIUM.fov, this.atriumK), k)
     fov = lerp(fov, ZIP.fov, this.styleK.zip)
     if (f.fast && k > 0.5) fov += 3

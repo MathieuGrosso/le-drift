@@ -77,7 +77,7 @@ export const CAMERA = {
     pivotHeight: 1.55,
     distance: 3.0,
     distanceMin: 0.6,
-    shoulderOffset: 0.5,
+    shoulderOffset: 0.6,
     fov: 64,
     pitchMinDeg: -50,
     pitchMaxDeg: 52,

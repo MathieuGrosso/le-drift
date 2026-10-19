@@ -61,7 +61,7 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
         if (skip) break
         p.textContent = line
         p.classList.add('show')
-        const auto = Math.min(4.5, Math.max(2.2, 1.0 + line.length * 0.03))
+        const auto = Math.min(4, Math.max(2, 0.9 + line.length * 0.024))
         let t = 0
         await new Promise<void>((resolve) => {
           tick = (dt) => {
@@ -77,7 +77,7 @@ export function createCine(gp: Gp, root: HTMLElement): Cine {
           }
         })
         p.classList.remove('show')
-        await wait(skip ? 0 : 0.45)
+        await wait(skip ? 0 : 0.3)
       }
       tick = () => input.consume('interact', 'up', 'pause')
       wrap.style.opacity = '0'

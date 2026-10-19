@@ -68,7 +68,7 @@ export function createUses(gp: Gp): Uses {
       }
       for (const a of gp.sites.near(hl, NEAR + 0.5)) {
         if (a.kind === 'lunette') near(`lunette-${a.id}`, a.at)
-        else if (a.kind === 'chart-table' || a.kind === 'hammock' || a.kind === 'bed') near(a.id, a.at)
+        else if (a.kind === 'chart-table' || a.kind === 'hammock' || a.kind === 'bed' || a.kind === 'seat') near(a.id, a.at)
       }
       for (const o of gp.sites.ownedNear(hl, NEAR + 1.4, nearby)) {
         if (o.kind === 'ladder' || o.kind === 'window') continue
