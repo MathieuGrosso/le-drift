@@ -172,7 +172,7 @@ void main() {
     seaFloor += vec3(0.75, 0.95, 0.86) * hot * 0.8;
     seaFloor *= dayG * (1.0 + 0.2 * rdSunI);
     vec3 tinted = behind * mix(vec3(1.0), tint / max(max(tint.r, tint.g), tint.b), 0.18);
-    col = seaFloor * 0.7 + tinted * 0.32;
+    col = rgLive > 0.5 ? tinted * 1.05 + seaFloor * 0.08 : seaFloor * 0.7 + tinted * 0.32;
     col *= 1.0 - 0.12 * smoothstep(0.86, 1.0, edgeDist) * (1.0 - rgRound * 0.5) * (1.0 - rgDome);
     vec3 edgeC = vec3(0.80, 1.0, 0.92);
     col += edgeC * (fres * 0.35 + smoothstep(0.9, 0.99, edgeDist) * 0.18 * (1.0 - rgDome)) * dayG;
@@ -188,7 +188,8 @@ void main() {
     }
     float soft = rd_noise(q * 2.2 + vSeed * 5.0) * 0.6 + n * 0.4;
     vec3 algae = mix(vec3(0.42, 0.62, 0.30), vec3(0.78, 0.90, 0.48), soft);
-    vec3 furBack = seaFloor * mix(vec3(1.0), algae / max(algae.g, 1e-3), 0.4) * (0.78 + 0.34 * soft);
+    vec3 seen = rgLive > 0.5 ? tinted : seaFloor;
+    vec3 furBack = seen * mix(vec3(1.0), algae / max(algae.g, 1e-3), 0.55) * (0.6 + 0.3 * soft);
     furBack += vec3(0.86, 0.95, 0.52) * rim * 0.3 * dayG;
     col = mix(col, furBack, cover * (0.35 + 0.25 * thick));
     if (fog > 0.0) {

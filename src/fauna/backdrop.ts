@@ -18,8 +18,10 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * w;
 }
 `
-// The far wall of water seen through glass, painted: depth gradient, Snell's window at the top, slanted shafts.
+// The far wall of water seen through glass, painted in depth layers: abyss below, a ridge and a kelp wood
+// in silhouette, open water at eye level, Snell's window at the top, slanted shafts over everything.
 const CARD_FS = /* glsl */ `
+uniform vec3 uAbyss;
 uniform vec3 uDeep;
 uniform vec3 uMid;
 uniform vec3 uTop;
@@ -37,25 +39,34 @@ float bd_n(vec2 p) {
   vec2 u = f * f * (3.0 - 2.0 * f);
   return mix(mix(bd_h(i), bd_h(i + vec2(1.0, 0.0)), u.x), mix(bd_h(i + vec2(0.0, 1.0)), bd_h(i + vec2(1.0, 1.0)), u.x), u.y);
 }
+float bd_fbm(float x) { return bd_n(vec2(x, 0.5)) * 0.6 + bd_n(vec2(x * 2.7, 3.1)) * 0.28 + bd_n(vec2(x * 7.1, 9.3)) * 0.12; }
 void main() {
   vec3 v = normalize(vW - cameraPosition);
   float e = v.y;
-  vec3 c = mix(uDeep * 0.7, uDeep, smoothstep(-0.45, -0.18, e));
-  c = mix(c, uMid, smoothstep(-0.22, 0.0, e));
-  c = mix(c, uTop, smoothstep(0.02, 0.16, e)) * 0.82;
+  float x = vUv.x * ${(WIDTH / 10).toFixed(1)};
+  vec3 c = mix(uAbyss, uDeep, smoothstep(-0.4, -0.08, e));
+  c = mix(c, uMid, smoothstep(-0.1, 0.06, e));
+  c = mix(c, uTop, smoothstep(0.04, 0.22, e));
+  float ridgeH = -0.13 + bd_fbm(x * 0.35) * 0.1;
+  float ridge = smoothstep(ridgeH + 0.006, ridgeH - 0.006, e);
+  c = mix(c, mix(uDeep, uAbyss, 0.35), ridge * 0.75);
+  float sway = sin(uTime * 0.4 + x * 0.6) * 0.25 * smoothstep(-0.35, 0.05, e);
+  float stalk = bd_n(vec2((x + sway) * 3.2, 1.7));
+  float wood = smoothstep(0.6, 0.68, stalk) * smoothstep(-0.03 + bd_n(vec2(x * 3.2, 5.0)) * 0.09, -0.1, e);
+  c = mix(c, mix(uDeep, uMid, 0.3) * 0.82, wood * 0.7 * (1.0 - ridge * 0.6));
   vec2 p = vec2(vUv.x * ${(WIDTH / 6).toFixed(1)}, vUv.y * ${(HEIGHT / 6).toFixed(1)});
   float rip = bd_n(p * 1.7 + vec2(uTime * 0.12, 0.0)) * 0.6 + bd_n(p * 4.3 - vec2(0.0, uTime * 0.2)) * 0.4;
-  float snell = smoothstep(0.1, 0.22, e);
-  c = mix(c, uPale * (0.92 + 0.22 * rip), snell * 0.8);
-  c += uSun * smoothstep(0.13, 0.17, e) * (1.0 - smoothstep(0.17, 0.26, e)) * 0.18;
+  float snell = smoothstep(0.12, 0.26, e);
+  c = mix(c, uPale * (0.95 + 0.3 * rip), snell * 0.85);
+  c += uSun * smoothstep(0.15, 0.2, e) * (1.0 - smoothstep(0.2, 0.3, e)) * 0.35;
   float sx = vUv.x * 7.0 + vUv.y * 2.4;
   float s1 = smoothstep(0.58, 0.92, bd_n(vec2(sx + uTime * 0.025, uTime * 0.04)));
   float s2 = smoothstep(0.64, 0.95, bd_n(vec2(sx * 2.3 - uTime * 0.03, 7.0 + uTime * 0.06)));
-  float rays = (s1 * 0.7 + s2 * 0.4) * smoothstep(-0.35, 0.05, e) * (1.0 - snell * 0.7);
-  c += mix(uPale, uSun, 0.4) * rays * 0.22;
+  float rays = (s1 * 0.7 + s2 * 0.4) * smoothstep(-0.3, 0.1, e) * (1.0 - snell * 0.7);
+  c += mix(uPale, uSun, 0.4) * rays * 0.3;
   c *= mix(0.22, 1.0, uDay);
   vec2 q = abs(vUv - 0.5) * 2.0;
-  float edge = (1.0 - smoothstep(0.55, 1.0, q.x)) * (1.0 - smoothstep(0.6, 1.0, q.y));
+  float edge = (1.0 - smoothstep(0.7, 1.0, q.x)) * (1.0 - smoothstep(0.75, 1.0, q.y));
   gl_FragColor = vec4(c, edge * uAlpha);
 }
 `
@@ -106,6 +117,7 @@ export class SeaBackdrop {
       transparent: true,
       depthWrite: false,
       uniforms: {
+        uAbyss: { value: new THREE.Color(PALETTE.abysse) },
         uDeep: { value: new THREE.Color(PALETTE.profond) },
         uMid: { value: new THREE.Color(PALETTE.milieu) },
         uTop: { value: new THREE.Color(PALETTE.clair) },
@@ -161,7 +173,7 @@ export class SeaBackdrop {
     const u = this.cardMat.uniforms
     u.uDay!.value = day
     u.uTime!.value = t
-    u.uAlpha!.value = this.alpha * (0.35 + 0.57 * day)
+    u.uAlpha!.value = this.alpha * (0.5 + 0.5 * day)
     this.shaftMat.uniforms.uTime!.value = t
     this.shaftMat.uniforms.uStrength!.value = this.alpha * day * 0.16 * (0.6 + 0.4 * Math.min(1, this.ctx.state.env.visibility / 90))
   }
