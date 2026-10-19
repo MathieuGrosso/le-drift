@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { hashString, mulberry32 } from '../../core/rng'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { GeoBuilder, UNIT } from '../../drift/builder'
 import { bakeGlow, glowMaterial, instanceGlow, LampGrid, lightAt, type BakeLamp } from '../../drift/city/glow'
 import type { Mats } from '../../drift/materials'
@@ -78,6 +79,18 @@ const _c = new THREE.Color()
 const _e = new THREE.Euler()
 const UP = new THREE.Vector3(0, 1, 0)
 const WIRE = new THREE.CylinderGeometry(1, 1, 1, 3, 1, true)
+// Thin cloth and paper are two back-to-back quads: a third of a box's triangles, same read.
+const SHEET = (() => {
+  const front = new THREE.PlaneGeometry(1, 1)
+  const back = new THREE.PlaneGeometry(1, 1).rotateY(Math.PI)
+  front.translate(0, 0, 0.004)
+  back.translate(0, 0, -0.004)
+  const g = mergeGeometries([front, back])
+  front.dispose()
+  back.dispose()
+  return g
+})()
+const PIPE = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true)
 
 function bakeLamp(l: LampSpec): BakeLamp {
   return { x: l.at.x, y: l.at.y, z: l.at.z, color: new THREE.Color(l.color), radius: l.radius * DRESS.lampBake.radius, power: DRESS.lampBake.power }
@@ -105,7 +118,7 @@ const trisOf = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.getAttr
 const thin = (list: readonly PropPlacement[], keep: number) => (keep >= 1 ? [...list] : list.filter((_, i) => ((i * 0.6180339) % 1) < keep))
 
 // Over the triangle budget, decorative kinds lose instances first, then solid ones; colliders follow what is kept.
-function thinToBudget(byKind: ReadonlyMap<PropKind, PropPlacement[]>, geos: ReadonlyMap<PropKind, THREE.BufferGeometry>): Map<PropKind, PropPlacement[]> {
+function thinToBudget(byKind: ReadonlyMap<PropKind, PropPlacement[]>, geos: ReadonlyMap<PropKind, THREE.BufferGeometry>, budget: number): Map<PropKind, PropPlacement[]> {
   let decor = 0
   let solid = 0
   for (const [k, list] of byKind) {
@@ -113,7 +126,6 @@ function thinToBudget(byKind: ReadonlyMap<PropKind, PropPlacement[]>, geos: Read
     if (isSolid(k)) solid += t
     else decor += t
   }
-  const budget = DRESS.budget.propTriangles
   const keepDecor = decor === 0 ? 1 : Math.min(1, Math.max(DRESS.budget.minKeep, (budget - solid) / decor))
   const keepSolid = solid === 0 ? 1 : Math.min(1, Math.max(DRESS.budget.minKeep, (budget - decor * keepDecor) / solid))
   return new Map([...byKind].map(([k, list]) => [k, thin(list, isSolid(k) ? keepSolid : keepDecor)] as const))
@@ -126,7 +138,8 @@ function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
   b.with(SURF.fabric, () => {
     for (const c of plan.cloth) {
       _q.setFromEuler(_e.set(c.pitch, c.rot, 0, 'YXZ'))
-      b.add(UNIT.box, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, c.t ?? 0.018)), c.color)
+      const t = c.t ?? DRESS.cloth.thickness
+      b.add(t < DRESS.cloth.sheetBelow ? SHEET : UNIT.box, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, t < DRESS.cloth.sheetBelow ? 1 : t)), c.color)
     }
   })
   const dir = new THREE.Vector3()
@@ -149,22 +162,21 @@ function pipeGeometry(b: GeoBuilder, pipes: readonly Pipe[]): void {
       if (len < 1e-3) continue
       dir.divideScalar(len)
       _q.setFromUnitVectors(UP, dir)
-      b.add(UNIT.cylLow, _m.compose(_p.set((p.a.x + p.b.x) / 2, (p.a.y + p.b.y) / 2, (p.a.z + p.b.z) / 2), _q, _s.set(p.r, len, p.r)), p.color)
+      b.add(PIPE, _m.compose(_p.set((p.a.x + p.b.x) / 2, (p.a.y + p.b.y) / 2, (p.a.z + p.b.z) / 2), _q, _s.set(p.r, len, p.r)), p.color)
       if (p.brackets === 0) continue
       const yaw = Math.atan2(dir.x, dir.z)
       for (let i = 0; i <= p.brackets; i++) {
         const t = i / p.brackets
         const x = p.a.x + (p.b.x - p.a.x) * t
         const z = p.a.z + (p.b.z - p.a.z) * t
-        b.box(x, p.a.y, z, 0.12, p.r * 2 + 0.06, 0.06, 0x3e3a4a, yaw)
-        b.add(UNIT.cylLow, _m.compose(_p.set(x, p.a.y, z), _q, _s.set(p.r * 1.3, 0.06, p.r * 1.3)), p.color === 0xc98a5a ? 0xd9b48f : 0x52576a)
+        b.box(x, p.a.y, z, p.r * 2 + 0.1, p.r * 2 + 0.06, 0.07, 0x3e3a4a, yaw)
       }
     }
   })
 }
 
 function bulbMesh(bulbs: readonly Bulb[], mat: THREE.Material): THREE.InstancedMesh {
-  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), mat, bulbs.length)
+  const im = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 1), mat, bulbs.length)
   bulbs.forEach((b, i) => {
     im.setMatrixAt(i, _m.compose(_p.set(b.x, b.y, b.z), _q.identity(), _s.setScalar(b.size)))
     im.setColorAt(i, _c.set(b.color).multiplyScalar(1.7))
@@ -235,7 +247,7 @@ export const dress: DressFn = function* (input, host) {
   }
   const geos = new Map([...byKind.keys()].map((k) => [k, buildProp(k, plan.palette)] as const))
   const kept: PropPlacement[] = []
-  for (const [kind, list] of thinToBudget(byKind, geos)) {
+  for (const [kind, list] of thinToBudget(byKind, geos, DRESS.budget.propTriangles * DRESS.budget.quality[host.ctx.quality.level])) {
     kept.push(...list)
     if (list.length === 0) {
       geos.get(kind)!.dispose()

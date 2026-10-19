@@ -331,12 +331,12 @@ const MAKERS: Record<PropKind, Make> = {
     }
   },
   lierre(b) {
-    for (let s = 0; s < 4; s++) {
-      const x = (s - 1.5) * 0.08
+    for (let s = 0; s < 3; s++) {
+      const x = (s - 1) * 0.09
       const z = ((s * 7) % 3) * 0.04 - 0.04
       const len = 0.9 + ((s * 5) % 4) * 0.2
       b.box(x, LIERRE - len / 2, z, 0.012, len, 0.012, 0x5e6a4a)
-      for (let i = 0; i < 7; i++) leaf(b, x + ((i % 2) - 0.5) * 0.05, LIERRE - (i + 0.5) * (len / 7), z, 0.045, 0.03, 0.04, k(0x7aa860, 0.7 + ((i + s) % 3) * 0.15))
+      for (let i = 0; i < 6; i++) leaf(b, x + ((i % 2) - 0.5) * 0.05, LIERRE - (i + 0.5) * (len / 6), z, 0.045, 0.03, 0.04, k(0x7aa860, 0.7 + ((i + s) % 3) * 0.15))
     }
   },
   laminaire(b) {

@@ -1,7 +1,7 @@
 import { hashString, mulberry32 } from '../../core/rng'
 import type { Vec3 } from '../../core/types'
 import { ARCHETYPES } from '../archetypes'
-import type { ArchetypeDef, Box, CellSpec, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
+import type { ArchetypeDef, Box, CellSpec, Rect, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
 import { CLUSTERS, facade, murDecor, pipeRun, type Frame } from './clusters'
 import { MOODS, type Mood } from './moods'
 import { RECIPES, type ClusterId, type Recipe, type Weighted } from './recipes'
@@ -332,7 +332,62 @@ function dressVoids(d: Dresser, shell: DistrictShell): void {
   }
   const water = recipe.emitters.eau
   if (water) {
-    for (const w of shell.waters) d.emit(water, { x0: w.rect.x0, x1: w.rect.x1, y0: w.y - 3, y1: w.y, z0: w.rect.z0, z1: w.rect.z1 }, 0.4)
+    const picks = sampleByArea(shell.waters, (w) => w.rect, Math.min(DRESS.waterEmitters, shell.waters.length), rng)
+    const density = (0.4 * shell.waters.length) / Math.max(1, picks.length)
+    for (const w of picks) d.emit(water, { x0: w.rect.x0, x1: w.rect.x1, y0: w.y - 3, y1: w.y, z0: w.rect.z0, z1: w.rect.z1 }, density)
+  }
+}
+
+interface Bed { cell: string; rect: Rect; top: number; water: number | null }
+
+const areaOf = (r: Rect) => Math.max(0, r.x1 - r.x0) * Math.max(0, r.z1 - r.z0)
+
+// n picks weighted by area (with repeats): water comes as hundreds of grid tiles, never as one basin.
+function sampleByArea<T>(items: readonly T[], rect: (t: T) => Rect, n: number, rng: Rng): T[] {
+  const total = items.reduce((s, t) => s + areaOf(rect(t)), 0)
+  if (total <= 0) return []
+  const out: T[] = []
+  for (let i = 0; i < n; i++) {
+    let r = rng() * total
+    const hit = items.find((t) => (r -= areaOf(rect(t))) <= 0)
+    if (hit) out.push(hit)
+  }
+  return out
+}
+
+function nearWalk(shell: DistrictShell, x: number, y: number, z: number, r: number): boolean {
+  const at = new Map(shell.walk.nodes.map((n) => [n.id, n.at]))
+  return shell.walk.edges.some((e) => {
+    const a = at.get(e.a)
+    const b = at.get(e.b)
+    if (!a || !b || Math.abs((a.y + b.y) / 2 - y) > 2.5) return false
+    const dx = b.x - a.x
+    const dz = b.z - a.z
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz || 1)))
+    return Math.hypot(a.x + dx * t - x, a.z + dz * t - z) < r
+  })
+}
+
+// Kelp groves: on the floor of glass voids where the archetype grows kelp, and in every flooded street.
+function dressGroves(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>): void {
+  const { rng } = d
+  const { areaPer, maxClumps, perClump, scale, clear, clearWater } = DRESS.grove
+  const beds: Bed[] = shell.waters.map((w) => ({ cell: w.cell, rect: w.rect, top: w.y + 0.5, water: w.y }))
+  if (d.recipe.plants.includes('laminaire')) for (const v of shell.voids) beds.push({ cell: v.cell, rect: v.box, top: v.box.y1, water: null })
+  const area = beds.reduce((s, b) => s + areaOf(b.rect), 0)
+  for (const bed of sampleByArea(beds, (b) => b.rect, Math.min(maxClumps, Math.round(area / areaPer)), rng)) {
+    const { x0, x1, z0, z1 } = bed.rect
+    const cx = x0 + 0.5 + rng() * Math.max(0, x1 - x0 - 1)
+    const cz = z0 + 0.5 + rng() * Math.max(0, z1 - z0 - 1)
+    const fy = floorUnder(shell, cells, bed.cell, cx, bed.top, cz)
+    if (fy === null || nearWalk(shell, cx, fy, cz, bed.water === null ? clear : clearWater)) continue
+    const room = bed.water === null ? scale[1] : Math.max(0.4, (bed.water - fy + 0.6) / DRESS.kelpHeight)
+    const k = perClump[0] + Math.floor(rng() * (perClump[1] - perClump[0] + 1))
+    for (let j = 0; j < k; j++) {
+      const a = rng() * Math.PI * 2
+      const r = (0.3 + rng() * 1.4) * (bed.water === null ? 1 : 0.35)
+      d.prop('laminaire', cx + Math.cos(a) * r, fy, cz + Math.sin(a) * r, rng() * 6, Math.min(room, scale[0] + rng() * (scale[1] - scale[0])) * (1 - r * 0.15))
+    }
   }
 }
 
@@ -431,11 +486,13 @@ export function collidersOf(props: readonly PropPlacement[]): ColliderSpec[] {
   return out
 }
 
-function capKinds(props: PropPlacement[]): PropPlacement[] {
+// One draw per kind: over the cap, the archetype's signature kinds stay and the rarest others go.
+function capKinds(props: PropPlacement[], signature: ReadonlySet<PropKind>): PropPlacement[] {
   const count = new Map<PropKind, number>()
   for (const p of props) count.set(p.kind, (count.get(p.kind) ?? 0) + 1)
   if (count.size <= DRESS.budget.propKinds) return props
-  const keep = new Set([...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, DRESS.budget.propKinds).map(([k]) => k))
+  const rank = (k: PropKind, n: number) => (signature.has(k) ? 1e9 : 0) + n
+  const keep = new Set([...count.entries()].sort((a, b) => rank(b[0], b[1]) - rank(a[0], a[1])).slice(0, DRESS.budget.propKinds).map(([k]) => k))
   return props.filter((p) => keep.has(p.kind))
 }
 
@@ -456,7 +513,7 @@ export function planDressing(input: DressInput): DressPlan {
     const base = slot.onPath ? DRESS.fill.onPath : DRESS.fill.offPath
     return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
   }
-  for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe) pipeRun(frameOf(s, d))
+  for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe && d.pipes.length < DRESS.wall.maxPipes) pipeRun(frameOf(s, d))
   const slots = shell.slots.flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
   const fills = slots.map(fillOf)
   const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
@@ -482,6 +539,7 @@ export function planDressing(input: DressInput): DressPlan {
     }
   })
   dressStreets(d, shell)
+  dressGroves(d, shell, cells)
   dressVoids(d, shell)
   dressMoods(d, shell)
   const pools: Pool[] = []
@@ -490,7 +548,7 @@ export function planDressing(input: DressInput): DressPlan {
   settleLamps(d, shell, cells, pools)
   for (const l of d.lamps) d.bakeLamps.push({ cell: l.cell, at: { x: l.x, y: l.y - l.drop, z: l.z }, color: l.color, radius: l.radius, live: l.live })
 
-  const props = capKinds(d.props)
+  const props = capKinds(d.props, new Set<PropKind>([...recipe.work.slice(0, 2), ...(shell.waters.length > 0 || recipe.plants.includes('laminaire') ? ['laminaire' as const] : [])]))
   return {
     palette: pal,
     ambient: DRESS.ambient,
