@@ -3,7 +3,8 @@ import type { Vec3 } from '../../core/types'
 import { ARCHETYPES } from '../archetypes'
 import type { ArchetypeDef, Box, CellSpec, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
 import { CLUSTERS, type Frame } from './clusters'
-import { RECIPES, type Recipe, type Weighted } from './recipes'
+import { MOODS, type Mood } from './moods'
+import { RECIPES, type ClusterId, type Recipe, type Weighted } from './recipes'
 import { DRESS } from './tuning'
 
 export type PropKind =
@@ -40,7 +41,6 @@ export interface DressPlan {
   emitters: readonly Emitter[]
   portholes: readonly Porthole[]
   pools: readonly Pool[]
-  colliders: readonly ColliderSpec[]
 }
 
 // Half extents of the solid props at scale 1 (climbable, so Ilo can use clutter as steps).
@@ -123,7 +123,23 @@ export class Dresser {
     readonly recipe: Recipe,
     readonly shell: DistrictShell,
     private readonly keepOut: readonly Box[],
+    private readonly moods: ReadonlyMap<string, Mood>,
+    private readonly tints: ReadonlyMap<string, number>,
   ) {}
+
+  mood(cell: string): Mood {
+    return this.moods.get(cell) ?? MOODS.range
+  }
+
+  // Each room keeps one dominant cloth colour so neighbouring rooms read apart.
+  tissu(cell: string): number {
+    const own = this.tints.get(cell)
+    return own !== undefined && this.rng() < DRESS.roomTint ? own : pickOne(this.rng, this.pal.tissu)
+  }
+
+  catChance(cell: string): number {
+    return this.recipe.cats * this.mood(cell).cats
+  }
 
   roof(cell: string, fallback: number): number {
     return this.shell.cells.find((c) => c.id === cell)?.roof ?? fallback
@@ -145,7 +161,7 @@ export class Dresser {
   }
 
   lamp(l: Omit<DressLamp, 'live'>): void {
-    if (this.blocked(l.x, l.y - l.drop, l.z)) return
+    if (this.blocked(l.x, l.y - l.drop, l.z) || this.rng() > this.mood(l.cell).lamps) return
     this.lamps.push({ ...l, live: false })
   }
 
@@ -220,6 +236,44 @@ function frameOf(slot: DressSlot, d: Dresser): Frame {
   }
 }
 
+// Long wall runs become bays of a few metres, each with its own cluster, so a corridor never repeats one prop.
+function bays(slot: DressSlot, rng: Rng): DressSlot[] {
+  const { min, max, gap, split } = DRESS.bay
+  if ((slot.kind !== 'mur' && slot.kind !== 'rambarde') || slot.w <= split) return [slot]
+  const out: DressSlot[] = []
+  const c = Math.cos(slot.yaw)
+  const s = Math.sin(slot.yaw)
+  let u = -slot.w / 2
+  while (slot.w / 2 - u >= min) {
+    const w = Math.min(slot.w / 2 - u, min + rng() * (max - min))
+    const mid = u + w / 2
+    out.push({ ...slot, at: { x: slot.at.x + c * mid, y: slot.at.y, z: slot.at.z - s * mid }, w: w - gap })
+    u += w
+  }
+  return out
+}
+
+function dressMoods(d: Dresser, shell: DistrictShell): void {
+  for (const c of shell.cells) {
+    const mood = d.mood(c.id)
+    const b = c.boxes[0]
+    if (!b) continue
+    if (mood.dust) d.emit('poussiere', { x0: b.x0 + 0.5, x1: b.x1 - 0.5, y0: b.y0 + 0.3, y1: Math.min(c.roof, b.y1), z0: b.z0 + 0.5, z1: b.z1 - 0.5 }, DRESS.dustRoom)
+    if (!mood.lines) continue
+    const y = Math.min(c.roof, b.y1) - DRESS.cloth.festoonDrop
+    if (y - b.y0 < 2.6) continue
+    const n = 1 + Math.floor(d.rng() * 3)
+    for (let i = 0; i < n; i++) {
+      const t0 = d.rng()
+      const t1 = d.rng()
+      const alongX = b.x1 - b.x0 > b.z1 - b.z0
+      const a = alongX ? { x: b.x0 + 0.3, y, z: b.z0 + (b.z1 - b.z0) * t0 } : { x: b.x0 + (b.x1 - b.x0) * t0, y, z: b.z0 + 0.3 }
+      const e = alongX ? { x: b.x1 - 0.3, y: y - d.rng() * 0.4, z: b.z0 + (b.z1 - b.z0) * t1 } : { x: b.x0 + (b.x1 - b.x0) * t1, y: y - d.rng() * 0.4, z: b.z1 - 0.3 }
+      d.line(pick(d.rng, mood.lines), a, e, Math.hypot(e.x - a.x, e.z - a.z) * 0.05, c.id)
+    }
+  }
+}
+
 function nearVoid(shell: DistrictShell, p: Vec3): boolean {
   const r = DRESS.voidReach
   return shell.voids.some((v) => p.x > v.box.x0 - r && p.x < v.box.x1 + r && p.z > v.box.z0 - r && p.z < v.box.z1 + r)
@@ -275,7 +329,7 @@ function dressWindows(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<strin
     if (fy !== null && w.at.y - fy < DRESS.pool.maxDrop) pools.push({ x: px, y: fy + 0.02, z: pz, r: Math.max(1.2, w.w * 0.8), color: 0x9fd6d0, opacity: DRESS.pool.glassOpacity })
     if (!d.recipe.curtains || w.kind === 'dome' || w.kind === 'verriere') continue
     const rot = Math.atan2(nx, nz)
-    const color = pickOne(d.rng, d.pal.tissu)
+    const color = d.tissu(w.cell)
     for (const side of [-1, 1]) {
       const off = (w.w / 2 + 0.15) * side
       d.sheet({ x: w.at.x + nx * 0.12 + Math.cos(rot) * off, y: w.at.y, z: w.at.z + nz * 0.12 - Math.sin(rot) * off, w: 0.45, h: w.h + 0.4, rot, pitch: 0, color })
@@ -347,7 +401,7 @@ function settleLamps(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string
   }
 }
 
-function collidersOf(props: readonly PropPlacement[]): ColliderSpec[] {
+export function collidersOf(props: readonly PropPlacement[]): ColliderSpec[] {
   const out: ColliderSpec[] = []
   for (const p of props) {
     const half = SOLID[p.kind]
@@ -373,16 +427,29 @@ export function planDressing(input: DressInput): DressPlan {
   const recipe = RECIPES[shell.plan.archetype]
   const rng = mulberry32((shell.plan.seed ^ hashString('habillage')) >>> 0)
   const pal = districtPalette(arch, rng)
-  const d = new Dresser(rng, pal, recipe, shell, keepOut)
+  const moods = new Map(shell.cells.map((c) => [c.id, MOODS[pick(rng, recipe.moods)]] as const))
+  const tints = new Map(shell.cells.map((c) => [c.id, pickOne(rng, pal.tissu)] as const))
+  const d = new Dresser(rng, pal, recipe, shell, keepOut, moods, tints)
   const cells = new Map(shell.cells.map((c) => [c.id, c]))
+  const last = new Map<string, ClusterId>()
 
-  for (const slot of shell.slots) {
-    const options = recipe.slots[slot.kind]
-    if (!options) continue
+  const fillOf = (slot: DressSlot) => {
     const base = slot.onPath ? DRESS.fill.onPath : DRESS.fill.offPath
-    const fill = base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)
-    if (rng() > fill) continue
-    const cluster = (slot.kind === 'sol' || slot.kind === 'coin') && rng() < DRESS.vignetteChance ? 'vignette' : pick(rng, options)
+    return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
+  }
+  const slots = shell.slots.flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
+  const fills = slots.map(fillOf)
+  const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
+  const scale = Math.min(1, DRESS.maxClusters / Math.max(1, expected))
+  slots.forEach((slot, i) => {
+    const options = recipe.slots[slot.kind]!
+    const mood = d.mood(slot.cell)
+    if (rng() > fills[i]! * (slot.onPath ? Math.sqrt(scale) : scale)) return
+    const biased: Weighted<ClusterId> = options.map(([c, w]) => [c, w * (mood.bias[c] ?? 1)] as const)
+    const roll = () => ((slot.kind === 'sol' || slot.kind === 'coin') && rng() < DRESS.vignetteChance * (mood.bias.vignette ?? 1) ? 'vignette' : pick(rng, biased))
+    let cluster = roll()
+    if (cluster === last.get(slot.cell) && cluster !== 'vide') cluster = roll()
+    last.set(slot.cell, cluster)
     CLUSTERS[cluster](frameOf(slot, d))
     if (slot.kind === 'atelier' && recipe.emitters.atelier) {
       const a = slot.at
@@ -392,8 +459,9 @@ export function planDressing(input: DressInput): DressPlan {
       const a = slot.at
       d.emit(recipe.emitters.plafond, { x0: a.x - 1, x1: a.x + 1, y0: a.y - Math.max(2, slot.h), y1: a.y, z0: a.z - 1, z1: a.z + 1 }, 1)
     }
-  }
+  })
   dressVoids(d, shell)
+  dressMoods(d, shell)
   const pools: Pool[] = []
   dressWindows(d, shell, cells, pools)
   const portholes = skin(d, shell)
@@ -413,6 +481,5 @@ export function planDressing(input: DressInput): DressPlan {
     emitters: d.emitters,
     portholes,
     pools,
-    colliders: collidersOf(props),
   }
 }

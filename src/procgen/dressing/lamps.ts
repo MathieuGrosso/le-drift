@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GeoBuilder } from '../../drift/builder'
 import { SURF } from '../../drift/surface'
+import { cyl } from './props'
 import type { Bulb, DressLamp, DressPalette } from './plan'
 
 const IRON = 0x3e3a4a
@@ -26,14 +27,14 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
         break
       case 'globe':
         b.box(l.x, l.y - l.drop / 2, l.z, 0.015, l.drop, 0.015, IRON)
-        b.cyl(l.x, by + 0.2, l.z, 0.06, 0.06, BRASS)
+        cyl(b, l.x, by + 0.2, l.z, 0.06, 0.06, BRASS)
         bulbs.push({ x: l.x, y: by, z: l.z, color: l.color, size: 0.2 })
         break
       case 'lanterne':
         if (l.drop > 0) b.box(l.x, l.y - l.drop / 2, l.z, 0.012, l.drop, 0.012, IRON)
         b.with(SURF.brass, () => {
-          b.cyl(l.x, by + 0.16, l.z, 0.12, 0.05, IRON)
-          b.cyl(l.x, by - 0.2, l.z, 0.13, 0.05, IRON)
+          cyl(b, l.x, by + 0.16, l.z, 0.12, 0.05, IRON)
+          cyl(b, l.x, by - 0.2, l.z, 0.13, 0.05, IRON)
           for (let i = 0; i < 4; i++) {
             const a = (i / 4) * Math.PI * 2 + l.rot
             b.box(l.x + Math.cos(a) * 0.1, by - 0.02, l.z + Math.sin(a) * 0.1, 0.02, 0.36, 0.02, IRON)
@@ -54,17 +55,17 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
       }
       case 'lampadaire':
         b.with(SURF.brass, () => {
-          b.cyl(l.x, l.y - 1.3, l.z, 0.035, 2.6, IRON)
-          b.cyl(l.x, l.y - 2.58, l.z, 0.2, 0.05, IRON)
+          cyl(b, l.x, l.y - 1.3, l.z, 0.035, 2.6, IRON)
+          cyl(b, l.x, l.y - 2.58, l.z, 0.2, 0.05, IRON)
           b.box(l.x + fx * 0.25, l.y, l.z + fz * 0.25, 0.03, 0.03, 0.5, IRON, l.rot)
         })
         b.add(CONE, m.compose(new THREE.Vector3(l.x + fx * 0.5, l.y - 0.02, l.z + fz * 0.5), q.identity(), new THREE.Vector3(0.24, 0.18, 0.24)), pal.metal)
         bulbs.push({ x: l.x + fx * 0.5, y: l.y - 0.14, z: l.z + fz * 0.5, color: l.color, size: 0.08 })
         break
       case 'verte':
-        b.cyl(l.x, l.y - 0.33, l.z, 0.09, 0.03, BRASS)
+        cyl(b, l.x, l.y - 0.33, l.z, 0.09, 0.03, BRASS)
         b.box(l.x, l.y - 0.2, l.z, 0.025, 0.28, 0.025, BRASS)
-        b.cyl(l.x, l.y - 0.03, l.z, 0.12, 0.08, GREEN, 'x')
+        cyl(b, l.x, l.y - 0.03, l.z, 0.12, 0.08, GREEN, 'x')
         bulbs.push({ x: l.x, y: l.y - 0.08, z: l.z, color: l.color, size: 0.05 })
         break
     }
@@ -73,7 +74,7 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
 }
 
 const CONE = (() => {
-  const g = new THREE.CylinderGeometry(0.25, 1, 1, 12, 1, true)
+  const g = new THREE.CylinderGeometry(0.25, 1, 1, 8, 1, true)
   g.translate(0, -0.5, 0)
   const back = g.clone()
   back.scale(0.98, 1, 0.98)

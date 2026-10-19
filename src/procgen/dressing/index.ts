@@ -7,7 +7,7 @@ import { SURF } from '../../drift/surface'
 import { ARCHETYPES } from '../archetypes'
 import type { BuiltPart, DressFn, DistrictShell, LampSpec } from '../types'
 import { buildLamps } from './lamps'
-import { isSolid, planDressing, type Bulb, type DressPlan, type PropKind, type PropPlacement } from './plan'
+import { collidersOf, isSolid, planDressing, type Bulb, type DressPlan, type PropKind, type PropPlacement } from './plan'
 import { buildProp } from './props'
 import { DRESS } from './tuning'
 import { buildVfx, type VfxUniforms } from './vfx'
@@ -77,6 +77,7 @@ const _s = new THREE.Vector3()
 const _c = new THREE.Color()
 const _e = new THREE.Euler()
 const UP = new THREE.Vector3(0, 1, 0)
+const WIRE = new THREE.CylinderGeometry(1, 1, 1, 3, 1, true)
 
 function bakeLamp(l: LampSpec): BakeLamp {
   return { x: l.at.x, y: l.at.y, z: l.at.z, color: new THREE.Color(l.color), radius: l.radius * DRESS.lampBake.radius, power: DRESS.lampBake.power }
@@ -101,19 +102,21 @@ function propMesh(kind: PropKind, geo: THREE.BufferGeometry, list: readonly Prop
 
 const trisOf = (g: THREE.BufferGeometry) => (g.index ? g.index.count : g.getAttribute('position').count) / 3
 
-// Over the triangle budget, decorative kinds lose instances first; solid ones keep theirs (their colliders exist).
+const thin = (list: readonly PropPlacement[], keep: number) => (keep >= 1 ? [...list] : list.filter((_, i) => ((i * 0.6180339) % 1) < keep))
+
+// Over the triangle budget, decorative kinds lose instances first, then solid ones; colliders follow what is kept.
 function thinToBudget(byKind: ReadonlyMap<PropKind, PropPlacement[]>, geos: ReadonlyMap<PropKind, THREE.BufferGeometry>): Map<PropKind, PropPlacement[]> {
-  let total = 0
   let decor = 0
+  let solid = 0
   for (const [k, list] of byKind) {
     const t = trisOf(geos.get(k)!) * list.length
-    total += t
-    if (!isSolid(k)) decor += t
+    if (isSolid(k)) solid += t
+    else decor += t
   }
-  const excess = total - DRESS.budget.propTriangles
-  if (excess <= 0 || decor === 0) return new Map(byKind)
-  const keep = Math.max(0.15, 1 - excess / decor)
-  return new Map([...byKind].map(([k, list]) => [k, isSolid(k) ? list : list.filter((_, i) => ((i * 0.6180339) % 1) < keep)] as const))
+  const budget = DRESS.budget.propTriangles
+  const keepDecor = decor === 0 ? 1 : Math.min(1, Math.max(DRESS.budget.minKeep, (budget - solid) / decor))
+  const keepSolid = solid === 0 ? 1 : Math.min(1, Math.max(DRESS.budget.minKeep, (budget - decor * keepDecor) / solid))
+  return new Map([...byKind].map(([k, list]) => [k, thin(list, isSolid(k) ? keepSolid : keepDecor)] as const))
 }
 
 function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
@@ -132,13 +135,13 @@ function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
     const len = dir.length()
     if (len < 1e-3) continue
     _q.setFromUnitVectors(UP, dir.divideScalar(len))
-    b.add(UNIT.cylLow, _m.compose(_p.set((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2, (w.a.z + w.b.z) / 2), _q, _s.set(w.r, len, w.r)), 0x5e4a3a)
+    b.add(WIRE, _m.compose(_p.set((w.a.x + w.b.x) / 2, (w.a.y + w.b.y) / 2, (w.a.z + w.b.z) / 2), _q, _s.set(w.r, len, w.r)), 0x5e4a3a)
   }
   return b.build()
 }
 
 function bulbMesh(bulbs: readonly Bulb[], mat: THREE.Material): THREE.InstancedMesh {
-  const im = new THREE.InstancedMesh(UNIT.sphere.clone(), mat, bulbs.length)
+  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0), mat, bulbs.length)
   bulbs.forEach((b, i) => {
     im.setMatrixAt(i, _m.compose(_p.set(b.x, b.y, b.z), _q.identity(), _s.setScalar(b.size)))
     im.setColorAt(i, _c.set(b.color).multiplyScalar(1.7))
@@ -208,7 +211,9 @@ export const dress: DressFn = function* (input, host) {
     else byKind.set(p.kind, [p])
   }
   const geos = new Map([...byKind.keys()].map((k) => [k, buildProp(k, plan.palette)] as const))
+  const kept: PropPlacement[] = []
   for (const [kind, list] of thinToBudget(byKind, geos)) {
+    kept.push(...list)
     if (list.length === 0) {
       geos.get(kind)!.dispose()
       continue
@@ -263,7 +268,7 @@ export const dress: DressFn = function* (input, host) {
     group,
     stats: { draws: group.children.length, triangles, geometries: owned.length, buildMs: performance.now() - t0 },
     lamps: [...plan.bakeLamps],
-    colliders: plan.colliders,
+    colliders: collidersOf(kept),
     update(dt, hours) {
       if (!render) u.uTime.value += dt
       const since = events.reduce((m, h) => Math.min(m, (((hours - h) % 24) + 24) % 24), 24)

@@ -52,12 +52,12 @@ function lampOf(f: Frame, kind: LampKind, u: number, v: number, floorY: number):
 }
 
 function maybeCat(f: Frame, u: number, v: number, y: number): void {
-  if (f.d.rng() < f.d.recipe.cats) put(f, 'chat', u, v, y, (f.d.rng() - 0.5) * 2.5)
+  if (f.d.rng() < f.d.catChance(f.slot.cell)) put(f, 'chat', u, v, y, (f.d.rng() - 0.5) * 2.5)
 }
 
 function rug(f: Frame, u: number, v: number, w: number, h: number): void {
   const p = f.at(u, v, 0.012)
-  f.d.sheet({ ...p, w, h, rot: f.rot(), pitch: Math.PI / 2, color: pickOne(f.d.rng, f.d.pal.tissu) })
+  f.d.sheet({ ...p, w, h, rot: f.rot(), pitch: Math.PI / 2, color: f.d.tissu(f.slot.cell) })
 }
 
 const pile = (f: Frame) => {
@@ -97,7 +97,7 @@ const etal = (f: Frame) => {
     const g = goods.length > 0 ? pickOne(d.rng, goods) : 'bocaux'
     put(f, g, -0.65 + i * 0.43, 0.8, 1.0, d.rng() - 0.5, g === 'horloge' ? 0.25 : g === 'bouee' ? 0.45 : 0.75)
   }
-  const color = pickOne(d.rng, d.pal.tissu)
+  const color = d.tissu(f.slot.cell)
   const a = f.at(0, 0.95, 2.45)
   d.sheet({ ...a, w: 2.1, h: 1.3, rot: f.rot(), pitch: -1.05, color })
   for (let i = 0; i < 6; i++) {
@@ -147,7 +147,7 @@ const couchage = (f: Frame) => {
     put(f, bed, u, 0.45)
     const top = bed === 'couchette' ? 0.53 : 0.66
     const p = f.at(u + 0.15, 0.48, top)
-    d.sheet({ ...p, w: bed === 'couchette' ? 1.3 : 0.7, h: bed === 'couchette' ? 0.82 : 0.45, rot: f.rot(), pitch: Math.PI / 2, color: pickOne(d.rng, d.pal.tissu) })
+    d.sheet({ ...p, w: bed === 'couchette' ? 1.3 : 0.7, h: bed === 'couchette' ? 0.82 : 0.45, rot: f.rot(), pitch: Math.PI / 2, color: d.tissu(slot.cell) })
     if (d.rng() < 0.5) put(f, pickOne(d.rng, ['livres', 'jouets', 'panier'] as const), u + 0.8, 1.05, 0, d.rng() * 3, 0.7)
     maybeCat(f, u - 0.4, 0.5, top + 0.05)
   }
@@ -160,7 +160,7 @@ const hamac = (f: Frame) => {
   if (span < 1.8) return
   const a = f.at(-span / 2, 0.6, 1.9)
   const b = f.at(span / 2, 0.6, 1.9)
-  const color = pickOne(d.rng, d.pal.tissu)
+  const color = d.tissu(slot.cell)
   for (let i = 0; i < 4; i++) {
     const t = (i + 0.5) / 4
     const sag = Math.sin(t * Math.PI) * 0.7
@@ -213,7 +213,7 @@ const plantes = (f: Frame) => {
 const rebord = (f: Frame) => {
   const { d, slot } = f
   for (const u of spread(f, 1 + Math.floor(d.rng() * 3), 0.2)) {
-    if (d.rng() < d.recipe.cats * 0.6) put(f, 'chat', u, 0.15, 0, d.rng() * 3)
+    if (d.rng() < d.catChance(slot.cell) * 0.6) put(f, 'chat', u, 0.15, 0, d.rng() * 3)
     else put(f, pickOne(d.rng, ['herbes', 'bocaux', 'herbes', 'livres'] as const), u, 0.12, 0, d.rng() * 3, 0.55)
   }
   if (d.recipe.goods.includes('lunette') && slot.d > 0.8) put(f, 'lunette', 0, 0.6, -Math.min(slot.at.y, 0), 0)

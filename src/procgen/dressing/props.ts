@@ -29,6 +29,17 @@ function blob(b: GeoBuilder, x: number, y: number, z: number, rx: number, ry: nu
   b.add(g, _bm.compose(_bp.set(x, y, z), _bq.identity(), _bs.set(rx, ry, rz)), c)
 }
 
+// Prop LOD: facets by radius, a 5 cm jar never needs the 12 sides of a barrel.
+const CYLS = [5, 7, 9, 12].map((n) => new THREE.CylinderGeometry(1, 1, 1, n))
+const AXIS = { x: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2), y: new THREE.Quaternion(), z: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2) } as const
+
+export function cyl(b: GeoBuilder, x: number, y: number, z: number, r: number, h: number, c: THREE.ColorRepresentation, axis: keyof typeof AXIS = 'y'): void {
+  const g = CYLS[r < 0.08 ? 0 : r < 0.2 ? 1 : r < 0.4 ? 2 : 3]!
+  b.add(g, _bm.compose(_bp.set(x, y, z), AXIS[axis], _bs.set(r, h, r)), c)
+}
+
+const BUOY = new THREE.TorusGeometry(0.32, 0.12, 5, 3, Math.PI / 2)
+
 const leaf = (b: GeoBuilder, x: number, y: number, z: number, rx: number, ry: number, rz: number, c: THREE.ColorRepresentation) => blob(b, x, y, z, rx, ry, rz, c, LEAF)
 
 function legs(b: GeoBuilder, w: number, d: number, h: number, r: number, c: THREE.ColorRepresentation): void {
@@ -36,9 +47,9 @@ function legs(b: GeoBuilder, w: number, d: number, h: number, r: number, c: THRE
 }
 
 function hoopBarrel(b: GeoBuilder, r: number, h: number, wood: number, hoop: number): void {
-  b.with(SURF.planksZ, () => b.cyl(0, h / 2, 0, r, h, wood))
+  b.with(SURF.planksZ, () => cyl(b, 0, h / 2, 0, r, h, wood))
   b.with(SURF.steel, () => {
-    for (const y of [0.15, 0.5, 0.85]) b.cyl(0, h * y, 0, r * 1.04, 0.05, hoop)
+    for (const y of [0.15, 0.5, 0.85]) cyl(b, 0, h * y, 0, r * 1.04, 0.05, hoop)
   })
 }
 
@@ -56,8 +67,8 @@ const MAKERS: Record<PropKind, Make> = {
     })
   },
   panier(b, p) {
-    b.with(SURF.fabric, () => b.cyl(0, 0.15, 0, 0.26, 0.3, k(p.bois, 1.15)))
-    b.cyl(0, 0.31, 0, 0.27, 0.03, p.boisOmbre)
+    b.with(SURF.fabric, () => cyl(b, 0, 0.15, 0, 0.26, 0.3, k(p.bois, 1.15)))
+    cyl(b, 0, 0.31, 0, 0.27, 0.03, p.boisOmbre)
     b.box(0, 0.42, 0, 0.5, 0.03, 0.03, p.boisOmbre)
   },
   bocaux(b, p) {
@@ -65,35 +76,42 @@ const MAKERS: Record<PropKind, Make> = {
     for (let i = 0; i < 4; i++) {
       const x = (i - 1.5) * 0.13
       const h = 0.16 + (i % 2) * 0.06
-      b.cyl(x, h / 2, (i % 2) * 0.05, 0.05, h, k(tones[i]!, 0.9))
-      b.cyl(x, h + 0.01, (i % 2) * 0.05, 0.052, 0.025, BRASS)
+      cyl(b, x, h / 2, (i % 2) * 0.05, 0.05, h, k(tones[i]!, 0.9))
+      cyl(b, x, h + 0.01, (i % 2) * 0.05, 0.052, 0.025, BRASS)
     }
   },
   seau(b) {
-    b.with(SURF.steel, () => b.cyl(0, 0.17, 0, 0.17, 0.34, STEEL))
-    b.cyl(0, 0.33, 0, 0.175, 0.02, IRON)
+    b.with(SURF.steel, () => cyl(b, 0, 0.17, 0, 0.17, 0.34, STEEL))
+    cyl(b, 0, 0.33, 0, 0.175, 0.02, IRON)
   },
   etagere(b, p) {
     b.with(SURF.planksX, () => {
       for (const x of [-0.58, 0.58]) b.box(x, 0.95, 0, 0.05, 1.9, 0.36, p.boisOmbre)
       for (const y of [0.1, 0.6, 1.1, 1.6]) b.box(0, y, 0, 1.2, 0.04, 0.36, p.bois)
     })
-    for (let s = 0; s < 3; s++) {
-      for (let i = 0; i < 5; i++) {
-        const x = -0.45 + i * 0.22
+    for (const s of [0, 2]) {
+      for (let i = 0; i < 4; i++) {
         const h = 0.14 + ((i * 7 + s * 3) % 4) * 0.04
-        b.cyl(x, 0.12 + s * 0.5 + h / 2, 0.02, 0.06, h, i % 3 === 0 ? k(p.accent, 0.85) : i % 3 === 1 ? 0xd9a861 : k(GLASS, 0.85))
+        cyl(b, -0.4 + i * 0.26, 0.12 + s * 0.5 + h / 2, 0.02, 0.06, h, i % 3 === 0 ? k(p.accent, 0.85) : i % 3 === 1 ? 0xd9a861 : k(GLASS, 0.85))
       }
+    }
+    const tones = [p.accent, 0x5e4a5c, 0x6e8fb0, 0xc9a66b]
+    let x = -0.52
+    for (let i = 0; i < 8; i++) {
+      const w = 0.07 + (i % 3) * 0.025
+      const h = 0.24 + ((i * 3) % 4) * 0.035
+      b.box(x + w / 2, 0.62 + h / 2, 0, w, h, 0.22, k(tones[i % tones.length]!, 0.8), i === 7 ? 0.25 : 0)
+      x += w + 0.01
     }
   },
   table(b, p) {
     b.with(SURF.planksX, () => b.box(0, 0.74, 0, 1.4, 0.06, 0.8, p.bois))
     legs(b, 1.3, 0.7, 0.72, 0.04, p.boisOmbre)
-    b.cyl(0.3, 0.83, 0.1, 0.05, 0.12, CREAM)
-    b.cyl(-0.35, 0.8, -0.15, 0.12, 0.05, k(p.metal, 0.9))
+    cyl(b, 0.3, 0.83, 0.1, 0.05, 0.12, CREAM)
+    cyl(b, -0.35, 0.8, -0.15, 0.12, 0.05, k(p.metal, 0.9))
   },
   tabouret(b, p) {
-    b.cyl(0, 0.46, 0, 0.18, 0.05, p.bois)
+    cyl(b, 0, 0.46, 0, 0.18, 0.05, p.bois)
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2
       b.box(Math.cos(a) * 0.12, 0.22, Math.sin(a) * 0.12, 0.04, 0.44, 0.04, p.boisOmbre)
@@ -110,24 +128,24 @@ const MAKERS: Record<PropKind, Make> = {
     b.with(SURF.planksX, () => b.box(0, 0.48, 0, 1.8, 0.96, 0.7, p.bois))
     b.box(0, 0.98, 0.02, 1.9, 0.05, 0.78, p.boisOmbre)
     b.box(0, 0.06, 0.37, 1.8, 0.1, 0.02, p.boisOmbre)
-    for (const x of [-0.85, 0.85]) b.cyl(x, 1.75, -0.3, 0.03, 1.6, p.boisOmbre)
+    for (const x of [-0.85, 0.85]) cyl(b, x, 1.75, -0.3, 0.03, 1.6, p.boisOmbre)
     b.box(0, 2.56, -0.3, 1.8, 0.04, 0.05, p.boisOmbre)
   },
   bobine(b, p) {
-    b.cyl(0, 0.5, 0, 0.5, 0.08, p.boisOmbre, 'z')
-    b.with(SURF.fabric, () => b.cyl(0, 0.5, 0.0, 0.34, 0.5, 0xc9a66b, 'z'))
-    b.cyl(0, 0.5, 0, 0.5, 0.08, p.boisOmbre, 'z')
+    cyl(b, 0, 0.5, 0, 0.5, 0.08, p.boisOmbre, 'z')
+    b.with(SURF.fabric, () => cyl(b, 0, 0.5, 0.0, 0.34, 0.5, 0xc9a66b, 'z'))
+    cyl(b, 0, 0.5, 0, 0.5, 0.08, p.boisOmbre, 'z')
     b.box(0, 0.5, 0.29, 0.06, 0.06, 0.04, p.boisOmbre)
   },
   rouleau(b) {
     b.with(SURF.fabric, () => {
-      for (let i = 0; i < 4; i++) b.cyl(0, 0.05 + i * 0.07, 0, 0.36 - i * 0.03, 0.07, i % 2 ? 0x8a6e4b : 0xa58660)
+      for (let i = 0; i < 4; i++) cyl(b, 0, 0.05 + i * 0.07, 0, 0.36 - i * 0.03, 0.07, i % 2 ? 0x8a6e4b : 0xa58660)
     })
   },
   bassin(b, p) {
-    b.with(SURF.planksZ, () => b.cyl(0, 0.28, 0, 0.6, 0.56, p.bois))
-    b.cyl(0, 0.55, 0, 0.55, 0.02, k(GLASS, 0.75))
-    b.cyl(0, 0.5, 0, 0.62, 0.05, IRON)
+    b.with(SURF.planksZ, () => cyl(b, 0, 0.28, 0, 0.6, 0.56, p.bois))
+    cyl(b, 0, 0.55, 0, 0.55, 0.02, k(GLASS, 0.75))
+    cyl(b, 0, 0.5, 0, 0.62, 0.05, IRON)
     b.with(SURF.planksX, () => b.box(0.3, 0.75, 0.0, 0.35, 0.55, 0.04, p.bois))
   },
   claie(b, p) {
@@ -148,8 +166,8 @@ const MAKERS: Record<PropKind, Make> = {
     b.with(SURF.brass, () => b.box(0, 0.45, 0, 1.0, 0.9, 0.7, IRON))
     b.box(0, 0.92, 0, 1.05, 0.05, 0.75, k(IRON, 0.7))
     b.box(0, 0.4, 0.36, 0.4, 0.25, 0.02, 0xff9e5e)
-    b.cyl(0.3, 2.0, -0.2, 0.12, 2.1, k(p.metal, 0.9))
-    b.with(SURF.brass, () => b.cyl(-0.2, 1.06, 0, 0.2, 0.26, p.metal))
+    cyl(b, 0.3, 2.0, -0.2, 0.12, 2.1, k(p.metal, 0.9))
+    b.with(SURF.brass, () => cyl(b, -0.2, 1.06, 0, 0.2, 0.26, p.metal))
   },
   enclume(b) {
     b.with(SURF.steel, () => {
@@ -169,8 +187,8 @@ const MAKERS: Record<PropKind, Make> = {
       b.box(Math.cos(a) * 0.22, 0.6, Math.sin(a) * 0.22, 0.035, 1.25, 0.035, k(0x5e4a5c, 1))
     }
     b.with(SURF.brass, () => {
-      b.cyl(0, 1.3, 0.1, 0.08, 1.0, BRASS, 'z')
-      b.cyl(0, 1.3, 0.62, 0.11, 0.08, k(BRASS, 1.1), 'z')
+      cyl(b, 0, 1.3, 0.1, 0.08, 1.0, BRASS, 'z')
+      cyl(b, 0, 1.3, 0.62, 0.11, 0.08, k(BRASS, 1.1), 'z')
     })
   },
   livres(b, p) {
@@ -186,8 +204,8 @@ const MAKERS: Record<PropKind, Make> = {
   },
   horloge(b, p) {
     b.with(SURF.planksZ, () => b.box(0, 0.95, 0, 0.45, 1.9, 0.3, p.boisOmbre))
-    b.cyl(0, 1.55, 0.16, 0.17, 0.03, CREAM, 'z')
-    b.cyl(0, 0.8, 0.16, 0.06, 0.02, BRASS, 'z')
+    cyl(b, 0, 1.55, 0.16, 0.17, 0.03, CREAM, 'z')
+    cyl(b, 0, 0.8, 0.16, 0.06, 0.02, BRASS, 'z')
   },
   couchette(b, p) {
     b.with(SURF.planksX, () => {
@@ -203,7 +221,7 @@ const MAKERS: Record<PropKind, Make> = {
   },
   berceau(b, p) {
     b.with(SURF.planksZ, () => b.box(0, 0.45, 0, 0.9, 0.4, 0.55, p.bois))
-    for (const x of [-0.42, 0.42]) b.cyl(x, 0.2, 0, 0.3, 0.05, p.boisOmbre, 'x')
+    for (const x of [-0.42, 0.42]) cyl(b, x, 0.2, 0, 0.3, 0.05, p.boisOmbre, 'x')
     b.with(SURF.fabric, () => b.box(0, 0.6, 0, 0.82, 0.08, 0.48, 0xf4f1e6))
   },
   cierges(b) {
@@ -211,41 +229,41 @@ const MAKERS: Record<PropKind, Make> = {
       const a = i * 2.4
       const r = 0.08 + (i % 3) * 0.08
       const h = 0.12 + ((i * 5) % 4) * 0.07
-      b.cyl(Math.cos(a) * r, h / 2, Math.sin(a) * r, 0.025, h, CREAM)
+      cyl(b, Math.cos(a) * r, h / 2, Math.sin(a) * r, 0.025, h, CREAM)
       leaf(b, Math.cos(a) * r, h + 0.03, Math.sin(a) * r, 0.015, 0.03, 0.015, k(0xffc27a, 1.7))
     }
-    b.cyl(0, 0.01, 0, 0.32, 0.02, BRASS)
+    cyl(b, 0, 0.01, 0, 0.32, 0.02, BRASS)
   },
   vanne(b, p) {
-    b.with(SURF.steel, () => b.cyl(0, 0.6, 0, 0.12, 1.2, k(p.metal, 0.85)))
-    b.cyl(0, 1.2, 0.18, 0.04, 0.3, IRON, 'z')
+    b.with(SURF.steel, () => cyl(b, 0, 0.6, 0, 0.12, 1.2, k(p.metal, 0.85)))
+    cyl(b, 0, 1.2, 0.18, 0.04, 0.3, IRON, 'z')
     b.with(SURF.brass, () => {
-      b.cyl(0, 1.2, 0.34, 0.34, 0.04, 0xc46a4a, 'z')
+      cyl(b, 0, 1.2, 0.34, 0.34, 0.04, 0xc46a4a, 'z')
       b.box(0, 1.2, 0.34, 0.66, 0.05, 0.03, k(0xc46a4a, 0.85))
       b.box(0, 1.2, 0.34, 0.05, 0.66, 0.03, k(0xc46a4a, 0.85))
     })
   },
   manometre(b) {
-    b.cyl(0, 0.75, 0, 0.03, 1.5, IRON)
-    b.with(SURF.brass, () => b.cyl(0, 1.55, 0.03, 0.17, 0.08, BRASS, 'z'))
-    b.cyl(0, 1.55, 0.08, 0.14, 0.01, CREAM, 'z')
+    cyl(b, 0, 0.75, 0, 0.03, 1.5, IRON)
+    b.with(SURF.brass, () => cyl(b, 0, 1.55, 0.03, 0.17, 0.08, BRASS, 'z'))
+    cyl(b, 0, 1.55, 0.08, 0.14, 0.01, CREAM, 'z')
     b.box(0.04, 1.58, 0.09, 0.1, 0.012, 0.005, 0xc46a4a)
   },
   tuyaux(b, p) {
     b.with(SURF.steel, () => {
-      for (let i = 0; i < 3; i++) b.cyl(0, 0.25 + i * 0.32, 0.1 * i, 0.09 + i * 0.02, 2.4, k(i === 1 ? 0xc98a5a : p.metal, 0.9), 'x')
+      for (let i = 0; i < 3; i++) cyl(b, 0, 0.25 + i * 0.32, 0.1 * i, 0.09 + i * 0.02, 2.4, k(i === 1 ? 0xc98a5a : p.metal, 0.9), 'x')
     })
     for (const x of [-0.9, 0.9]) b.box(x, 0.5, 0.1, 0.06, 1.0, 0.36, IRON)
   },
   engrenage(b, p) {
     b.with(SURF.steel, () => {
-      b.cyl(0, 0.75, 0, 0.7, 0.14, k(p.metal, 0.8), 'z')
+      cyl(b, 0, 0.75, 0, 0.7, 0.14, k(p.metal, 0.8), 'z')
       for (let i = 0; i < 12; i++) {
         const a = (i / 12) * Math.PI * 2
         b.box(Math.cos(a) * 0.78, 0.75 + Math.sin(a) * 0.78, 0, 0.14, 0.14, 0.14, k(p.metal, 0.7))
       }
     })
-    b.cyl(0, 0.75, 0, 0.12, 0.3, BRASS, 'z')
+    cyl(b, 0, 0.75, 0, 0.12, 0.3, BRASS, 'z')
   },
   jardiniere(b, p) {
     b.with(SURF.planksX, () => b.box(0, 0.25, 0, 1.4, 0.5, 0.5, p.bois))
@@ -256,8 +274,8 @@ const MAKERS: Record<PropKind, Make> = {
     }
   },
   arrosoir(b) {
-    b.with(SURF.steel, () => b.cyl(0, 0.16, 0, 0.13, 0.32, 0x8fb59a))
-    b.cyl(0.2, 0.27, 0, 0.025, 0.32, 0x7a9a84, 'x')
+    b.with(SURF.steel, () => cyl(b, 0, 0.16, 0, 0.13, 0.32, 0x8fb59a))
+    cyl(b, 0.2, 0.27, 0, 0.025, 0.32, 0x7a9a84, 'x')
     b.box(-0.03, 0.4, 0, 0.18, 0.03, 0.03, 0x7a9a84)
   },
   chat(b, p) {
@@ -275,9 +293,9 @@ const MAKERS: Record<PropKind, Make> = {
   },
   bouee(b) {
     b.with(SURF.fabric, () => {
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2
-        blob(b, Math.cos(a) * 0.32, 0.12, Math.sin(a) * 0.32, 0.14, 0.12, 0.14, i % 2 ? 0xf4f1e6 : 0xe8674a)
+      for (let i = 0; i < 4; i++) {
+        const q = _bq.setFromEuler(new THREE.Euler(Math.PI / 2, 0, (i * Math.PI) / 2))
+        b.add(BUOY, _bm.compose(_bp.set(0, 0.12, 0), q, _bs.setScalar(1)), i % 2 ? 0xf4f1e6 : 0xe8674a)
       }
     })
   },
@@ -293,8 +311,8 @@ const MAKERS: Record<PropKind, Make> = {
     b.with(SURF.fabric, () => blob(b, 0, 2.05, 0.12, 0.22, 0.12, 0.22, k(0xc9a66b, 0.8)))
   },
   fougere(b) {
-    b.cyl(0, 0.17, 0, 0.17, 0.34, 0xc46a4a)
-    b.cyl(0, 0.33, 0, 0.15, 0.02, 0x5e4a3a)
+    cyl(b, 0, 0.17, 0, 0.17, 0.34, 0xc46a4a)
+    cyl(b, 0, 0.33, 0, 0.15, 0.02, 0x5e4a3a)
     for (let i = 0; i < 9; i++) {
       const a = (i / 9) * Math.PI * 2 + i * 0.3
       const m = new THREE.Matrix4().compose(
@@ -306,7 +324,7 @@ const MAKERS: Record<PropKind, Make> = {
     }
   },
   herbes(b) {
-    b.cyl(0, 0.11, 0, 0.12, 0.22, 0xc98a5a)
+    cyl(b, 0, 0.11, 0, 0.12, 0.22, 0xc98a5a)
     for (let i = 0; i < 6; i++) {
       const a = i * 1.1
       leaf(b, Math.cos(a) * 0.06, 0.3 + (i % 3) * 0.04, Math.sin(a) * 0.06, 0.07, 0.1, 0.07, k(0x8fbf6a, 0.75 + (i % 3) * 0.12))
