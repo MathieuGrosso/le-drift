@@ -2,11 +2,11 @@
 
 ## Verdict
 
-Le texte (Rouille, Camille, « Non. Toi. ») et les systèmes (coyote time, corde, 60 sons, 60 trouvailles) sont là, mais le jeu se joue encore comme une démo technique.
+Le texte (Rouille, Ondine, « Non. Toi. ») et les systèmes (coyote time, corde, 60 sons, 60 trouvailles) sont là, mais le jeu se joue encore comme une démo technique.
 Les trois moments qui doivent porter les 10 premières minutes échouent : la sortie (dos au Drift, coincé dans le sas), le frottement (une jauge sur F, pas un geste) et La Chose (elle plonge hors champ).
 Le geste central n'a pas de récompense, car une vitre propre ne montre pas de mer vivante derrière elle.
 Ilo se fige au spawn, la caméra se colle à lui dans les petites pièces, et objectifs, invites et commandes ne guident pas le joueur.
-Corriger d'abord le premier contact et la boucle vitre ; l'émotion (fin, Camille, grand-père) et la beauté (Nef, titre) viennent ensuite.
+Corriger d'abord le premier contact et la boucle vitre ; l'émotion (fin, Ondine, grand-père) et la beauté (Nef, titre) viennent ensuite.
 
 ## Indispensable
 
@@ -22,7 +22,7 @@ Corriger d'abord le premier contact et la boucle vitre ; l'émotion (fin, Camill
 7. **Caméra serrée dans les petites pièces** — hero · M — Dans le sas, le puits d'échelle et la Nef, Ilo tramé occupe 70 % de l'écran et cache l'échelle, la trappe et la mer.
 8. **Faire taire les bulles et sous-titres hors contexte** — drift · S — « Tu sens l'eau de mer » avant la sortie, du bavardage pendant la scène de La Chose, et la ligne d'un œuf collée à l'écran d'un district à l'autre cassent le ton.
 9. **Le joueur trace la première ligne dans le blanc** — gameplay · M — La fin du jeu est une animation automatique de 2,4 s alors qu'elle devrait reprendre le geste circulaire du frottement.
-10. **Camille dans la fin, avec une voix et un obstacle** — camille · M — Elle n'a aucun son, n'apparaît ni dans la séquence finale ni dans le générique, et l'histoire d'amour n'a pas d'enjeu.
+10. **Ondine dans la fin, avec une voix et un obstacle** — camille · M — Elle n'a aucun son, n'apparaît ni dans la séquence finale ni dans le générique, et l'histoire d'amour n'a pas d'enjeu.
 11. **Vrai écran-titre et intro resserrée** — gameplay · M — Aujourd'hui c'est l'écran de chargement en police système, suivi de six cartons sur le dos d'Ilo : il faut un logo en Fraunces, un menu Continuer/Nouvelle partie, trois phrases sur des vignettes animées et un réveil dans la couchette.
 12. **Budget de géométrie et découpage par portails** — render · L — 1,3 à 3,3 M triangles pour un budget de 1,5 M : « Qualité réduite » s'affiche dès le titre et vide le Réfectoire de ses PNJ.
 

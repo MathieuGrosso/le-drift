@@ -168,6 +168,7 @@ export interface GameEvents {
   'audio:cue': { cue: MusicCue }
   'save:written': {}
   'debug:pose': { name: string }
+  'ondine:rejoindre': {}
 }
 export interface EventBus {
   on<K extends keyof GameEvents>(k: K, fn: (p: GameEvents[K]) => void): () => void

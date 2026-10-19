@@ -3,18 +3,19 @@ import type { CelMaterialParams, GameContext, HeroMode, System, SystemId, Vec3 }
 import { Animator, type Pose } from './anim'
 import { buildCamille, type CamilleModel } from './model'
 import {
-  BOCAUX, CABINE_CADEAUX, FINALE_SOL, FINALE_VITRE, POUSSE, REFECTOIRE, SERRES_PTS, VIGIE_BANC, VIGIE_FINALE,
-  faceDir, routine, type Spot, type Where,
+  BOCAUX, CABINE_CADEAUX, COURSIVE, COURSIVE_DEPART, DEJEUNER, DODO, ETAGERE, ETAGERE_MEUBLE, FINALE_SOL, FINALE_VITRE,
+  POUSSE, REFECTOIRE, SERRES_PTS, VIGIE_BANC, VIGIE_FINALE, faceDir, routine, type Spot, type Where,
 } from './places'
-import { Pousse, gift, jar } from './props'
+import { Pousse, etagere, gift, jar } from './props'
 import {
-  APRES_LIGNE, APRES_PLUIE, ASSIS, C, CADEAUX, CADEAU_ARRIVE, CADEAU_KICKER, DOME, FINALE, PLAFOND_SOIR, PROMPTS, QUETE,
-  RENCONTRE, TALK, type Line,
+  APRES_LIGNE, APRES_PLUIE, ASSIS, C, CADEAUX, CADEAU_ARRIVE, CADEAU_KICKER, COURSIVE as COURSIVE_TXT, DEJEUNER as DEJ_TXT,
+  DOME, ETAGERE as ETAGERE_TXT, FINALE, INDICES, PLAFOND_SOIR, PROMPTS, QUETE, REJOINDRE, RENCONTRE, RENCONTRE_SEC,
+  SERRES_OUVERTES, TALK, type Line,
 } from './text'
 import { CamilleUi } from './ui'
 import { Vitre } from './vitre'
 
-type Kind = Where | 'vitre' | 'finale' | 'vigie-finale'
+type Kind = Where | 'vitre' | 'finale' | 'vigie-finale' | 'coursive' | 'dejeuner' | 'etagere'
 type GiftId = keyof typeof CADEAUX
 
 interface Interactable {
@@ -63,6 +64,18 @@ export function createCamilleSystem(): System {
   const gifts = new Map<GiftId, THREE.Object3D>()
   let talkIndex = 0
   let wasInCabin = false
+  let arrive: Spot | null = null
+  let greetT = -1
+  let knockT = 0
+  let sceneT = 0
+  let sceneStep = 0
+  let nightWake = false
+  let lastNear = 0
+  let lastHint = -1e9
+  let pendingJoin = new URLSearchParams(location.search).get('voir')?.toLowerCase() === 'ondine'
+  let readyFrames = 0
+  let joinCam: Vec3 | null = null
+  let joining = false
 
   const flag = (id: string) => !!ctxRef?.state.flags[`camille:${id}`]
   const setFlag = (id: string) => {
@@ -116,7 +129,16 @@ export function createCamilleSystem(): System {
     const q = st.quests
     if (st.act === 3 && (q['a3-matin'] === 'refectoire' || (st.flags['pluie'] && q['a3-pluie'] === 'salle'))) return 'finale'
     if (q['a3-dome-proue'] === 'sortie' || q['a3-dome-proue'] === 'rentrer') return 'vigie-finale'
-    return routine(st.time.hours)
+    const r = routine(st.time.hours)
+    if (r === 'dodo' && nightWake) return 'dodo'
+    nightWake = false
+    if (st.act === 1) {
+      if (!flag('coursive') && !q['a1-sortie']) return 'coursive'
+      const pd = q['a1-petit-dejeuner']
+      if (pd === 'cuisine' || pd === 'cuisiner' || (pd === 'done' && q['a1-rebord'] !== 'done')) return 'dejeuner'
+      if (r === 'serres') return 'etagere'
+    }
+    return r
   }
 
   const spotFor = (k: Kind): Spot | null => {
@@ -126,6 +148,10 @@ export function createCamilleSystem(): System {
       case 'proue': return benchSpot()
       case 'finale': return FINALE_SOL
       case 'vigie-finale': return VIGIE_FINALE
+      case 'coursive': return COURSIVE
+      case 'dejeuner': return DEJEUNER
+      case 'etagere': return ETAGERE
+      case 'dodo': return nightWake ? DODO : null
       default: return null
     }
   }
@@ -136,6 +162,10 @@ export function createCamilleSystem(): System {
     dwell = 8 + Math.random() * 10
     finaleStage = 0
     finaleT = 0
+    arrive = null
+    greetT = -1
+    sceneT = 0
+    sceneStep = 0
     const s = spotFor(k)
     if (!s) {
       shown = false
@@ -151,9 +181,8 @@ export function createCamilleSystem(): System {
     return [{ x: pos.x, y: 0, z: cross }, { x: to.x, y: 0, z: cross }, to]
   }
 
-  const wander = (dt: number) => {
-    if (!anim) return
-    if (path.length) {
+  const walk = (dt: number) => {
+    if (!anim || !path.length) return
       const t = path[0]!
       const dx = t.x - pos.x
       const dz = t.z - pos.z
@@ -164,7 +193,8 @@ export function createCamilleSystem(): System {
         pos.z = t.z
         path.shift()
         if (!path.length) {
-          const s = SERRES_PTS[ptIndex]!
+          const s = arrive ?? SERRES_PTS[ptIndex]!
+          arrive = null
           yaw = s.yaw
           restPose = s.pose
           anim.pose = s.pose
@@ -177,8 +207,10 @@ export function createCamilleSystem(): System {
         anim.pose = 'walk'
         anim.speed = 1
       }
-      return
-    }
+  }
+
+  const wander = (dt: number) => {
+    if (!anim || path.length) return
     dwell -= dt
     if (restPose !== 'look-up' && Math.random() < dt * 0.03) anim.pose = anim.pose === 'look-up' ? restPose : 'look-up'
     if (dwell <= 0) {
@@ -218,6 +250,207 @@ export function createCamilleSystem(): System {
     }
   }
 
+  const faceTo = (x: number, z: number) => {
+    yaw = faceDir(x - pos.x, z - pos.z)
+  }
+
+  const leaveCoursive = () => {
+    setFlag('coursive')
+    arrive = { at: COURSIVE_DEPART[COURSIVE_DEPART.length - 1]!, yaw: faceDir(1, 0), pose: 'pockets' }
+    path = COURSIVE_DEPART.map((p) => ({ ...p }))
+  }
+
+  const coursive = (ctx: GameContext, dt: number) => {
+    if (!anim || !ui || flag('coursive')) return
+    const inCabin = ctx.services.drift?.cellAt(heroLocal) === 'cabine'
+    if (greetT < 0) {
+      if (inCabin && !heroNear(pos, 4.5)) {
+        knockT += dt
+        if (knockT > 22) {
+          knockT = -18
+          ui.speak(headWorld, COURSIVE_TXT.toc, 3.5)
+          ctx.services.audio?.sfx('glass-tap', ctx.services.drift?.toWorld(pos))
+        }
+      } else if (heroNear(pos, 7.5)) {
+        knockT = 0
+        greetT = 0
+        anim.pose = 'wave'
+        ui.speak(headWorld, COURSIVE_TXT.salut, 3)
+      }
+      return
+    }
+    const prev = greetT
+    greetT += dt
+    faceTo(heroLocal.x, heroLocal.z)
+    if (prev < 2.8 && greetT >= 2.8) {
+      anim.pose = 'talk'
+      ui.speak(headWorld, COURSIVE_TXT.suite, 4)
+    }
+    if (greetT > 7.5 || (greetT > 3 && !heroNear(pos, 10))) {
+      ui.speak(headWorld, COURSIVE_TXT.part, 3)
+      leaveCoursive()
+    }
+  }
+
+  const dejeuner = (ctx: GameContext, dt: number) => {
+    if (!anim || !ui) return
+    const seated = ctx.state.hero.mode === 'sit' && heroNear(pos, 3)
+    if (sceneStep === 0 && (seated || heroNear(pos, 4))) {
+      sceneStep = 1
+      sceneT = 0
+      ui.speak(headWorld, DEJ_TXT.place, 4.5)
+    }
+    if (sceneStep >= 1) sceneT += dt
+    if (sceneStep === 1 && seated && sceneT > 5) {
+      sceneStep = 2
+      sceneT = 0
+      anim.pose = 'laugh'
+      ui.speak(headWorld, ctx.state.quests['a1-chose'] === 'done' ? DEJ_TXT.tortue : DEJ_TXT.pain, 4.5)
+    }
+    if (sceneStep === 2 && sceneT > 6) {
+      sceneStep = 3
+      anim.pose = 'eat'
+      ui.speak(headWorld, DEJ_TXT.pain, 4)
+    }
+  }
+
+  const signal = (ctx: GameContext, dt: number) => {
+    if (!anim || !ui) return
+    const outside = ctx.state.mode === 'sortie' || ctx.state.hero.medium === 'water'
+    if (sceneStep === 0 && outside && heroNear(pos, 16)) {
+      sceneStep = 1
+      sceneT = 0
+      faceTo(pos.x, pos.z + 5)
+      anim.pose = 'wave'
+      if (!flag('etagere:signe')) {
+        setFlag('etagere:signe')
+        ui.toast(ETAGERE_TXT.nom, ETAGERE_TXT.vitre)
+      }
+    }
+    if (sceneStep === 1) {
+      sceneT += dt
+      if (sceneT > 7) {
+        sceneStep = outside ? 2 : 0
+        yaw = ETAGERE.yaw
+        anim.pose = restPose
+      }
+    }
+    if (sceneStep === 2 && !outside) sceneStep = 0
+  }
+
+  const hint = (ctx: GameContext) => {
+    const now = ctx.clock.elapsed
+    if (shown && heroNear(pos, 14)) lastNear = now
+    if (!kind || !(kind in INDICES) || ctx.state.mode === 'sortie' || ctx.state.hero.medium !== 'air') return
+    if (now - lastNear < 150 || now - lastHint < 300) return
+    if (!ui || ui.busy() || BUSY_MODES.has(ctx.state.hero.mode) || document.querySelector(GP_OVERLAYS)) return
+    lastHint = now
+    const [who, line] = INDICES[kind as keyof typeof INDICES]
+    ui?.toast(who, line)
+  }
+
+  const standPoint = (ctx: GameContext): Vec3 => {
+    const drift = ctx.services.drift
+    const chest = drift?.toWorld({ x: pos.x, y: pos.y + 1.1, z: pos.z })
+    for (const a of [0, Math.PI / 2, -Math.PI / 2, Math.PI / 4, -Math.PI / 4, Math.PI, (3 * Math.PI) / 4, (-3 * Math.PI) / 4]) {
+      for (const r of [2.1, 1.5]) {
+        const p = { x: pos.x - Math.sin(yaw + a) * r, y: pos.y, z: pos.z - Math.cos(yaw + a) * r }
+        if (!drift || !chest) return p
+        const top = drift.toWorld({ x: p.x, y: pos.y + 1.1, z: p.z })
+        const dir = { x: top.x - chest.x, y: top.y - chest.y, z: top.z - chest.z }
+        const len = Math.hypot(dir.x, dir.y, dir.z)
+        const block = ctx.physics.raycast(chest, { x: dir.x / len, y: dir.y / len, z: dir.z / len }, len + 0.4, { excludeKinds: ['trigger', 'fauna'] })
+        if (block) continue
+        const down = ctx.physics.raycast(top, { x: 0, y: -1, z: 0 }, 1.6, { excludeKinds: ['trigger', 'fauna'] })
+        if (!down || Math.abs(1.1 - down.distance) > 0.35) continue
+        return p
+      }
+    }
+    return { x: pos.x - Math.sin(yaw) * 1.4, y: pos.y, z: pos.z - Math.cos(yaw) * 1.4 }
+  }
+
+  const join = async () => {
+    const ctx = ctxRef
+    if (!ctx || !ui || !anim || talking || joining) return
+    joining = true
+    try {
+      await joinNow(ctx)
+    } finally {
+      joining = false
+    }
+  }
+
+  const joinNow = async (ctx: GameContext) => {
+    if (!ui || !anim) return
+    const st = ctx.state
+    if (st.mode === 'sortie' || st.hero.medium === 'water') {
+      const dbg = (window as unknown as { __game?: { endSortie?: () => Promise<void> } }).__game
+      await dbg?.endSortie?.()
+    }
+    vitre?.abort()
+    if (routine(st.time.hours) === 'dodo') nightWake = true
+    let want = decide(ctx)
+    if (want === 'vitre') want = routine(st.time.hours)
+    relocate(want)
+    if (!shown) return
+    const hero = ctx.services.hero
+    if (st.hero.mode === 'sit' || st.hero.mode === 'lean') hero?.stand()
+    const p = standPoint(ctx)
+    const heroYaw = Math.atan2(pos.x - p.x, -(pos.z - p.z))
+    if (hero) hero.teleportLocal(p, heroYaw)
+    st.hero.localPosition = { ...p }
+    heroLocal.x = p.x
+    heroLocal.y = p.y
+    heroLocal.z = p.z
+    faceTo(p.x, p.z)
+    if (model) model.root.rotation.y = yaw
+    lastNear = ctx.clock.elapsed
+    await new Promise((r) => window.setTimeout(r, 450))
+    faceHero = 1
+    anim.pose = 'wave'
+    let lines: readonly Line[]
+    if (kind === 'coursive') {
+      lines = [[C, COURSIVE_TXT.salut], [C, COURSIVE_TXT.suite]]
+    } else if (kind === 'dodo') lines = [[C, REJOINDRE.nuit]]
+    else if (!flag('rencontre')) lines = [[C, REJOINDRE.inconnu]]
+    else lines = [[C, REJOINDRE.ami[talkIndex++ % REJOINDRE.ami.length]!]]
+    joinCam = { ...p }
+    try {
+      await talk(lines)
+    } finally {
+      joinCam = null
+      hero?.setCameraPose(null)
+    }
+    if (kind === 'coursive') leaveCoursive()
+    else anim.pose = restPose
+  }
+
+  const frameJoin = (ctx: GameContext) => {
+    const drift = ctx.services.drift
+    const hero = ctx.services.hero
+    if (!joinCam || !drift || !hero) return
+    const h = joinCam
+    const dx = pos.x - h.x
+    const dz = pos.z - h.z
+    const d = Math.hypot(dx, dz) || 1
+    const nx = -dz / d
+    const nz = dx / d
+    const mid = { x: (pos.x + h.x) / 2 - (dx / d) * 0.5, y: h.y + 1.5, z: (pos.z + h.z) / 2 - (dz / d) * 0.5 }
+    const eye = drift.toWorld(mid)
+    let best = { k: 0, dist: -1 }
+    for (const k of [1, -1]) {
+      const tip = drift.toWorld({ x: mid.x + nx * k, y: mid.y, z: mid.z + nz * k })
+      const dir = { x: tip.x - eye.x, y: tip.y - eye.y, z: tip.z - eye.z }
+      const hit = ctx.physics.raycast(eye, dir, 3.4, { excludeKinds: ['trigger', 'fauna', 'glass', 'window'] })
+      const dist = hit ? hit.distance - 0.3 : 3.4
+      if (dist > best.dist) best = { k, dist }
+    }
+    const r = Math.max(0.8, best.dist)
+    const position = drift.toWorld({ x: mid.x + nx * best.k * r, y: mid.y + 0.25, z: mid.z + nz * best.k * r })
+    const target = drift.toWorld({ x: pos.x * 0.65 + h.x * 0.35, y: h.y + 1.2, z: pos.z * 0.65 + h.z * 0.35 })
+    hero.setCameraPose({ position, target })
+  }
+
   const headWorld = (): Vec3 | null => {
     if (!model || !shown) return null
     const v = model.joints.head.getWorldPosition(new THREE.Vector3())
@@ -225,8 +458,9 @@ export function createCamilleSystem(): System {
   }
 
   const placeKey = (): keyof typeof TALK => {
-    if (kind === 'refectoire' || kind === 'finale') return 'refectoire'
+    if (kind === 'refectoire' || kind === 'finale' || kind === 'dejeuner') return 'refectoire'
     if (kind === 'serres') return 'serres'
+    if (kind === 'etagere') return 'etagere'
     if (kind === 'proue' || kind === 'vigie-finale') return 'proue'
     return 'ailleurs'
   }
@@ -272,9 +506,10 @@ export function createCamilleSystem(): System {
     faceHero = 1
     if (!flag('rencontre')) {
       anim.pose = 'talk'
-      await talk(RENCONTRE)
+      await talk(st.hero.wetness > 0.2 ? RENCONTRE : RENCONTRE_SEC)
       setFlag('rencontre')
-      anim.pose = restPose
+      if (kind === 'coursive') leaveCoursive()
+      else anim.pose = restPose
       return
     }
     if (await quest()) {
@@ -435,6 +670,7 @@ export function createCamilleSystem(): System {
         potJars.push(j.root)
       }
       for (const id of Object.keys(CADEAUX) as GiftId[]) if (flag(`cadeau:${id}`)) showGift(mat, id)
+      group.add(etagere(mat, ETAGERE_MEUBLE, Math.PI / 2))
 
       const driftRoot = ctx.scene.getObjectByName('le-drift')
       ;(driftRoot ?? ctx.scene).add(group)
@@ -465,6 +701,12 @@ export function createCamilleSystem(): System {
       offs.push(ctx.bus.on('game:paused', ({ paused }) => {
         if (paused) ui?.showPrompt(null)
       }))
+      offs.push(ctx.bus.on('ondine:rejoindre', () => void join()))
+      offs.push(ctx.bus.on('act:changed', ({ act }) => {
+        if (act !== 2 || flag('serres-ouvertes')) return
+        setFlag('serres-ouvertes')
+        window.setTimeout(() => ui?.toast(SERRES_OUVERTES.kicker, SERRES_OUVERTES.text), 6000)
+      }))
       offs.push(ctx.bus.on('quest:step', ({ questId, step }) => {
         if (questId === 'a3-dome-proue' && step === 'sortie' && !flag('dome')) {
           setFlag('dome')
@@ -494,8 +736,22 @@ export function createCamilleSystem(): System {
         const targetUnseen = !s || !heroNear(s.at, RELOCATE_DIST)
         if (urgent || (unseen && targetUnseen)) relocate(want)
       }
+      if (!talking && !joining) walk(dt)
       if (kind === 'serres' && !talking) wander(dt)
       if (kind === 'finale') finale(ctx, dt)
+      if (kind === 'coursive' && !talking && !joining) coursive(ctx, dt)
+      if (kind === 'dejeuner' && !talking) dejeuner(ctx, dt)
+      if (kind === 'etagere' && !talking && !path.length) signal(ctx, dt)
+      hint(ctx)
+      frameJoin(ctx)
+      if (pendingJoin) {
+        const ready = ctx.state.time.scale > 0 && !ctx.state.debug.cameraLocked && !blocked(ctx)
+        readyFrames = ready ? readyFrames + 1 : 0
+        if (readyFrames > 45) {
+          pendingJoin = false
+          void join()
+        }
+      }
 
       if (talking && faceHero > 0) yaw = faceDir(heroLocal.x - pos.x, heroLocal.z - pos.z)
       else faceHero = 0
@@ -510,6 +766,8 @@ export function createCamilleSystem(): System {
         const p = anim.pose
         model.hold(p === 'look-hand' ? 'feuille' : evening && (p === 'sip' || p === 'talk' || p === 'shy') && finaleStage < 2 ? 'gobelet' : null)
         anim.update(dt)
+        const far = Math.hypot(heroLocal.x - pos.x, heroLocal.z - pos.z)
+        model.glow.scale.multiplyScalar(1 + 2.2 * Math.min(1, Math.max(0, (far - 8) / 25)))
       }
       if (matFn) deliver(ctx, matFn)
 

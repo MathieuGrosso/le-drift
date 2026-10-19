@@ -58,6 +58,10 @@ export class Vitre {
     return this.rdv !== null
   }
 
+  abort(): void {
+    this.end(false)
+  }
+
   done(id: string): boolean {
     return this.host.flag(`vitre:${id}`)
   }

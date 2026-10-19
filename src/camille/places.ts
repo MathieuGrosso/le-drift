@@ -30,6 +30,13 @@ export const BOCAUX: readonly Vec3[] = [
   { x: 104.5, y: 7.05, z: 24 },
 ]
 
+export const COURSIVE: Spot = { at: { x: -10.4, y: 0, z: 60.3 }, yaw: faceDir(-0.8, 2.9), pose: 'pockets' }
+export const COURSIVE_DEPART: readonly Vec3[] = [{ x: -2, y: 0, z: 60.4 }, { x: 11.5, y: 0, z: 60.8 }]
+export const DODO: Spot = { at: { x: -17.6, y: 0, z: 56.9 }, yaw: FACE_AFT, pose: 'pockets' }
+export const DEJEUNER: Spot = { at: quarterPoint({ x: 19.86, y: 0, z: 67.0 }), yaw: FACE_AFT, pose: 'sit' }
+export const ETAGERE: Spot = { at: quarterPoint({ x: 24.75, y: 0, z: 70.3 }), yaw: faceDir(1, 0), pose: 'prune' }
+export const ETAGERE_MEUBLE: Vec3 = quarterPoint({ x: 25.5, y: 0, z: 70.3 })
+
 export const VIGIE_BANC: Vec3 = { x: 0, y: 16, z: -69.5 }
 export const VIGIE_FINALE: Spot = { at: { x: -2.5, y: 16, z: -70.6 }, yaw: FACE_FORE, pose: 'look-up' }
 

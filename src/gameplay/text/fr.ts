@@ -178,6 +178,7 @@ export const UI = {
     titre: 'Pause',
     reprendre: 'Reprendre',
     cabine: 'Retour à la cabine',
+    ondine: 'Rejoindre Ondine',
     reglages: 'Réglages',
     commandes: 'Commandes',
     retour: 'Retour',

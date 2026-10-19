@@ -137,3 +137,41 @@ export function gift(mat: MatFn, id: 'feuille' | 'dessin' | 'ligne' | 'bocal', a
   g.add(pin)
   return g
 }
+
+export function etagere(mat: MatFn, at: Vec3, yaw: number): THREE.Group {
+  const g = new THREE.Group()
+  g.position.set(at.x, at.y, at.z)
+  g.rotation.y = yaw
+  const wood = mat(LOOK.bois)
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material) => {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m)
+    b.position.set(x, y, z)
+    g.add(b)
+  }
+  for (const x of [-0.7, 0.7]) box(0.05, 1.5, 0.36, x, 0.75, 0, wood)
+  for (const y of [0.3, 0.8, 1.3]) box(1.45, 0.04, 0.36, 0, y, 0, wood)
+  const pot = mat(0xb5532e)
+  const leaf = mat(LOOK.feuille)
+  const pale = mat(0x9fcf6a)
+  let k = 0
+  for (const y of [0.32, 0.82, 1.32]) {
+    for (const x of [-0.45, 0, 0.45]) {
+      k++
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.16, 10), pot)
+      p.position.set(x, y + 0.08, 0)
+      g.add(p)
+      for (let i = 0; i < 3; i++) {
+        const l = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), (k + i) % 2 ? leaf : pale)
+        const h = 0.18 + ((k * 7 + i * 3) % 5) * 0.04
+        l.scale.set(0.5, h / 0.06, 0.25)
+        l.position.set(x + (i - 1) * 0.05, y + 0.16 + h * 0.8, (i - 1) * 0.03)
+        l.rotation.z = (i - 1) * 0.25
+        g.add(l)
+      }
+    }
+  }
+  const j = jar(mat, { x: 0.55, y: 1.34, z: 0.05 })
+  j.glow.scale.setScalar(0.6)
+  g.add(j.root)
+  return g
+}

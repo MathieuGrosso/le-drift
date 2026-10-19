@@ -60,6 +60,10 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
       api.close()
       void gp.travel.returnToCabin()
     }, stack)
+    button(UI.pause.ondine, () => {
+      api.close()
+      ctx.bus.emit('ondine:rejoindre', {})
+    }, stack)
     h('p', 'gp-note', UI.pause.progres(gp.domes.count(), gp.scellees.count(), ctx.state.trouvailles.length), panel)
     button(UI.pause.reglages, () => settings(), stack)
     button(UI.pause.commandes, () => controls(), stack)

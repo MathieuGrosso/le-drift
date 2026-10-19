@@ -2,11 +2,11 @@ import type { DrawingId, ReplyId } from './draw'
 
 export type Line = readonly [speaker: string | null, text: string]
 
-export const C = 'Camille'
+export const C = 'Ondine'
 export const I = 'Ilo'
 
 export const PROMPTS = {
-  parler: 'Parler à Camille',
+  parler: 'Parler à Ondine',
   repondre: 'Dessiner une réponse',
   asseoir: 'S’asseoir à côté',
   ramasser: 'Ramasser le bocal',
@@ -17,13 +17,62 @@ export const PROMPTS = {
 export const RENCONTRE: readonly Line[] = [
   [C, 'Tu gouttes.'],
   [C, 'Non, c’est bien. Ça veut dire que tu viens de dehors.'],
-  [C, 'Moi c’est Camille. Je fais pousser le varech, aux Serres. Enfin, il pousse tout seul. Moi je lui parle.'],
+  [C, 'Moi c’est Ondine. Je fais pousser le varech, aux Serres. Enfin, il pousse tout seul. Moi je lui parle.'],
   [null, 'Elle te regarde à travers sa mèche, les paupières à moitié baissées, comme si tu étais une plante qui pousse de travers.'],
   [C, 'Toi, tu es celui qui frotte. Je te vois passer derrière la grande vitre, le matin. Tu fais des ronds.'],
   [I, 'Des ronds ?'],
   [C, 'Avec ta brosse. C’est très joli, des ronds. Bon. Je vais t’appeler Frottoir.'],
   [null, 'Elle repart en aspirant bruyamment son café de varech glacé, avant que tu trouves quoi répondre.'],
 ]
+
+export const RENCONTRE_SEC: readonly Line[] = [
+  [C, 'Le voisin d’en face ! Tu es réveillé. Enfin, à moitié.'],
+  [C, 'Moi c’est Ondine. Je fais pousser le varech, aux Serres. Enfin, il pousse tout seul. Moi je lui parle.'],
+  [null, 'Elle te regarde à travers sa mèche, les paupières à moitié baissées, comme si tu étais une plante qui pousse de travers.'],
+  [C, 'Toi, tu es celui qui frotte. Je te vois passer derrière la grande vitre, le matin. Tu fais des ronds.'],
+  [I, 'Des ronds ?'],
+  [C, 'Avec ta brosse. C’est très joli, des ronds. Bon. Je vais t’appeler Frottoir.'],
+]
+
+export const COURSIVE = {
+  salut: 'Oh ! Bonjour, voisin.',
+  suite: 'Tu sors frotter ? Je te ferai signe, derrière la vitre.',
+  toc: 'Toc toc ! Voisin ? Tu es réveillé ?',
+  part: 'À tout à l’heure, au petit-déj !',
+}
+
+export const DEJEUNER = {
+  place: 'Je t’ai gardé la place. Tu es servi le dernier, comme d’habitude.',
+  tortue: 'Une tortue ! Ça compte comme une première, ça.',
+  pain: 'Le pain du Cuistot. Courage.',
+}
+
+export const ETAGERE = {
+  nom: 'L’étagère d’Ondine',
+  vitre: 'Elle te fait signe derrière la grande vitre, un pot de varech sous le bras.',
+}
+
+export const SERRES_OUVERTES = { kicker: 'Les Serres sont ouvertes', text: 'Ondine t’attend aux Serres' }
+
+export const INDICES: Record<'coursive' | 'dejeuner' | 'etagere' | 'refectoire' | 'serres' | 'proue' | 'dodo', readonly [string, string]> = {
+  coursive: ['Une voisine', '« Ondine ? Elle t’attendait devant ta porte, dans la coursive. »'],
+  dejeuner: ['Le Cuistot', '« Ondine ? Au réfectoire. Elle t’a gardé la place, à côté de la tienne. »'],
+  etagere: ['Mila', '« Ondine ? Au réfectoire, près de la grande vitre. Elle parle à ses algues. »'],
+  refectoire: ['Le Cuistot', '« Ondine ? Au réfectoire. Elle mange debout, comme toujours. »'],
+  serres: ['Nour', '« Ondine ? Aux Serres, dans les allées. Cherche la lueur verte de son bocal. »'],
+  proue: ['Grand-père', '« Ondine ? Le soir, elle monte à la vigie de la Proue. »'],
+  dodo: ['Une voisine', '« Ondine dort, à cette heure. La cabine en face de la tienne. »'],
+}
+
+export const REJOINDRE = {
+  inconnu: 'Oh ! Bonjour, voisin. Tu me cherchais ?',
+  nuit: 'Chut… Je ne dormais pas. Je regardais le plafond.',
+  ami: [
+    'Frottoir ! Tu tombes bien. Enfin, tu arrives.',
+    'Oh. Te voilà. Je me demandais où tu étais passé.',
+    'Tu m’as trouvée. C’est le bocal, hein ? Il brille trop.',
+  ],
+}
 
 export const PLAFOND_SOIR: readonly Line[] = [
   [C, 'Chut. Regarde en haut.'],
@@ -40,7 +89,7 @@ export const ASSIS: readonly Line[] = [
   [C, 'C’est pas grave. Il en reviendra un.'],
 ]
 
-export const TALK: Record<'refectoire' | 'serres' | 'proue' | 'ailleurs', Record<1 | 2 | 3, readonly string[]>> = {
+export const TALK: Record<'refectoire' | 'serres' | 'proue' | 'etagere' | 'ailleurs', Record<1 | 2 | 3, readonly string[]>> = {
   refectoire: {
     1: [
       'Je mange debout. D’ici je vois par-dessus les têtes. Toi tu es toujours servi le dernier. On fait une bonne équipe.',
@@ -82,6 +131,15 @@ export const TALK: Record<'refectoire' | 'serres' | 'proue' | 'ailleurs', Record
       'Tu vas mesurer le blanc, c’est ça ? Tu me diras combien il fait. En bocaux, si possible.',
     ],
   },
+  etagere: {
+    1: [
+      'Les Serres sont fermées, alors j’ai monté un peu de varech ici. Il aime bien la grande vitre, lui aussi.',
+      'Je lui parle tout bas. Si je parle fort, il pousse de travers.',
+      'Celle-là, je l’ai appelée Gérardine. Elle pousse vers la vitre. Elle veut voir dehors, comme tout le monde.',
+    ],
+    2: ['Je redescends mes pots aux Serres. Ils ont bien profité de la vitre.'],
+    3: ['Mes pots penchent tous vers la vitre. Vers le nord.'],
+  },
   ailleurs: {
     1: ['Oh. Frottoir. Je passais. Je passe beaucoup, en fait.'],
     2: ['Je cherche Nour. Ou un arrosoir. Le premier des deux qui répondra.'],
@@ -119,7 +177,7 @@ export interface Exchange {
 export const EXCHANGES: readonly Exchange[] = [
   {
     id: 'bonjour', drawing: 'bonjour',
-    intro: 'Camille souffle sur la vitre et écrit dans la buée : BONJOUR. À l’envers. Enfin, à l’endroit pour elle.',
+    intro: 'Ondine souffle sur la vitre et écrit dans la buée : BONJOUR. À l’envers. Enfin, à l’endroit pour elle.',
     replies: [
       { label: 'Écrire BONJOUR à l’envers, toi aussi', draw: 'bonjour-envers', mood: 'laugh', reaction: 'Elle rit si fort que la buée s’efface toute seule.' },
       { label: 'Dessiner un poisson', draw: 'poisson', mood: 'wave', reaction: 'Elle dessine un deuxième poisson à côté du tien. Il a l’air de se plaire.' },
@@ -233,7 +291,7 @@ export const QUETE = {
   attente: (n: number) => [[C, n === 0 ? 'Trois bocaux. Ils brillent, ça aide. Enfin, normalement.' : `Encore ${3 - n}. Je crois. Je ne compte pas très bien quand je suis contente.`]] as readonly Line[],
   bocaux: [
     { nom: 'Bocal de lucioles', note: 'Posé dans une rigole. Les lucioles ont l’air d’apprécier le courant.' },
-    { nom: 'Bocal de lucioles', note: 'Sur la galerie, à côté d’un arrosoir. Camille l’arrose peut-être aussi.' },
+    { nom: 'Bocal de lucioles', note: 'Sur la galerie, à côté d’un arrosoir. Ondine l’arrose peut-être aussi.' },
     { nom: 'Bocal de lucioles', note: 'Coincé entre deux pots, avec une étiquette : NE PAS OUBLIER ICI.' },
   ],
   compte: (n: number) => `${n} / 3`,
@@ -252,9 +310,9 @@ export const QUETE = {
 
 export interface GiftText { id: string; nom: string; note: string }
 export const CADEAUX: Record<'feuille' | 'dessin' | 'bocal' | 'ligne', GiftText> = {
-  feuille: { id: 'feuille', nom: 'Une feuille de varech pressée', note: 'Au dos : « Pour la vitre. Elle était très sale. C. »' },
-  dessin: { id: 'dessin', nom: 'Un dessin de la Chose', note: '« Je l’ai vue. Les bras sont trop grands. Toi aussi tu l’as vue ? C. »' },
-  bocal: { id: 'bocal', nom: 'Un bocal de lucioles', note: '« Pour ta cabine. Elles éclairent mieux que toi, mais de peu. C. »' },
+  feuille: { id: 'feuille', nom: 'Une feuille de varech pressée', note: 'Au dos : « Pour la vitre. Elle était très sale. O. »' },
+  dessin: { id: 'dessin', nom: 'Un dessin de la Chose', note: '« Je l’ai vue. Les bras sont trop grands. Toi aussi tu l’as vue ? O. »' },
+  bocal: { id: 'bocal', nom: 'Un bocal de lucioles', note: '« Pour ta cabine. Elles éclairent mieux que toi, mais de peu. O. »' },
   ligne: { id: 'ligne', nom: 'Un dessin plié en quatre', note: 'Deux bonshommes, une ligne dans le blanc, et des ronds partout. Pas de mot. Il n’en faut pas.' },
 }
 export const CADEAU_KICKER = 'Sur ta couchette'
