@@ -107,3 +107,41 @@ gain lisible ni FOV qui s'ouvre à l'intérieur. Viser +40 % et un état/animati
 Manette, réglages sensibilité/inversion modifiés, bancs du réfectoire (s'asseoir, sauter dessus),
 hisse sur rebord, portes des coques scellées, `echelle-cs-01`, fps réels (rAF bridé à 30 Hz par Chrome
 sur batterie).
+
+---
+
+# Round 5 — programmeur gameplay : traversées testées au clavier réel
+
+Build de `7021a25` + correctif échelle (`32b1c0e`), exporté hors de l'arbre de travail (d'autres agents
+avaient des modifs non compilables dans `src/drift`), Chrome GPU réel (port 9341, profil à part), entrées CDP
+réelles (touches tenues, E/Espace tapés), téléport local seulement pour se placer. Pointer lock non obtenu
+par CDP : la souris passe par le glisser clic droit. Captures : `shots/r5/` (non versionnées).
+
+## Checklist des traversées
+
+| Traversée | Entrée | Sortie | Sens inverse | Verdict | Mesure / remarque |
+|---|---|---|---|---|---|
+| Tube Nef → Marché / Serres / Ateliers / Scellées / Proue | E à 2 m : invite « Tube : <quartier> » juste | arrivée `idle`, W marche aussitôt | les 5 retours vers la Nef OK | **OK** | 10/10 trajets, arrivée Nef (0 ; −6 ; −19,7) ; Marché : W bute sur un tonneau d'étal à 0,6 m (orientation d'arrivée) |
+| Tube : entrer à pied dans la cabine | W vers l'ouverture | — | — | **KO (design)** | on glisse autour du fût (collider de porte 0,9 m devant l'ouverture), seule la touche E fait partir |
+| Tyrolienne Nef ouest | E | arrivée au sol (8 ; −6 ; 18), W marche | — | **OK** | saut caméra 3,4 m entre deux relevés à 200 ms à l'arrivée |
+| Tyrolienne Marché | E | arrivée (−88 ; 0 ; 4) | — | **OK** | `cd` min 0,71 m pendant le trajet |
+| Tyrolienne Écluse | E vole par « Ramasser » | — | — | **KO (invites)** | une trouvaille au départ prend la priorité sur la tyrolienne (gameplay/indoor : priorité des invites) |
+| Toboggan Nef | W depuis le haut | sortie en course | — | **OK** | 14 m de descente |
+| Toboggan Marché | W à ≤ 0,6 m de l'entrée | descente | — | **OK** | à 1,5 m derrière, W fait `climb` le mur du palier |
+| Échelle puits Écluse (16 m) montée | W au pied | sortie posée en haut | — | **OK** | |
+| Échelle puits, descente depuis le haut | W vers l'échelle depuis le palier | pied de l'échelle | — | **Corrigé** | avant : bloqué contre le garde-corps à 1,2 m (portée 0,9). Portée 1,3 m et W tenu = descendre jusqu'au relâchement : 16 m descendus W tenu |
+| Échelle `mat-0-8` montée | W | palier à 8 m | — | **OK** | caméra `cd` 0,34 m, saut 4,2 m (C2 toujours ouvert) |
+| Échelle `echelle-cs-01` | W | — | — | **KO** | accroché mais ne monte pas (y 0,33 fixe) ; probablement la règle « pas de montée tête dans l'eau » de la coque scellée |
+| Sauter d'une échelle | Espace | `jump` | — | **OK** | |
+| S'asseoir / se lever (banc Nef) | E « S'asseoir » | W relève, `none` | — | **OK** | |
+| Écluse (sortie) | E « Sortir par l'écluse » | mode `sortie` en 6,3 s | — | **OK** | `cd` 0,45 m juste après la sortie |
+| Rentrer (longe / sas) | E tenu | retour au sas, W marche | — | **OK** | S1 toujours ouvert : « Sortir par l'écluse » s'affiche dès le retour |
+| Saut (Espace) | tapé 60 ms | | | **OK** | apex +0,60 m |
+
+## Non fait ce round (reste à faire)
+
+- C1/C3 caméra (rentrée brutale en coursive, écrasement en cabine) et C2 (échelles) : non retouchés.
+- Saut caméra à l'arrivée de tyrolienne (3,4 m entre deux relevés).
+- Porter/poser, hisse sur rebord, portes des coques scellées, cycle d'écluse par l'échelle du toit : non testés.
+- Priorité d'invites (trouvaille contre tyrolienne/échelle) et retour au sas face à l'écoutille : côté `src/gameplay`.
+- Les `mat-*` : leur palier haut est côté `+n`, la descente depuis le haut n'a pas pu être testée par mon placement.
