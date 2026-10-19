@@ -1,7 +1,7 @@
 import { hashString, mulberry32 } from '../../core/rng'
 import type { Vec3 } from '../../core/types'
 import { ARCHETYPES } from '../archetypes'
-import type { ArchetypeDef, Box, CellSpec, Rect, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
+import type { ArchetypeDef, Box, CellSpec, Job, Rect, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
 import { CLUSTERS, facade, murDecor, pipeRun, type Frame } from './clusters'
 import { MOODS, type Mood } from './moods'
 import { RECIPES, type ClusterId, type Recipe, type Weighted } from './recipes'
@@ -308,6 +308,48 @@ function dressStreets(d: Dresser, shell: DistrictShell): void {
   })
 }
 
+// Life left on the ground beside the walked line: scraps in the archetype's trade, now and then a dropped object.
+function dressPaths(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>): void {
+  const { every, chance, reach, objet } = DRESS.scrap
+  const at = new Map(shell.walk.nodes.map((n) => [n.id, n] as const))
+  const { colors, size, count } = SCRAPS[d.recipe.scraps]
+  const small = d.recipe.goods.filter((g) => !isSolid(g) && g !== 'chat')
+  for (const e of shell.walk.edges) {
+    if (e.kind !== 'sol') continue
+    const a = at.get(e.a)
+    const b = at.get(e.b)
+    if (!a || !b || Math.abs(a.at.y - b.at.y) > 0.3) continue
+    const len = Math.hypot(b.at.x - a.at.x, b.at.z - a.at.z)
+    const nx = (b.at.z - a.at.z) / (len || 1)
+    const nz = -(b.at.x - a.at.x) / (len || 1)
+    for (let t = d.rng() * every; t < len; t += every) {
+      if (d.rng() > chance * (e.main ? 1 : 0.5)) continue
+      const side = (d.rng() < 0.5 ? -1 : 1) * (reach[0] + d.rng() * (reach[1] - reach[0]))
+      const x = a.at.x + ((b.at.x - a.at.x) * t) / len + nx * side
+      const z = a.at.z + ((b.at.z - a.at.z) * t) / len + nz * side
+      const fy = floorUnder(shell, cells, a.cell, x, a.at.y + 0.5, z)
+      if (fy === null || Math.abs(fy - a.at.y) > 0.3) continue
+      if (small.length > 0 && d.rng() < objet) {
+        d.prop(pickOne(d.rng, small), x, fy, z, d.rng() * 6, 0.6 + d.rng() * 0.3)
+        continue
+      }
+      for (let i = 0, n = 1 + Math.floor(d.rng() * count); i < n; i++) {
+        const k = size * (0.7 + d.rng() * 0.6)
+        d.sheet({ x: x + (d.rng() - 0.5) * 0.6, y: fy + 0.012 + i * 0.002, z: z + (d.rng() - 0.5) * 0.6, w: k * 0.8, h: k, rot: d.rng() * 6, pitch: Math.PI / 2, color: pickOne(d.rng, colors), t: 0.004 })
+      }
+    }
+  }
+}
+
+const SCRAPS: Readonly<Record<Recipe['scraps'], { colors: readonly number[]; size: number; count: number }>> = {
+  papier: { colors: [0xf1e4c8, 0xe9dcc2, 0xefe3c4, 0xd9c7a2], size: 0.16, count: 2 },
+  linge: { colors: [0xf4f1e6, 0xe9dcc2, 0x9fc4d6, 0xe8a598], size: 0.28, count: 1 },
+  ecailles: { colors: [0x9fb8c8, 0xc5d6de, 0x7f98a8], size: 0.045, count: 6 },
+  limaille: { colors: [0x52576a, 0x6a5c52, 0x8a8f99], size: 0.06, count: 5 },
+  feuilles: { colors: [0x8fbf6a, 0x6f9a5a, 0xc9a66b, 0xa8b860], size: 0.09, count: 5 },
+  sciure: { colors: [0xd9b48f, 0xc9a66b, 0xe3c79a], size: 0.07, count: 6 },
+}
+
 function dressMoods(d: Dresser, shell: DistrictShell): void {
   for (const c of shell.cells) {
     const mood = d.mood(c.id)
@@ -532,8 +574,8 @@ function capKinds(props: PropPlacement[], signature: ReadonlySet<PropKind>): Pro
   return props.filter((p) => keep.has(p.kind))
 }
 
-// Pure: same shell + keepOut + seed gives the same dressing on every machine.
-export function planDressing(input: DressInput): DressPlan {
+// Pure and sliced: same shell + keepOut + seed gives the same dressing on every machine.
+export function* planDressing(input: DressInput): Job<DressPlan> {
   const { shell, keepOut } = input
   const arch = ARCHETYPES[shell.plan.archetype]
   const recipe = RECIPES[shell.plan.archetype]
@@ -549,16 +591,19 @@ export function planDressing(input: DressInput): DressPlan {
     const base = slot.onPath ? DRESS.fill.onPath : DRESS.fill.offPath
     return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
   }
+  yield
   for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe && d.pipes.length < DRESS.wall.maxPipes) pipeRun(frameOf(s, d))
   const aside = sidestepper(shell, rng)
   const slots = shell.slots.map(aside).flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
   const fills = slots.map(fillOf)
   const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
   const scale = Math.min(1, DRESS.maxClusters / Math.max(1, expected))
-  slots.forEach((slot, i) => {
+  for (let i = 0; i < slots.length; i++) {
+    if (i % DRESS.sliceSlots === 0) yield
+    const slot = slots[i]!
     const options = recipe.slots[slot.kind]!
     const mood = d.mood(slot.cell)
-    if (rng() > fills[i]! * (slot.onPath ? Math.sqrt(scale) : scale)) return
+    if (rng() > fills[i]! * (slot.onPath ? Math.sqrt(scale) : scale)) continue
     const biased: Weighted<ClusterId> = options.map(([c, w]) => [c, w * (mood.bias[c] ?? 1)] as const)
     const roll = () => ((slot.kind === 'sol' || slot.kind === 'coin') && rng() < DRESS.vignetteChance * (mood.bias.vignette ?? 1) ? 'vignette' : pick(rng, biased))
     let cluster = roll()
@@ -574,13 +619,18 @@ export function planDressing(input: DressInput): DressPlan {
       const a = slot.at
       d.emit(recipe.emitters.plafond, { x0: a.x - 1, x1: a.x + 1, y0: a.y - Math.max(2, slot.h), y1: a.y, z0: a.z - 1, z1: a.z + 1 }, 1)
     }
-  })
+  }
+  yield
   dressStreets(d, shell)
   dressGroves(d, shell, cells)
+  yield
+  dressPaths(d, shell, cells)
+  yield
   dressVoids(d, shell)
   dressMoods(d, shell)
   const pools: Pool[] = []
   dressWindows(d, shell, cells, pools)
+  yield
   const portholes = skin(d, shell)
   settleLamps(d, shell, cells, pools)
   for (const l of d.lamps) d.bakeLamps.push({ cell: l.cell, at: { x: l.x, y: l.y - l.drop, z: l.z }, color: l.color, radius: l.radius, live: l.live })

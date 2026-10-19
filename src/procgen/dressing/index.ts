@@ -226,8 +226,7 @@ function ambientOf(shell: DistrictShell, k: number): THREE.Color {
 
 export const dress: DressFn = function* (input, host) {
   const t0 = performance.now()
-  const plan = planDressing(input)
-  yield
+  const plan = yield* planDressing(input)
   const { shell } = input
   const group = new THREE.Group()
   group.name = `habillage:${shell.plan.id}`

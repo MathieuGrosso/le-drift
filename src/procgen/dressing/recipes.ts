@@ -10,6 +10,7 @@ export type Weighted<T> = readonly (readonly [T, number])[]
 
 export interface Recipe {
   density: number
+  scraps: 'papier' | 'linge' | 'ecailles' | 'limaille' | 'feuilles' | 'sciure'
   moods: Weighted<MoodId>
   slots: Readonly<Partial<Record<SlotKind, Weighted<ClusterId>>>>
   goods: readonly PropKind[]
@@ -40,6 +41,7 @@ const BASE_SLOTS: Recipe['slots'] = {
 function recipe(r: Partial<Recipe> & Pick<Recipe, 'goods' | 'work'>): Recipe {
   return {
     density: 1,
+    scraps: 'papier',
     moods: DEFAULT_MOODS,
     plants: ['fougere', 'herbes'],
     lamps: ['suspension', 'applique'],
@@ -61,17 +63,20 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { fenetre: [['rebord', 3], ['atelier', 2]] }, skinLit: 0.4,
   }),
   corderie: recipe({
+    scraps: 'sciure',
     goods: ['bobine', 'rouleau', 'tonneau', 'caisse'], work: ['bobine', 'rouleau', 'tonneau'],
     lamps: ['lanterne', 'suspension'], lines: [['filet', 2], ['linge', 1], ['ampoules', 1]], density: 1.1,
     slots: { sol: [['atelier', 3], ['pile', 2], ['vide', 1]] },
   }),
   lavoirs: recipe({
+    scraps: 'linge',
     goods: ['panier', 'seau', 'sac'], work: ['bassin', 'panier', 'seau'],
     lines: [['linge', 6], ['fanions', 1]], linesPerVoid: [4, 7], curtains: true,
     emitters: { vide: 'vapeur', atelier: 'vapeur', plafond: 'gouttes' },
     slots: { sol: [['atelier', 3], ['linge', 2], ['pile', 1]], plafond: [['linge', 4], ['suspendu', 1]] },
   }),
   sechoirs: recipe({
+    scraps: 'ecailles',
     goods: ['tonneau', 'panier', 'caisse', 'chat'], work: ['claie', 'tonneau', 'panier'],
     lines: [['poissons', 5], ['filet', 2]], linesPerVoid: [3, 6], cats: 0.7,
     slots: { mur: [['atelier', 3], ['pile', 2]], sol: [['atelier', 2], ['pile', 2], ['vignette', 1]] },
@@ -89,6 +94,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { mur: [['atelier', 3], ['etagere', 2]], sol: [['table', 4], ['pile', 1]] }, density: 1.1,
   }),
   forges: recipe({
+    scraps: 'limaille',
     moods: [['labeur', 4], ['encombre', 2], ['abandonne', 1]],
     goods: ['toles', 'seau', 'caisse', 'tonneau'], work: ['enclume', 'seau', 'toles'],
     lamps: ['lanterne', 'applique'], lines: [['ampoules', 1], ['filet', 1]], linesPerVoid: [1, 2],
@@ -113,6 +119,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     emitters: { eau: 'bulles', vide: 'poussiere' }, cats: 0.35,
   }),
   citernes: recipe({
+    scraps: 'limaille',
     moods: [['abandonne', 3], ['labeur', 3], ['range', 1]],
     goods: ['vanne', 'manometre', 'seau'], work: ['vanne', 'manometre', 'tuyaux'],
     lamps: ['applique', 'lanterne'], lines: [['ampoules', 1]], linesPerVoid: [0, 1], density: 0.65, skinLit: 0.15,
@@ -127,6 +134,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     emitters: { vide: 'poussiere' },
   }),
   laminaires: recipe({
+    scraps: 'feuilles',
     goods: ['arrosoir', 'seau', 'jardiniere'], work: ['jardiniere', 'arrosoir'],
     plants: ['laminaire', 'fougere', 'lierre'], lamps: ['lampadaire', 'globe'], lines: [['ampoules', 2]], linesPerVoid: [1, 2],
     emitters: { vide: 'poussiere', eau: 'bulles', plafond: 'gouttes' },
@@ -139,6 +147,7 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { sol: [['couchage', 2], ['vignette', 2], ['table', 1]] },
   }),
   potagers: recipe({
+    scraps: 'feuilles',
     goods: ['sac', 'arrosoir', 'panier', 'seau'], work: ['jardiniere', 'arrosoir', 'sac'],
     plants: ['herbes', 'fougere', 'lierre'], lamps: ['lampadaire', 'suspension'], lines: [['ampoules', 3], ['linge', 1]],
     slots: { sol: [['atelier', 4], ['plantes', 2]], mur: [['atelier', 2], ['plantes', 2]] }, density: 1.15,
@@ -156,11 +165,13 @@ export const RECIPES: Readonly<Record<ArchetypeId, Recipe>> = {
     slots: { sol: [['atelier', 2], ['table', 1], ['vide', 1]] },
   }),
   viviers: recipe({
+    scraps: 'ecailles',
     goods: ['seau', 'epuisette', 'tonneau'], work: ['bassin', 'epuisette', 'seau'],
     lamps: ['globe', 'lanterne'], lines: [['filet', 2], ['ampoules', 1]],
     emitters: { eau: 'bulles', plafond: 'gouttes', vide: 'poussiere' }, cats: 0.4,
   }),
   cathedrale: recipe({
+    scraps: 'limaille',
     moods: [['labeur', 3], ['abandonne', 2], ['range', 1]],
     goods: ['engrenage', 'tuyaux', 'manometre', 'seau'], work: ['engrenage', 'vanne', 'manometre'],
     lamps: ['lanterne', 'applique'], lines: [['ampoules', 1]], linesPerVoid: [0, 1], skinLit: 0.3, cats: 0,
