@@ -6,6 +6,7 @@ import { MondeState, PlayerCard } from '../state'
 import { clientMessages, joinOptions } from '../validate'
 import { REAL_MS_PER_GAME_HOUR, gameHoursAt } from '../clock'
 import { GUARDS } from '../config'
+import { createRateLimit } from '../rate'
 import { createGuard, refuse } from './guard'
 import { Sessions } from './sessions'
 import type { RoomDeps } from './deps'
@@ -16,6 +17,10 @@ export function createMondeRoom(deps: RoomDeps) {
     override maxMessagesPerSecond = LIMITS.messagesPerSecond
     private readonly sessions = new Sessions()
     private readonly guard = createGuard()
+    private readonly saveLimit = createRateLimit(GUARDS.savesPerWindow, GUARDS.actionWindowMs)
+    private readonly profileLimit = createRateLimit(GUARDS.profilesPerMinute, 60_000)
+    // Unknown window ids are shared state capped at `windowsMax`: one player must not fill the cap.
+    private readonly newWindowLimit = createRateLimit(GUARDS.newWindowsPerMinute, 60_000)
 
     private readonly port: MondePort = {
       updateCard: (id, patch) => {
@@ -28,8 +33,10 @@ export function createMondeRoom(deps: RoomDeps) {
 
     override messages = {
       scrub: this.guard.guarded(clientMessages.scrub, (client, m) => {
-        if (!this.state.windows.has(m.windowId) && this.state.windows.size >= GUARDS.windowsMax) {
-          return refuse(client, 'invalid', 'fenêtre inconnue')
+        if (!this.state.windows.has(m.windowId)) {
+          const id = this.sessions.playerOf(client)
+          if (!id || this.state.windows.size >= GUARDS.windowsMax) return refuse(client, 'invalid', 'fenêtre inconnue')
+          if (!this.newWindowLimit.allow(id)) return refuse(client, 'rate', 'Doucement.')
         }
         const now = gameHoursAt(this.state.epochMs)
         const coat = windowCoat(this.state.windows.get(m.windowId), now, WINDOWS.sharedRegrowHours, WINDOWS.initialCoat)
@@ -39,13 +46,16 @@ export function createMondeRoom(deps: RoomDeps) {
       }),
       save: this.guard.guarded(clientMessages.save, (client, m) => {
         const rec = deps.store.player(this.sessions.playerOf(client) ?? '')
-        if (rec) deps.store.putPlayer({ ...rec, save: m.save, seenAt: Date.now() })
+        if (!rec) return
+        if (!this.saveLimit.allow(rec.id)) return refuse(client, 'rate', 'Doucement.')
+        deps.store.putPlayer({ ...rec, save: m.save, seenAt: Date.now() })
       }),
       profile: this.guard.guarded(clientMessages.profile, (client, m) => {
         const id = this.sessions.playerOf(client)
         const rec = deps.store.player(id ?? '')
         const card = this.state.players.get(id ?? '')
         if (!id || !rec || !card) return
+        if (!this.profileLimit.allow(id)) return refuse(client, 'rate', 'Doucement.')
         deps.store.putPlayer({ ...rec, profile: m })
         card.name = m.name
         card.color = m.color
@@ -100,6 +110,7 @@ export function createMondeRoom(deps: RoomDeps) {
       const id: PlayerId | null = this.sessions.unbind(client)
       if (!id) return
       this.state.players.delete(id)
+      for (const l of [this.saveLimit, this.profileLimit]) l.forget(id)
       const rec = deps.store.player(id)
       if (rec) deps.store.putPlayer({ ...rec, seenAt: Date.now() })
     }

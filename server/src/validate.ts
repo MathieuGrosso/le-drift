@@ -21,6 +21,7 @@ const identity = z.object({ id: z.uuid(), secret: z.string().regex(/^[A-Za-z0-9_
 
 export const joinOptions = z.object({ protocol: z.literal(PROTOCOL_VERSION), identity, profile }) satisfies z.ZodType<JoinOptions>
 export const quartierJoinOptions = joinOptions.extend({ district: z.enum(DISTRICTS) }) satisfies z.ZodType<QuartierJoinOptions>
+export const quartierCreateOptions = quartierJoinOptions.pick({ district: true })
 
 const playerSave = z.object({
   version: z.literal(2),

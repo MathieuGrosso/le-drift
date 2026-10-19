@@ -39,7 +39,7 @@ export interface NpcBrains {
   readonly enabled: boolean
   readonly rooms: NpcRoomRegistry
   think(npcId: string, trigger: NpcTrigger): Promise<NpcAction[]>
-  /** Something a player did or said in a district; the NPCs there remember the last few. */
-  observe(district: DistrictId, text: string): void
+  /** Something a player said in a district's chat; the NPCs there remember the last few. */
+  observe(district: DistrictId, said: { player: PlayerId; name: string; text: string }): void
   dispose(): void
 }

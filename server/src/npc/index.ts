@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { defaultCredentials } from '@anthropic-ai/sdk/lib/credentials/credential-chain'
-import type { DistrictId } from '../../../src/core/types'
 import type { NpcAction, PlayerId } from '../../../src/shared/protocol'
 import { gameHoursAt } from '../clock'
 import { CONFIG } from '../config'
+import { createRateLimit } from '../rate'
 import type { Store } from '../persist'
 import { scriptedLine, toActions } from './actions'
 import type { DecideFn, NpcBrains, NpcSheet, NpcTrigger } from './brain'
@@ -46,6 +46,7 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
   const nextTick = new Map(SHEETS.map((s) => [s.id, Date.now() + jitter()]))
   const thinking = new Set<string>()
   const lastTalk = new Map<PlayerId, number>()
+  const observed = createRateLimit(NPC_TUNING.observedPerPlayer, NPC_TUNING.observedWindowMs)
   let live = true
 
   const present = (sheet: NpcSheet, except: PlayerId | null) =>
@@ -76,7 +77,8 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
 
   const act = (sheet: NpcSheet, actions: NpcAction[]) => {
     rooms.apply(sheet, actions, Date.now() + NPC_TUNING.orderMs)
-    for (const a of actions) if (a.kind === 'say') memories.note(sheet.id, `Tu as dit : « ${a.text} »`)
+    // A reply to one player stays out of the shared memory: it can echo what they said in private.
+    for (const a of actions) if (a.kind === 'say' && a.to === null) memories.note(sheet.id, { kind: 'said', text: a.text })
     return actions
   }
 
@@ -88,7 +90,7 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
     const thought = live && !thinking.has(sheet.id) && take()
       ? call(sheet, { kind: 'talk', name, text, memory: memories.about(sheet.id, player) }, player)
       : null
-    if (text) memories.note(sheet.id, `${name} t'a dit : « ${text} »`)
+    memories.note(sheet.id, { kind: 'visit', who: name })
     const out = await thought
     if (!out) return act(sheet, scriptedLine(sheet, player))
     if (out.remember) memories.rewrite(sheet.id, player, out.remember)
@@ -124,8 +126,9 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
       if (!sheet) return Promise.resolve([])
       return trigger.kind === 'talk' ? talk(sheet, trigger.player, trigger.text) : tick(sheet)
     },
-    observe(district: DistrictId, text: string) {
-      for (const s of SHEETS) if (s.district === district) memories.note(s.id, text)
+    observe(district, said) {
+      if (!observed.allow(`${district}:${said.player}`)) return
+      for (const s of SHEETS) if (s.district === district) memories.note(s.id, { kind: 'chat', who: said.name, text: said.text })
     },
     dispose: () => clearInterval(scheduler),
   }

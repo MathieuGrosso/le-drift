@@ -11,8 +11,14 @@ export interface PlayerRecord {
   seenAt: number
 }
 
+/** Player-sourced fields are untrusted text, kept as data and only ever rendered JSON-encoded. */
+export type MemoryEvent =
+  | { kind: 'chat'; who: string; text: string }
+  | { kind: 'visit'; who: string }
+  | { kind: 'said'; text: string }
+
 export interface NpcMemory {
-  shortTerm: string[]
+  shortTerm: MemoryEvent[]
   perPlayer: Record<PlayerId, string>
 }
 

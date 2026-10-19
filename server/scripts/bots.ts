@@ -100,6 +100,17 @@ send(mila.monde, 'profile', { name: 'Mila la Grande', color: AVATAR_COLORS[4]! }
 await sleep(400)
 check('a renamed player is renamed in the district', [...nour.quartier.state.avatars.values()].some((a) => a.name === 'Mila la Grande'))
 
+const rejects = (p: Promise<unknown>) => p.then((r) => (r as Room).leave().then(() => false), () => true)
+const intruder: JoinOptions = {
+  protocol: PROTOCOL_VERSION,
+  identity: { id: randomUUID(), secret: randomBytes(24).toString('base64url') },
+  profile: { name: 'Intrus', color: AVATAR_COLORS[0]! },
+}
+const bogus = await rejects(new Client(URL_).create(ROOM.quartier, { ...intruder, district: 'nulle-part' }))
+const twin = await rejects(new Client(URL_).create(ROOM.quartier, { ...intruder, district: DISTRICT }))
+await sleep(200)
+check('a client cannot create a room for an unknown or live district', bogus && twin && bots.every((b) => b.quartier.state.avatars.size >= 3))
+
 walkers.forEach(clearInterval)
 await Promise.all(bots.flatMap((b) => [b.quartier.leave(), b.monde.leave()]))
 const failed = checks.filter(([, ok]) => !ok).length

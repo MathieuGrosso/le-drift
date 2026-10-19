@@ -25,4 +25,9 @@ export const GUARDS = {
   teleportCooldownMs: 3_000,
   moveMarginM: 25,
   windowsMax: 12_000,
+  actionsPerWindow: 10,
+  actionWindowMs: 10_000,
+  savesPerWindow: 5,
+  profilesPerMinute: 6,
+  newWindowsPerMinute: 30,
 } as const

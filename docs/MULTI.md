@@ -108,6 +108,8 @@ Server security rules: every message goes through a zod schema (unknown types ar
 Colyseus); `maxMessagesPerSecond = LIMITS.messagesPerSecond` disconnects floods; chat has its own
 per-player window; `move` is clamped to the district box (`DISTRICT_BY_ID`) plus a margin and to a max
 speed (server-core TODO); NPC text and player text are rendered with `textContent`, never `innerHTML`.
+A `quartier` is created only for a valid `DistrictId` and never replaces the live room of its district.
+Emotes, seats, saves, profile changes and new window ids have per-player windows too.
 
 ## 4. Server modules (`server/src`)
 
@@ -191,6 +193,10 @@ extras never think.
 Per NPC: a character sheet (`system`) built once from the BIBLE characters and `drift/text.ts`
 CHATTER lines, plus a world-bible excerpt; short-term memory (last ~10 events in its district);
 long-term memory per player (a 1-2 sentence summary, rewritten after each conversation).
+Player text (chat, names, what one says to an NPC) is untrusted: memory stores it as typed events, the prompt
+renders it as JSON lines inside one `<events>` block that the system prompt declares data, never instructions.
+A player adds at most 3 chat lines per minute to a district's memory. A private talk stays private: shared
+memory records only that the player came to talk, and the NPC's reply to them is not recorded there.
 
 Loop (`npc/` on the server):
 1. **Slow tick**: each named NPC thinks every `NPC_TICK_MIN_MS`..`NPC_TICK_MAX_MS` (2-5 min, jittered),

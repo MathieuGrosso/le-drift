@@ -29,8 +29,12 @@ export class NpcRoomRegistry implements NpcWorld {
     }
   }
 
-  addQuartier(room: QuartierHandle): void {
+  /** False when another live room already holds this district: it is never replaced. */
+  addQuartier(room: QuartierHandle): boolean {
+    const held = this.quartiers.get(room.state.district)
+    if (held && held !== room) return false
     this.quartiers.set(room.state.district, room)
+    return true
   }
 
   removeQuartier(room: QuartierHandle): void {
