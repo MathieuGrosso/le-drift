@@ -43,6 +43,7 @@ const smooth = (k: number) => k * k * (3 - 2 * k)
 const PULL_IN = 9
 const HOLD = 0.35
 const NEAR_R = 0.14
+const HARD_R = 0.16
 
 export class HeroCamera {
   yaw = 0
@@ -125,7 +126,7 @@ export class HeroCamera {
     } else {
       this.smoothFocus.x += (f.focus.x - this.smoothFocus.x) * Math.min(1, dt * 18)
       this.smoothFocus.z += (f.focus.z - this.smoothFocus.z) * Math.min(1, dt * 18)
-      const vy = f.style === 'walk' ? 9 : 16
+      const vy = f.style === 'walk' && Math.abs(f.velocity.y) < 4 ? 9 : 16
       this.smoothFocus.y += (f.focus.y - this.smoothFocus.y) * Math.min(1, dt * vy)
     }
 
@@ -154,9 +155,8 @@ export class HeroCamera {
         this.pitch = lerp(this.pitch, -4 * D2R, Math.min(1, dt * 1.6))
       } else if (f.moving > 0.2 && this.lookIdle > o.recenterHoldSeconds * 0.6) {
         const d = angleDiff(this.yaw, travelYaw)
-        const lateral = Math.abs(Math.sin(d))
-        const corridor = 1 + this.corridorK * 2.5
-        if (Math.abs(d) < 2.6) this.yaw += d * Math.min(1, dt * (0.3 + lateral * 0.9) * f.moving * corridor)
+        const ahead = THREE.MathUtils.clamp((1.25 - Math.abs(d)) / 0.6, 0, 1)
+        this.yaw += THREE.MathUtils.clamp(d * Math.min(1, dt * 0.9 * (1 + this.corridorK) * f.moving * ahead), -dt * 1.2, dt * 1.2)
         this.pitch = lerp(this.pitch, (f.indoor ? 14 + this.tightK * 20 : 12) * D2R, Math.min(1, dt * (0.5 + this.tightK) * f.moving))
       }
     }
@@ -208,8 +208,11 @@ export class HeroCamera {
         if (free < len) this.pivot.copy(this.pivotBase).addScaledVector(head, Math.max(0, free - 0.02))
       }
     }
-    const allowed = this.collide(want, k > 0.5 ? i.sphereRadius : 0.35)
-    const soft = k > 0.5 && !this.pose ? Math.min(allowed, Math.max(this.whiskers(want, i.sphereRadius, pitch), Math.min(want, 1.6))) : allowed
+    const allowed = this.collide(want, k > 0.5 ? HARD_R : 0.35)
+    const roomy = k > 0.5 ? Math.min(allowed, this.collide(want, i.sphereRadius)) : allowed
+    let soft = k > 0.5 && !this.pose ? Math.min(roomy, Math.max(this.whiskers(want, i.sphereRadius, pitch), Math.min(want, 1.6))) : allowed
+    if (k > 0.5 && !this.pose) soft = Math.min(soft, Math.max(this.ahead(want, i.sphereRadius, pitch, dt), allowed * 0.5))
+    this.prevYaw = this.yaw
     this.holdT = Math.max(0, this.holdT - dt)
     if (this.snapped) {
       this.snapped = false
@@ -222,7 +225,7 @@ export class HeroCamera {
       this.dist = glide > allowed && this.free(this.desired, NEAR_R) ? glide : allowed
       this.holdT = HOLD
     } else if (soft < this.dist) {
-      this.dist += (soft - this.dist) * Math.min(1, dt * 7)
+      this.dist += (soft - this.dist) * Math.min(1, dt * 12)
       this.holdT = HOLD
     } else if (this.holdT <= 0) {
       const out = Math.min((allowed - this.dist) * 2.5, lerp(o.easeOut, i.easeOut, k) * (1 + this.styleK.zip * 2))
@@ -342,6 +345,23 @@ export class HeroCamera {
       m = Math.min(m, THREE.MathUtils.lerp(d, want, 0.5))
     }
     return m
+  }
+
+  private prevYaw = 0
+  private yawVel = 0
+  private aheadDir = new THREE.Vector3()
+  private ahead(want: number, radius: number, pitch: number, dt: number): number {
+    const v = angleDiff(this.prevYaw, this.yaw) / Math.max(dt, 1e-4)
+    this.yawVel += (THREE.MathUtils.clamp(v, -12, 12) - this.yawVel) * Math.min(1, dt * 20)
+    if (Math.abs(this.yawVel) < 0.6) return want
+    const cp = Math.cos(pitch)
+    let m = want
+    for (const t of [0.08, 0.16]) {
+      const y = this.yaw + this.yawVel * t
+      this.aheadDir.set(-Math.sin(y) * cp, Math.sin(pitch), Math.cos(y) * cp)
+      m = Math.min(m, this.cast(this.pivot, this.aheadDir, want, radius))
+    }
+    return Math.max(0.05, m - 0.02)
   }
 
   private sideTmp = new THREE.Vector3()

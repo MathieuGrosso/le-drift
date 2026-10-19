@@ -165,6 +165,7 @@ function createRuntime(ctx: GameContext): Runtime {
   let introState: 'waiting' | 'playing' | 'done' = 'waiting'
   let introGrace = 0
   let wakeT = 0
+  let busyPrev = false
   let musicTimer = 0
   let music: MusicCue | null = null
   const candidates: Candidate[] = []
@@ -268,6 +269,8 @@ function createRuntime(ctx: GameContext): Runtime {
       }
       let best: Candidate | null = null
       for (const c of candidates) if ((!best || c.dist < best.dist) && !(wakeT > 0 && c.kind === 'bed')) best = c
+      const held = hintId && best && best.id !== hintId ? candidates.find((c) => c.id === hintId) : undefined
+      if (held && best && held.dist < best.dist + 0.35 && !(wakeT > 0 && held.kind === 'bed')) best = held
       const outsideScrub = canInteract ? gp.scrub.target() : null
       if (outsideScrub && (!best || best.kind === 'airlock')) {
         gp.hud.prompt({ key: input.keyLabel('scrub'), label: PROMPTS.frotter })
@@ -289,6 +292,9 @@ function createRuntime(ctx: GameContext): Runtime {
         best.run()
       }
 
+      const busyNow = gp.busy()
+      if (busyPrev && !busyNow) introGrace = Math.max(introGrace, 0.5)
+      busyPrev = busyNow
       gp.hud.update(dt)
     },
     lateUpdate() {

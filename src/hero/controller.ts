@@ -10,7 +10,7 @@ import type { CameraStyle } from './camera'
 export type PublicMode = HeroMode | 'run' | 'jump' | 'land' | 'zip' | 'tube' | 'slide' | 'carry'
 
 const T = {
-  sprint: 6.1,
+  sprint: 6.6,
   sprintCost: 0.1,
   jumpHeight: 1.2,
   carryJump: 0.5,
@@ -1403,7 +1403,8 @@ export class HeroController {
       }
       const tp = this.toW(a.top, this.tmp)
       const nt = Math.hypot(this.pos.x - tp.x, this.pos.z - tp.z)
-      if (nt < 0.9 && Math.abs(this.pos.y - tp.y) < 0.6 && into < -0.3) {
+      const front = (this.pos.x - tp.x) * nW.x + (this.pos.z - tp.z) * nW.z > 0.25
+      if (nt < 0.9 && Math.abs(this.pos.y - tp.y) < 0.6 && (front ? into > 0.5 : into < -0.3)) {
         this.attachLadder(a, 0.97)
         return true
       }
@@ -1475,6 +1476,8 @@ export class HeroController {
       if (dx * dx + dz * dz > 0.04) this.yaw += angleDiff(this.yaw, yawOf(dx, dz)) * Math.min(1, dt * 10)
       this.clip('ladder-top', 0.1)
       if (k >= 1) {
+        this.ladderCoolId = a.a.id
+        this.ladderCoolT = 0.6
         this.activity = { kind: 'none' }
         this.noWallT = 0.8
         this.wallHold = true

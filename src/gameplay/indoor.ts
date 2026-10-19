@@ -1,5 +1,6 @@
 import type { DistrictId, HeroService, RoomId } from '../core/types'
 import { dist3, type Candidate, type Gp, type Indoor } from './context'
+import type { Owned } from './world/sites'
 import { DISTRICT_NAMES, DOME_NAMES, NPC_IDS, PLACE_NAMES, PROMPTS, TIPS, UI } from './text/fr'
 import type { Uses } from './world/uses'
 
@@ -7,6 +8,8 @@ const RAY_REACH = 2.4
 const LOCK_REACH = 7
 const NPC_REACH = 2.8
 const REEL_HOLD = 1
+const DOOR_REACH = 1.7
+const DOOR_CONE = 0.6
 
 const BED = /^(lit|couchette|bunk|bed|hamac)/
 const SEAT = /^(banc|siege|chaise|tabouret|seat)/
@@ -125,21 +128,43 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     }
   }
 
+  const doorBuf: Owned[] = []
+  const coneDoor = (out: Candidate[]) => {
+    const drift = ctx.services.drift
+    if (!drift || out.some((c) => c.kind === 'door' || c.kind === 'airlock')) return
+    const p = gp.heroPos()
+    const f = gp.heroForward()
+    let best: { o: Owned; d: number } | null = null
+    for (const o of gp.sites.ownedNear(gp.heroLocal(), DOOR_REACH + 1.5, doorBuf)) {
+      if (o.kind !== 'door' || ZIP.test(o.id) || TUBE.test(o.id)) continue
+      const w = drift.toWorld(o.at)
+      const dx = w.x - p.x
+      const dz = w.z - p.z
+      const d = Math.hypot(dx, dz)
+      if (d > DOOR_REACH || Math.abs(w.y - p.y - 1) > 1.8) continue
+      if (d > 0.5 && (dx * f.x + dz * f.z) / d < (d < 1.2 ? 0 : DOOR_CONE)) continue
+      if (!best || d < best.d) best = { o, d }
+    }
+    if (!best) return
+    const owner = best.o.id
+    const outer = owner === 'sas-exterieure' ? 'sas' : owner === 'toit-exterieure' ? 'echelle-toit' : null
+    if (outer) out.push({ id: owner, kind: 'airlock', label: PROMPTS.sortir, key: 'interact', dist: best.d, run: () => void airlock('out', outer) })
+    else {
+      const open = !!ctx.state.drift.doors[owner]
+      out.push({ id: owner, kind: 'door', label: open ? PROMPTS.fermer : PROMPTS.ouvrir, key: 'interact', dist: best.d, run: () => ctx.services.drift?.openDoor(owner, !open) })
+    }
+  }
+
   const roomFallbacks = (out: Candidate[]) => {
     const room = ctx.state.hero.room
     if (!room) return
     const add = (id: string, kind: Candidate['kind'], label: string, dist: number, run: () => void) => {
       if (!out.some((c) => c.kind === kind)) out.push({ id, kind, label, key: 'interact', dist, run })
     }
-    const drift = ctx.services.drift
-    const spawnDist = () => (drift ? dist3(gp.heroPos(), drift.roomSpawn(room).position) : 0)
     switch (room as RoomId) {
       case 'sas':
         add('sas', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out'))
-        if (gp.quests.step('a1-reveil') === 'tableau') add('tableau', 'npc', PROMPTS.tableau, 2.2, () => gp.quests.talk('mme-rouille'))
-        break
-      case 'cabine':
-        if (spawnDist() < 2.5) add('lit', 'bed', PROMPTS.dormir, 2.4, () => gp.menus.sleep())
+        if (gp.quests.step('a1-reveil') === 'tableau') add('tableau', 'npc', PROMPTS.tableau, 2.7, () => gp.quests.talk('mme-rouille'))
         break
       case 'salle-des-cartes':
         add('table-carte', 'chart-table', PROMPTS.carte, 2.6, () => gp.quests.chartTable())
@@ -175,6 +200,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
         return
       }
       rayDoor(out)
+      coneDoor(out)
       roomFallbacks(out)
       if (drift) {
         const p = gp.heroPos()

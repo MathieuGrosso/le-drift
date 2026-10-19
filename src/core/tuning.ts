@@ -56,7 +56,7 @@ export const INDOOR = {
   hatchSpinSeconds: 0.8,
   wetnessDrySeconds: 120,
   airlockSeconds: 6,
-  airlockFastMul: 3,
+  airlockFastMul: 4,
   stuckSnapSeconds: 3,
 } as const
 

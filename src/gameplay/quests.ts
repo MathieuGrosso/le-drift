@@ -250,7 +250,7 @@ export function createQuests(gp: Gp): Quests {
     }
   })
   ctx.bus.on('hero:medium', ({ medium }) => {
-    if (medium === 'water' && step('a1-reveil') === 'sortir') {
+    if (medium === 'water' && (step('a1-reveil') === 'sortir' || step('a1-reveil') === 'tableau')) {
       set('a1-reveil', 'done')
       set('a1-sortie', 'coque')
       gp.hud.tip(TIPS.nage(ctx.input.keyLabel('up'), ctx.input.keyLabel('down')), 8)

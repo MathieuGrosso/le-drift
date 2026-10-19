@@ -49,12 +49,16 @@ export function createUses(gp: Gp): Uses {
         }
       }
       const hl = gp.heroLocal()
+      const drift = ctx.services.drift
+      const fl = drift ? drift.toLocal({ x: gp.heroPos().x + f.x, y: gp.heroPos().y, z: gp.heroPos().z + f.z }) : null
+      const facing = (h: Vec3, p: Vec3, d: number) => !fl || ((p.x - h.x) * (fl.x - h.x) + (p.z - h.z) * (fl.z - h.z)) / d > 0.35
       const near = (id: string, p: Vec3 | null) => {
         if (!p || taken.has(id)) return
         const u = resolve(id)
         if (!u) return
         const d = Math.hypot(hl.x - p.x, hl.y + 1 - p.y, hl.z - p.z)
         if (d > (u.reach ?? NEAR)) return
+        if (id.startsWith('tube-') && d > 0.9 && !facing(hl, p, d)) return
         taken.add(id)
         out.push({ id, kind: u.kind, label: u.label, key: 'interact', dist: d, run: u.run })
       }
