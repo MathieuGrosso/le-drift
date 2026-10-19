@@ -9,6 +9,7 @@ export const CONFIG = {
   port: int('PORT', DEFAULT_PORT),
   dataDir: process.env.DRIFT_DATA_DIR ?? new URL('../data/', import.meta.url).pathname,
   flushMs: int('FLUSH_MS', 10_000),
+  npcScripted: process.env.NPC_BRAINS === 'scripted',
   npcModel: process.env.NPC_MODEL ?? 'claude-opus-5-5',
   npcDailyTokens: int('NPC_DAILY_TOKENS', 200_000),
   npcTickMinMs: int('NPC_TICK_MIN_MS', 120_000),

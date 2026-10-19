@@ -2,7 +2,7 @@ import { defineRoom, defineServer } from '@colyseus/core'
 import { WebSocketTransport } from '@colyseus/ws-transport'
 import { ROOM } from '../../src/shared/protocol'
 import { CONFIG } from './config'
-import { createScriptedBrains } from './npc'
+import { createBrains } from './npc'
 import { openStore } from './persist'
 import { createMondeRoom } from './rooms/monde'
 import { createQuartierRoom } from './rooms/quartier'
@@ -11,7 +11,11 @@ import { createRegistry } from './rooms/registry'
 import type { RoomDeps } from './rooms/deps'
 
 const store = await openStore(CONFIG.dataDir)
-const deps: RoomDeps = { store, brains: createScriptedBrains(), registry: createRegistry(), limits: createPlayerLimits() }
+const brains = await createBrains(store, CONFIG.npcScripted ? { credentials: async () => false } : {})
+console.log(brains.enabled
+  ? `PNJ Claude : ${CONFIG.npcModel}, ${CONFIG.npcDailyTokens} jetons par jour`
+  : `PNJ scriptés : ${CONFIG.npcScripted ? 'NPC_BRAINS=scripted' : 'aucun identifiant Claude (ANTHROPIC_API_KEY ou ant auth login)'}`)
+const deps: RoomDeps = { store, brains, registry: createRegistry(), limits: createPlayerLimits() }
 
 const server = defineServer({
   transport: new WebSocketTransport(),
@@ -30,4 +34,4 @@ server.onShutdown(async () => {
 })
 
 await server.listen(CONFIG.port)
-console.log(`Le Drift: ws://localhost:${CONFIG.port} (PNJ ${deps.brains.enabled ? 'Claude' : 'scriptés'})`)
+console.log(`Le Drift: ws://localhost:${CONFIG.port}`)

@@ -30,11 +30,17 @@ async function hasCredentials(): Promise<boolean> {
   }
 }
 
+export interface BrainsBoot {
+  credentials?: () => Promise<boolean>
+  client?: () => Anthropic
+}
+
 /** Claude brains when credentials resolve (env key or an `ant auth login` profile), scripted otherwise. */
-export async function createBrains(store: Store): Promise<NpcBrains> {
-  if (!(await hasCredentials())) return createScriptedBrains()
+export async function createBrains(store: Store, boot: BrainsBoot = {}): Promise<NpcBrains> {
+  if (!(await (boot.credentials ?? hasCredentials)())) return createScriptedBrains()
   const budget = createBudget(store.world(), CONFIG.npcDailyTokens, CONFIG.npcCallsPerMinute)
-  const decide = createDecide(new Anthropic(), CONFIG.npcModel, (tokens) => budget.spend(tokens))
+  const client = boot.client?.() ?? new Anthropic()
+  const decide = createDecide(client, CONFIG.npcModel, (tokens) => budget.spend(tokens))
   return createClaudeBrains(store, decide, () => budget.take())
 }
 

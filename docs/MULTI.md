@@ -127,7 +127,7 @@ Emotes, seats, saves, profile changes and new window ids have per-player windows
 | `npc/decide.ts` | the one Claude call (below) |
 | `npc/actions.ts` | `toActions`: model JSON → whitelisted `NpcAction[]`; anything else becomes `idle` |
 | `npc/budget.ts` | daily token budget + calls per minute |
-| `npc/index.ts` | `createScriptedBrains()` today; npc-brains adds `createClaudeBrains()` |
+| `npc/index.ts` | `createBrains()`: Claude brains when credentials resolve, `createScriptedBrains()` otherwise or with `NPC_BRAINS=scripted`; the boot logs which |
 
 Persistence is JSON on purpose (tens of players, a few kB each). If it grows: `node:sqlite`, same
 `Store` interface. `server/data/` is gitignored.
