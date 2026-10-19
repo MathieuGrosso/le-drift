@@ -62,6 +62,15 @@ export interface InputRuntime {
   dispose(): void
 }
 
+const UI_CONTROLS = 'button, a, input, select, textarea, label, [role="button"], .gp-menu, .gp-chart, .gp-interactive, .gp-narrate, .gp-dialogue'
+
+// Overlays such as speech bubbles cover the canvas, so any click that is not on a control counts as a click in the game.
+function isGameSurface(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return true
+  if (target.tagName === 'CANVAS') return true
+  return target.closest(UI_CONTROLS) === null && target.closest('#loading') === null
+}
+
 function deadzone(v: number): number {
   const a = Math.abs(v)
   if (a < INPUT.deadzone) return 0
@@ -83,6 +92,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
   let menuOpen = false
   let escapeSeen = false
   let layoutMap: Map<string, string> | null = null
+  let dragFromGame = false
 
   const input: Input = {
     move: { x: 0, y: 0 },
@@ -135,7 +145,9 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
     keys.delete(e.code)
   }
   const onMouseMove = (e: MouseEvent) => {
-    if (!enabled || !input.pointerLocked) return
+    if (!enabled) return
+    const dragging = !input.pointerLocked && !menuOpen && (mouseButtons.has(0) || mouseButtons.has(2)) && dragFromGame
+    if (!input.pointerLocked && !dragging) return
     input.device = 'kbm'
     mouseDX += e.movementX
     mouseDY += e.movementY
@@ -143,6 +155,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
   const onMouseDown = (e: MouseEvent) => {
     if (!enabled) return
     if (e.button === 1) e.preventDefault()
+    dragFromGame = isGameSurface(e.target)
     mouseButtons.add(e.button)
     for (const a of ACTIONS) if (MOUSE_BINDINGS[a] === e.button) latchedPresses.add(a)
   }
@@ -153,8 +166,8 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
     keys.clear()
     mouseButtons.clear()
   }
-  const onCanvasClick = () => {
-    if (enabled && !menuOpen && !input.pointerLocked) runtime.requestPointerLock()
+  const onCanvasClick = (e: MouseEvent) => {
+    if (enabled && !menuOpen && !input.pointerLocked && e.button === 0 && isGameSurface(e.target)) runtime.requestPointerLock()
   }
   const onLockChange = () => {
     const locked = document.pointerLockElement === canvas
@@ -170,7 +183,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
   window.addEventListener('mousedown', onMouseDown)
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('blur', onBlur)
-  canvas.addEventListener('click', onCanvasClick)
+  window.addEventListener('click', onCanvasClick)
   canvas.addEventListener('contextmenu', onContextMenu)
   document.addEventListener('pointerlockchange', onLockChange)
 
@@ -263,7 +276,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
       window.removeEventListener('mousedown', onMouseDown)
       window.removeEventListener('mouseup', onMouseUp)
       window.removeEventListener('blur', onBlur)
-      canvas.removeEventListener('click', onCanvasClick)
+      window.removeEventListener('click', onCanvasClick)
       canvas.removeEventListener('contextmenu', onContextMenu)
       document.removeEventListener('pointerlockchange', onLockChange)
     },
