@@ -54,8 +54,10 @@ export interface RideSpec {
   yaw: number
   lock?: LockRule
 }
-export type PropModel = 'plante-pot' | 'plante-1' | 'plante-2' | 'plante-3'
-export const PROP_MODELS: readonly PropModel[] = ['plante-pot', 'plante-1', 'plante-2', 'plante-3']
+export type PropModel = keyof typeof PROPS.height
+export const PROP_MODELS = Object.keys(PROPS.height) as readonly PropModel[]
+const PLANTS: readonly PropModel[] = ['plante-pot', 'plante-1', 'plante-2', 'plante-3']
+const TABLE_CLUTTER: readonly PropModel[] = ['livres', 'radio', 'lampe']
 export interface PropSpec { model: PropModel; x: number; y: number; z: number; yaw: number; height: number }
 export interface PathSpec { district: DistrictId; pts: { x: number; z: number }[]; y: number; loop: boolean; busy: number; work: boolean }
 export interface SpotSpec { district: DistrictId; x: number; y: number; z: number; yaw: number; pose: 'lean' | 'stand' | 'sit' | 'work' | 'talk' }
@@ -510,8 +512,32 @@ export class Kit {
     this.b.sphere(x, y + 0.45, z, 0.12, 0.08, 0.12, C(PAL.corde))
   }
 
+  prop(model: PropModel, x: number, y: number, z: number, yaw: number, s = 1): void {
+    this.props.push({ model, x, y, z, yaw, height: PROPS.height[model] * s })
+  }
+
   plant(x: number, y: number, z: number, s = 1): void {
-    this.props.push({ model: this.pick(PROP_MODELS), x, y, z, yaw: this.rand() * Math.PI * 2, height: PROPS.plantHeight * s })
+    this.prop(this.pick(PLANTS), x, y, z, this.rand() * Math.PI * 2, s)
+  }
+
+  // At yaw 0 the sitter faces +z (Kenney chair back on -z).
+  chair(x: number, y: number, z: number, yaw: number): void {
+    this.prop(this.pick(['chaise', 'chaise-ronde'] as const), x, y, z, yaw)
+    const h = PROPS.chairHalf
+    this.cols.push({ kind: 'prop', climbable: true, x, y: y + h, z, hx: h, hy: h, hz: h })
+  }
+
+  // Chairs on both long sides and one lived-in object on the top.
+  dinette(x: number, y: number, z: number, sx: number, sz: number, h = 0.78): void {
+    this.table(x, y, z, sx, sz, h)
+    const alongX = sx >= sz
+    const half = (alongX ? sz : sx) / 2 + PROPS.chairGap / 2
+    for (const s of [-1, 1]) {
+      const yaw = alongX ? (s > 0 ? Math.PI : 0) : s > 0 ? -Math.PI / 2 : Math.PI / 2
+      this.chair(x + (alongX ? 0 : s * half), y, z + (alongX ? s * half : 0), yaw)
+    }
+    const u = (this.rand() - 0.5) * 0.4
+    this.prop(this.pick(TABLE_CLUTTER), x + (alongX ? u * sx : 0), y + h, z + (alongX ? 0 : u * sz), this.rand() * Math.PI * 2)
   }
 
   table(x: number, y: number, z: number, sx: number, sz: number, h = 0.78, color: number = PAL.bois): void {

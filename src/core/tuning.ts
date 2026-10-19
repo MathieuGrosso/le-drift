@@ -161,5 +161,13 @@ export const POST = {
   exposureRate: 1.6,
 } as const
 
-// Kenney plants: height per unit of kit.plant scale; light sampled at this fraction of the height.
-export const PROPS = { plantHeight: 0.85, lightProbe: 0.6 } as const
+// Kenney props: height in metres per model at scale 1; light sampled at this fraction of the height.
+export const PROPS = {
+  lightProbe: 0.6,
+  height: {
+    'plante-pot': 0.85, 'plante-1': 0.85, 'plante-2': 0.85, 'plante-3': 0.85,
+    chaise: 0.92, 'chaise-ronde': 0.9, tabouret: 0.72, livres: 0.2, radio: 0.3, lampe: 0.42,
+  },
+  chairGap: 0.55,
+  chairHalf: 0.22,
+} as const

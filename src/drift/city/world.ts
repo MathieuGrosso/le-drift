@@ -313,9 +313,7 @@ function nef(k: Kit): void {
     k.lamp(x, -0.6, z, { style: 'globe', radius: 12, bake: 1.2 })
   }
   for (const [x, z] of [[-24, 18], [24, 18], [-24, -14], [16, -18]] as const) {
-    k.table(x, -6, z, 1.4, 1.4)
-    k.bench(null, x - 1.1, -6, z, 1.4, false, Math.PI / 2)
-    k.bench(null, x + 1.1, -6, z, 1.4, false, -Math.PI / 2)
+    k.dinette(x, -6, z, 1.4, 0.9)
     k.plant(x + 1.6, -6, z + 1.4, 1.1)
   }
   k.crates(-30, -6, -26, 3)
@@ -765,6 +763,7 @@ function ateliers(k: Kit): void {
     k.b.box(x, 0.4, -36, 0.6, 0.8, 0.4, C(PAL.metalSombre))
     k.b.box(x, 0.85, -36, 0.9, 0.15, 0.35, C(PAL.metal, 1.1))
     k.cols.push({ kind: 'prop', climbable: true, x, y: 0.45, z: -36, hx: 0.45, hy: 0.45, hz: 0.25 })
+    k.prop('tabouret', x + 0.3, 0, -35.3, k.rand() * Math.PI)
   }
   for (let i = 0; i < 4; i++) {
     for (let j = 0; j < 2; j++) k.bench(null, -58 + j * 2.2, 0, -40.5 + i * 1.5, 1.6, true, 0)
@@ -898,6 +897,8 @@ function proue(k: Kit): void {
   k.anchors.push({ kind: 'chart-table', id: 'table-carte-vigie', at: { x: 2, y: 16, z: -64.8 }, yaw: Math.PI })
   k.place('table-carte-vigie', 'table-carte', { x: 2, y: 16, z: -64.8 }, Math.PI)
   k.b.box(2, 16.97, -66, 2.0, 0.02, 1.1, C(PAL.toile, 1.05))
+  k.prop('lampe', 2.85, 16.95, -66.4, 0.4)
+  k.prop('livres', 1.1, 16.95, -66.35, -0.3)
   k.shelf(-9.4, 16, -66, 4, 3.4, false, 0.45)
   k.bench('banc-vigie', 0, 16, -69.5, 3, true, 0)
   k.cot('couchette-vigie', -3.2, 16, -53.4, true, PAL.tissu3)

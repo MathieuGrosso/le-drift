@@ -13,6 +13,12 @@ const URLS: Record<PropModel, string> = {
   'plante-1': new URL('../../../assets/props/plantSmall1.glb', import.meta.url).href,
   'plante-2': new URL('../../../assets/props/plantSmall2.glb', import.meta.url).href,
   'plante-3': new URL('../../../assets/props/plantSmall3.glb', import.meta.url).href,
+  chaise: new URL('../../../assets/props/chair.glb', import.meta.url).href,
+  'chaise-ronde': new URL('../../../assets/props/chairRounded.glb', import.meta.url).href,
+  tabouret: new URL('../../../assets/props/stoolBar.glb', import.meta.url).href,
+  livres: new URL('../../../assets/props/books.glb', import.meta.url).href,
+  radio: new URL('../../../assets/props/radio.glb', import.meta.url).href,
+  lampe: new URL('../../../assets/props/lampRoundTable.glb', import.meta.url).href,
 }
 
 // One vertex-coloured geometry per model, unit height, base at y = 0.

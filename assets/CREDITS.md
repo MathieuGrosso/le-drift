@@ -12,3 +12,4 @@ CC0 only. One line per asset: path, source URL, license.
 ## Props
 
 - `assets/props/pottedPlant.glb`, `plantSmall1.glb`, `plantSmall2.glb`, `plantSmall3.glb`: Kenney Furniture Kit 2.0, https://kenney.nl/assets/furniture-kit, CC0. Optimised with `gltf-transform optimize --compress meshopt --texture-size 256`.
+- `assets/props/chair.glb`, `chairRounded.glb`, `stoolBar.glb`, `books.glb`, `radio.glb`, `lampRoundTable.glb`: Kenney Furniture Kit 2.0, https://kenney.nl/assets/furniture-kit, CC0. Same optimisation.
