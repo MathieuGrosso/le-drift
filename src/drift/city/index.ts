@@ -6,6 +6,8 @@ import type { Mats } from '../materials'
 import { NOISE_GLSL } from '../materials'
 import { PAL } from '../palette'
 import { surfacePatch } from '../surface'
+import type { DriftNavmesh } from '../nav/navmesh'
+import { ladderLink, type NavLink } from '../nav/soup'
 import { Crowd } from './crowd'
 import { Folk } from './folk'
 import { bakeGlow, CITY_UNIFORMS, glowMaterial, LampGrid, lightAt, skyAt, type BakeLamp, type SkyBake } from './glow'
@@ -693,6 +695,20 @@ export class City {
   ceilingAt(l: Vec3): number | null {
     const c = this.cellAt(l)
     return c ? c.roof : null
+  }
+
+  navBodies(): RAPIER.RigidBody[] {
+    return [...this.districts.values()].map((d) => d.body)
+  }
+
+  navLinks(): NavLink[] {
+    const ladders = this.ladders.map(ladderLink)
+    const rides = [...this.rides.values()].map((r) => ({ from: r.from, to: r.to, both: false }))
+    return [...ladders, ...rides]
+  }
+
+  useNav(nav: DriftNavmesh): void {
+    this.crowd.useNav(nav)
   }
 
   ladderList(cell: string): LadderSpec[] {

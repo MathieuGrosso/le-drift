@@ -1,5 +1,8 @@
 import * as THREE from 'three'
-import type { DistrictId, QualityLevel } from '../../core/types'
+import type { Crowd as NavCrowd, CrowdAgent } from '@recast-navigation/core'
+import { NAV } from '../../core/tuning'
+import type { DistrictId, QualityLevel, Vec3 } from '../../core/types'
+import type { DriftNavmesh } from '../nav/navmesh'
 import type { Mats } from '../materials'
 import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, ROLES, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
 import type { PathSpec, SpotSpec } from './kit'
@@ -19,9 +22,10 @@ interface Walker {
   from: number; to: number
   breakfast: boolean
   look: Look
+  route: Vec3[]
+  wp: number
+  agent: CrowdAgent | null
 }
-
-const MAX: Record<QualityLevel, number> = { high: 600, medium: 300, low: 120 }
 
 const BY_DISTRICT: Partial<Record<DistrictId, Role[]>> = {
   marche: ['vendor', 'vendor', 'engineer', 'gardener', 'elder', 'kid', 'vendor', 'elder'],
@@ -46,6 +50,7 @@ export class Crowd {
   private time = 0
   private active: ReadonlySet<DistrictId> | null = null
   private shown: ReadonlySet<DistrictId> | null = null
+  private nav: NavCrowd | null = null
 
   constructor(mats: Mats, paths: readonly PathSpec[], spots: readonly SpotSpec[], quality: QualityLevel, seed = 4242) {
     this.group.name = 'drift-foule'
@@ -60,7 +65,7 @@ export class Crowd {
       for (let i = 0; i < n; i++) this.walkers.push(this.make(p.district, p, null, rand, i / n))
     }
     for (const s of spots) if (rand() < 0.9) this.walkers.push(this.make(s.district, null, s, rand, 0))
-    const max = MAX[quality]
+    const max = NAV.crowd.maxAgents[quality]
     while (this.walkers.length > max) this.walkers.splice(Math.floor(rand() * this.walkers.length), 1)
     const mat = figureMaterial(mats, true)
     for (const role of ROLES) {
@@ -92,7 +97,70 @@ export class Crowd {
       from: path?.work || spot?.pose === 'work' ? 6 + rand() : early ? 5.8 + rand() * 1.6 : 7 + rand() * 3,
       to: district === 'machines' ? 24.5 : 19 + rand() * 3.5,
       breakfast: !spot || spot.pose !== 'work' ? rand() < 0.7 : false,
+      route: [], wp: 0, agent: null,
     }
+  }
+
+  // Authored paths become waypoint intents; recast steers and keeps walkers apart.
+  useNav(nav: DriftNavmesh): void {
+    const walkers = this.walkers.filter((w) => w.path)
+    this.nav = nav.crowd(walkers.length)
+    for (const w of walkers) {
+      w.route = w.path!.pts.flatMap((p) => nav.snap({ x: p.x, y: w.path!.y, z: p.z }) ?? [])
+      w.wp = Math.floor(w.phase * w.route.length) % Math.max(1, w.route.length)
+    }
+  }
+
+  private steer(nav: NavCrowd, w: Walker, out: boolean, dt: number): void {
+    if (!out || w.route.length < 2) {
+      if (w.agent) nav.removeAgent(w.agent)
+      w.agent = null
+      return
+    }
+    if (!w.agent) {
+      const at = w.route[w.wp]!
+      w.agent = nav.addAgent(at, {
+        radius: NAV.agentRadius, height: NAV.agentHeight, maxSpeed: w.speed,
+        maxAcceleration: NAV.crowd.acceleration, separationWeight: NAV.crowd.separation,
+      })
+      w.agent.requestMoveTarget(w.route[w.wp]!)
+    }
+    const p = w.agent.position()
+    const target = w.route[w.wp]!
+    if (Math.hypot(p.x - target.x, p.z - target.z) < NAV.crowd.waypointReach) {
+      const n = w.route.length
+      if (w.path!.loop) w.wp = (w.wp + w.dir + n) % n
+      else {
+        if (w.wp + w.dir < 0 || w.wp + w.dir >= n) w.dir = -w.dir
+        w.wp += w.dir
+      }
+      w.agent.requestMoveTarget(w.route[w.wp]!)
+    }
+    const v = w.agent.velocity()
+    w.x = p.x
+    w.y = p.y
+    w.z = p.z
+    if (Math.hypot(v.x, v.z) > NAV.crowd.faceSpeed) face(w, Math.atan2(v.x, -v.z), dt)
+  }
+
+  private follow(w: Walker, path: PathSpec, dt: number): void {
+    const len = w.len
+    w.s += w.speed * w.dir * dt
+    if (path.loop) w.s = ((w.s % len) + len) % len
+    else if (w.s > len) {
+      w.s = len
+      w.dir = -1
+    } else if (w.s < 0) {
+      w.s = 0
+      w.dir = 1
+    }
+    const prevX = w.x
+    const prevZ = w.z
+    pointAt(path, w.s, _p)
+    w.x = _p.x
+    w.z = _p.z
+    w.y = path.y
+    if (Math.abs(w.x - prevX) + Math.abs(w.z - prevZ) > 1e-4) face(w, Math.atan2(w.x - prevX, -(w.z - prevZ)), dt)
   }
 
   setActive(loaded: ReadonlySet<DistrictId> | null): void {
@@ -127,11 +195,13 @@ export class Crowd {
     const meal = hours >= 7.5 && hours < 8.5
     const slots = new Map<Role, number>()
     for (const r of ROLES) slots.set(r, 0)
+    this.nav?.update(dt)
     for (let i = 0; i < this.walkers.length; i++) {
       const w = this.walkers[i]!
       const h = w.to > 24 && hours < w.to - 24 ? hours + 24 : hours
-      const out = h >= w.from && h < w.to && !(meal && w.breakfast)
-      if (!out || (this.active && !this.active.has(w.district))) continue
+      const out = h >= w.from && h < w.to && !(meal && w.breakfast) && (!this.active || this.active.has(w.district))
+      if (this.nav && w.path) this.steer(this.nav, w, out, dt)
+      if (!out) continue
       const drawn = !this.shown || this.shown.has(w.district)
       let bob = 0
       let lean = 0
@@ -139,28 +209,7 @@ export class Crowd {
       let swing = 0
       let bend = 0
       if (w.path) {
-        const len = w.len
-        w.s += w.speed * w.dir * dt
-        if (w.path.loop) w.s = ((w.s % len) + len) % len
-        else if (w.s > len) {
-          w.s = len
-          w.dir = -1
-        } else if (w.s < 0) {
-          w.s = 0
-          w.dir = 1
-        }
-        const prevX = w.x
-        const prevZ = w.z
-        pointAt(w.path, w.s, _p)
-        w.x = _p.x
-        w.z = _p.z
-        w.y = w.path.y
-        if (Math.abs(w.x - prevX) + Math.abs(w.z - prevZ) > 1e-4) {
-          const target = Math.atan2(w.x - prevX, -(w.z - prevZ))
-          let d = target - w.yaw
-          d = Math.atan2(Math.sin(d), Math.cos(d))
-          w.yaw += d * Math.min(1, dt * 7)
-        }
+        if (!this.nav) this.follow(w, w.path, dt)
         const step = (this.time + w.phase) * w.speed * 5.5
         bob = Math.abs(Math.sin(step)) * (w.kid ? 0.05 : 0.03)
         roll = Math.sin(step) * 0.03
@@ -197,9 +246,15 @@ export class Crowd {
   }
 
   dispose(): void {
+    this.nav?.destroy()
     for (const im of this.meshes.values()) im.geometry.dispose()
     this.group.removeFromParent()
   }
+}
+
+function face(w: Walker, target: number, dt: number): void {
+  const d = Math.atan2(Math.sin(target - w.yaw), Math.cos(target - w.yaw))
+  w.yaw += d * Math.min(1, dt * 7)
 }
 
 function pathLen(p: PathSpec): number {

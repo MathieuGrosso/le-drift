@@ -10,6 +10,8 @@ import { Hulls } from './hulls'
 import { LOCK_OUTSIDE, PORTHOLES, RECT_WINDOWS, partById } from './interiors/layout'
 import { Quarter } from './interiors/quarter'
 import { createMats, type Mats } from './materials'
+import type { DriftNavmesh } from './nav/navmesh'
+import { ladderLink } from './nav/soup'
 import { Npcs } from './npcs'
 import { PAL } from './palette'
 import { registerDriftPoses } from './poses'
@@ -291,6 +293,27 @@ export function createDriftSystem(): System {
     return { all, domes, scellees, trouvailles: of('trouvaille'), couchettes: of('couchette'), etals: of('etal'), tables: of('table-carte') }
   }
 
+  let nav: DriftNavmesh | null = null
+  // Baked once at load from the colliders; the WASM chunk stays out of the main bundle.
+  const bakeNav = async (ctx: GameContext) => {
+    if (!city || !quarter) return
+    const { DriftNavmesh } = await import('./nav/navmesh')
+    const t0 = performance.now()
+    const links = [...city.navLinks(), ...quarter.furniture.ladders.map(ladderLink)]
+    const mesh = await DriftNavmesh.bake(ctx.physics, [...city.navBodies(), ...quarter.navBodies()], links)
+    const ms = performance.now() - t0
+    if (!city) return mesh.dispose()
+    nav = mesh
+    city.useNav(mesh)
+    if (new URLSearchParams(location.search).has('nav')) root.add(mesh.helper())
+    const rooms = Object.entries({ ...SPAWNS, ...EXTRA_SPAWNS }).map(([id, at]) => ({ id, at }))
+    const sites = buildSites().all.map((s) => ({ id: s.id, at: s.local }))
+    const report = mesh.audit(SPAWNS.cabine, [...rooms, ...sites])
+    console.info(`[drift] navmesh ${mesh.polys} polys in ${ms.toFixed(0)} ms; ${report.unreachable.length} unreachable, ${report.offMesh.length} off-mesh of ${report.checked}`)
+    if (report.unreachable.length > 0) console.info('[drift] unreachable from the cabin:', report.unreachable.map((t) => t.id).join(' '))
+    if (report.offMesh.length > 0) console.info('[drift] no floor under:', report.offMesh.map((t) => t.id).join(' '))
+  }
+
   const cycleQuarterLock = (lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void> => {
     const ctx = ctxRef
     if (!quarter || !ctx) return Promise.resolve()
@@ -353,6 +376,7 @@ export function createDriftSystem(): System {
       return y === null ? null : y + pose.position.y
     },
     ceilingAt: (l) => quarter?.ceilingAt(l) ?? city?.ceilingAt(l) ?? null,
+    navmesh: () => nav,
     lockAnchor: (lockId: LockId) => {
       const key = lockId === 'sas-ecluse' ? 'sas' : lockId
       const a = key === 'sas' || key === 'echelle-toit' ? LOCK_ANCHORS[key] : null
@@ -569,6 +593,7 @@ export function createDriftSystem(): System {
 
       registerDriftPoses(ctx, () => pose)
       ctx.services.drift = service
+      bakeNav(ctx).catch((err) => console.error('[drift] navmesh', err))
 
       const loose = ctx.bus as unknown as { on(k: string, fn: (p: never) => void): () => void }
       offs.push(ctx.bus.on('sleep:done', ({ fromHour, toHour }) => {
@@ -651,6 +676,8 @@ export function createDriftSystem(): System {
       quarter?.dispose()
       hulls?.dispose()
       city?.dispose()
+      nav?.dispose()
+      nav = null
       root.removeFromParent()
       if (ctxRef && ctxRef.services.drift === service) delete ctxRef.services.drift
     },

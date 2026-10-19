@@ -119,3 +119,30 @@ export const NET = {
   nameTagMaxDistance: 30,
   saveDebounceMs: 2000,
 } as const
+
+// Recast voxel sizes are metres; walkable* are converted to voxels in drift/nav.
+export const NAV = {
+  cellSize: 0.2,
+  cellHeight: 0.1,
+  tileSize: 64,
+  slopeDeg: 42,
+  agentHeight: 1.7,
+  agentClimb: 0.38,
+  agentRadius: 0.28,
+  maxEdgeLen: 12,
+  simplifyError: 1.3,
+  minRegionArea: 6,
+  mergeRegionArea: 20,
+  linkRadius: 0.6,
+  ladderFoot: 0.5,
+  maxPathPolys: 4096,
+  snapExtent: { x: 1.5, y: 2.5, z: 1.5 },
+  debugColor: 0x3fe0c0,
+  crowd: {
+    maxAgents: { high: 600, medium: 300, low: 120 },
+    acceleration: 6,
+    separation: 1.2,
+    waypointReach: 0.7,
+    faceSpeed: 0.05,
+  },
+} as const

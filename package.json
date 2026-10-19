@@ -13,6 +13,11 @@
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
+    "@recast-navigation/core": "0.43.1",
+    "@recast-navigation/generators": "0.43.1",
+    "@recast-navigation/three": "0.43.1",
+    "n8ao": "1.10.3",
+    "postprocessing": "6.39.5",
     "three": "0.186.1"
   },
   "devDependencies": {

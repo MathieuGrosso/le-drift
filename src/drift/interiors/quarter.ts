@@ -501,6 +501,10 @@ export class Quarter {
     return ceilingAt(p, l.x, l.z)
   }
 
+  navBodies(): RAPIER.RigidBody[] {
+    return [...this.parts.values()].map((p) => p.body)
+  }
+
   swayOf(partId: string): THREE.Matrix4 {
     return this.parts.get(partId)?.sway ?? IDENTITY
   }

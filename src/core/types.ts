@@ -257,6 +257,13 @@ export interface FloraService {
   climbableKelpNear(p: Vec3, r: number): { base: Vec3; height: number }[]
   flatten(p: Vec3, r: number): void
 }
+export interface WalkReport { from: Vec3; checked: number; unreachable: { id: string; at: Vec3 }[]; offMesh: { id: string; at: Vec3 }[] }
+// Walkable surface of the ship in Drift-local coordinates.
+export interface DriftNav {
+  snap(p: Vec3): Vec3 | null
+  path(from: Vec3, to: Vec3): Vec3[]
+  audit(from: Vec3, targets: readonly { id: string; at: Vec3 }[]): WalkReport
+}
 export interface DriftService {
   pose(): { position: Vec3; heading: number; velocity: Vec3 }
   lockPosition(): Vec3
@@ -280,6 +287,7 @@ export interface DriftService {
   openDoor(doorId: string, open: boolean): void
   cycleAirlock(lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void>
   roomCeilingAt(p: Vec3): number | null
+  navmesh(): DriftNav | null
 }
 export interface FaunaService {
   choseDive(target: Vec3, close: boolean): Promise<void>
