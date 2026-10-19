@@ -304,11 +304,12 @@ export const populate: PopulateFn = (plan, shell) => {
     return reserved.some((r) => overlaps(lifted, r)) || solids.some((r) => overlaps(lifted, r))
   }
 
+  let lastDefi: string | null = null
   const nTr = COUNTS.trouvailles[0] + Math.floor(rng() * (COUNTS.trouvailles[1] - COUNTS.trouvailles[0] + 1))
   for (let i = 0; i < nTr; i++) {
     const id = `tr-${plan.id}-${i + 1}`
     const s0 = total * ((i + 0.5 + (rng() - 0.5) * 0.6) / nTr)
-    const order = shuffled(MICRO_DEFIS, rng)
+    const order = shuffled(MICRO_DEFIS, rng).sort((a, b) => Number(a === lastDefi) - Number(b === lastDefi))
     let placed: DefiPlaced | null = null
     let cell = ''
     search: for (const ds of DEFI.shifts) {
@@ -331,6 +332,7 @@ export const populate: PopulateFn = (plan, shell) => {
       }
     }
     if (placed) {
+      lastDefi = placed.defi
       colliders.push(...placed.colliders)
       anchors.push(...placed.anchors)
       reserved.push(placed.bounds)

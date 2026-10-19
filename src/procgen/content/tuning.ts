@@ -25,6 +25,8 @@ export const COUNTS = {
 
 export const SIGHT = { range: 120, cone: Math.cos((32 * Math.PI) / 180), vistaRadius: 3.5, entryMargin: 0, pollEvery: 0.25 } as const
 
+export const EVENTS = { maxClockStep: 0.5 } as const
+
 export const TOUCH = { trouvaille: 1.3, demande: 4, chest: 0.6 } as const
 
 export const RESERVE = { margin: 0.8, trouvaille: 0.6, point: 0.9 } as const

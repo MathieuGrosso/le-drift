@@ -4,7 +4,7 @@ import { toWorld } from '../../drift/frame'
 import type { ProcgenHost } from '../../drift/procgen-hook'
 import type { ContentSet, DistrictPlan, ProcgenEvents } from '../types'
 import { PHARE_KIT, kitDef, kitScale } from './landmarks'
-import { SIGHT, TOUCH } from './tuning'
+import { EVENTS, SIGHT, TOUCH } from './tuning'
 
 const MERVEILLE_RADIUS = 8
 const PHARE_TOP_RADIUS = 4
@@ -82,7 +82,8 @@ export function createDecouvertes(host: ProcgenHost, plans: readonly DistrictPla
         }
       }
       const hour = host.ctx.state.time.hours
-      const crossed = (h: number) => (lastHour <= hour ? h > lastHour && h <= hour : h > lastHour || h <= hour)
+      const step = (hour - lastHour + 24) % 24
+      const crossed = (h: number) => step <= EVENTS.maxClockStep && (h - lastHour + 24) % 24 > 0 && (h - lastHour + 24) % 24 <= step
       for (const set of sets) {
         const plan = byId.get(set.district)
         if (!plan) continue
