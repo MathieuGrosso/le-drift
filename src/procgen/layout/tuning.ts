@@ -67,4 +67,4 @@ export const STREAM = {
   variants: 3,
 }
 
-export const SILHOUETTE = { bulge: 6, color: 0x6f6a78 }
+export const SILHOUETTE = { color: 0x6f6a78, tint: 0.45, valueJitter: 0.12, girth: 0.92, capSegments: 2, radial: 8 }

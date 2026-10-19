@@ -1,33 +1,63 @@
 import * as THREE from 'three'
 import type { Mats } from '../../drift/materials'
-import type { DistrictPlan } from '../types'
+import { ARCHETYPES } from '../archetypes'
+import type { DistrictPlan, HullSpec } from '../types'
 import { SILHOUETTE } from './tuning'
 
-// Far massing: one capsule per district inscribed in its box, hidden once the district is built.
-export function buildSilhouette(plans: readonly DistrictPlan[], mats: Mats): { mesh: THREE.InstancedMesh; hide(i: number, hidden: boolean): void; dispose(): void } {
-  const geo = new THREE.CapsuleGeometry(0.5, 1, 6, 16).rotateX(Math.PI / 2)
-  const mesh = new THREE.InstancedMesh(geo, mats.cel({ color: SILHOUETTE.color, rim: 0.8 }), plans.length)
+export interface Silhouette {
+  mesh: THREE.InstancedMesh
+  hide(i: number, hidden: boolean): void
+  dispose(): void
+}
+
+const UP = new THREE.Vector3(0, 1, 0)
+
+// Far LOD: every district's real hulls as one instanced capsule mesh, hidden per district once built.
+export function buildSilhouette(plans: readonly DistrictPlan[], hullsOf: (plan: DistrictPlan) => readonly HullSpec[], mats: Mats): Silhouette {
+  const lists = plans.map(hullsOf)
+  const total = lists.reduce((s, l) => s + l.length, 0)
+  const geo = new THREE.CapsuleGeometry(0.5, 1, SILHOUETTE.capSegments, SILHOUETTE.radial).rotateX(Math.PI / 2)
+  const mesh = new THREE.InstancedMesh(geo, mats.cel({ color: 0xffffff, rim: 0.8 }), total)
   mesh.name = 'arrondissements-lointains'
+  const ranges: (readonly [start: number, end: number])[] = []
   const shown: THREE.Matrix4[] = []
   const m = new THREE.Matrix4()
-  plans.forEach((p, i) => {
-    const b = p.bounds
-    const w = b.x1 - b.x0 - SILHOUETTE.bulge
-    const h = b.y1 - b.y0 - 2
-    const d = b.z1 - b.z0 - SILHOUETTE.bulge
-    m.compose(new THREE.Vector3((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2), new THREE.Quaternion(), new THREE.Vector3(w, h, d / 2))
-    shown.push(m.clone())
-    mesh.setMatrixAt(i, m)
+  const q = new THREE.Quaternion()
+  const p = new THREE.Vector3()
+  const s = new THREE.Vector3()
+  const base = new THREE.Color(SILHOUETTE.color)
+  const c = new THREE.Color()
+  let k = 0
+  lists.forEach((hulls, i) => {
+    const start = k
+    const tint = new THREE.Color(ARCHETYPES[plans[i]!.archetype].palette.metal)
+    for (const h of hulls) {
+      const top = h.center.y + h.ry
+      const bottom = plans[i]!.bounds.y0
+      m.compose(
+        p.set(h.center.x, (top + bottom) / 2, h.center.z),
+        q.setFromAxisAngle(UP, h.yaw),
+        s.set(h.rx * 2 * SILHOUETTE.girth, top - bottom, h.length / 2),
+      )
+      shown.push(m.clone())
+      mesh.setMatrixAt(k, m)
+      mesh.setColorAt(k, c.copy(base).lerp(tint, SILHOUETTE.tint).offsetHSL(0, 0, ((k * 0.618) % 1 - 0.5) * SILHOUETTE.valueJitter))
+      k++
+    }
+    ranges.push([start, k])
   })
+  mesh.computeBoundingSphere()
   const zero = new THREE.Matrix4().makeScale(0, 0, 0)
   return {
     mesh,
     hide(i, hidden) {
-      mesh.setMatrixAt(i, hidden ? zero : shown[i]!)
+      const [a, b] = ranges[i]!
+      for (let j = a; j < b; j++) mesh.setMatrixAt(j, hidden ? zero : shown[j]!)
       mesh.instanceMatrix.needsUpdate = true
     },
     dispose() {
       mesh.removeFromParent()
+      mesh.dispose()
       geo.dispose()
     },
   }

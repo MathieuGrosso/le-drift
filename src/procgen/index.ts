@@ -4,7 +4,7 @@ import type { DriftAnchor } from '../drift'
 import type { DriftNavmesh, ProcgenCell, ProcgenHost, ProcgenWorld } from '../drift/procgen-hook'
 import { buildContent, buildFarLandmarks, createDecouvertes, populate } from './content'
 import { dress } from './dressing'
-import { buildLayout, layout } from './layout'
+import { buildLayout, layout, massing } from './layout'
 import { buildSilhouette } from './layout/silhouette'
 import { STREAM } from './layout/tuning'
 import { planShip } from './ship'
@@ -58,7 +58,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   const root = new THREE.Group()
   root.name = 'procgen'
   host.root.add(root)
-  const silhouette = buildSilhouette(ship.districts, host.mats)
+  const silhouette = buildSilhouette(ship.districts, (plan) => massing(plan).hulls, host.mats)
   root.add(silhouette.mesh)
   const far = buildFarLandmarks(ship.districts, host.mats)
   root.add(far.group)
