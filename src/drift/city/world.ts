@@ -131,7 +131,7 @@ export const ATELIERS: HallDef = {
     { side: 'e', u: -28, y: 0, w: 3.2, h: 3.2 },
     { side: 'n', u: -100, y: 0, w: 3.2, h: 3.0 },
     { side: 'n', u: -70, y: 0, w: 3.2, h: 3.0 },
-    { side: 'w', u: -32, y: 0, w: 3.2, h: 3.2 },
+    { side: 'w', u: -30, y: 0, w: 3.2, h: 3.2 },
   ],
   railGaps: [
     { side: 'n', y: 6.5, u0: -106.5, u1: -103.5 }, { side: 's', y: 6.5, u0: -106.5, u1: -103.5 },
@@ -159,7 +159,7 @@ export const SCELLEES: HallDef = {
     { side: 'n', u: 66, y: 0, w: 3.2, h: 3.0 },
     { side: 'n', u: 88, y: 0, w: 3.2, h: 3.0 },
     { side: 'n', u: 110, y: 0, w: 3.2, h: 3.0 },
-    { side: 'e', u: -32, y: 0, w: 3.2, h: 3.2 },
+    { side: 'e', u: -30, y: 0, w: 3.2, h: 3.2 },
   ],
   railGaps: [
     { side: 'n', y: 6.5, u0: 64.5, u1: 67.5 }, { side: 's', y: 6.5, u0: 64.5, u1: 67.5 },

@@ -75,6 +75,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   root.add(linksBuilt.group)
   const charted = new Map<string, ChartEntry>()
   let heroSlot: Slot | null = null
+  let arrival: { slot: Slot; left: number } | null = null
   const debug = new URLSearchParams(location.search).has('procgen')
   let camCell: CellSpec | null = null
   let clock = 0
@@ -173,7 +174,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     ranked.forEach(({ s, d }, rank) => {
       const wanted = d < STREAM.buildDist && rank < max
       if (wanted && !s.built && !s.job) s.job = buildJob(s)
-      if (s.built && (d > STREAM.disposeDist || rank >= max + 1)) release(s)
+      if (s.built && s !== arrival?.slot && (d > STREAM.disposeDist || rank >= max + 1)) release(s)
     })
   }
 
@@ -237,6 +238,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     update(dt, heroLocal, camLocal) {
       clock += dt
       hours = ctx.state.time.hours
+      if (arrival && (arrival.left -= dt) <= 0) arrival = null
       if (pendingArr) {
         const slot = slots.find((s) => s.plan.id === pendingArr)!
         pendingArr = null
@@ -313,6 +315,8 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
       if (ctx.state.act < RIDE_ACT) return true
       const at = 'local' in to ? to.local : this.spawn(to.district)
       if (!at) return true
+      const target = 'district' in to ? slots.find((s) => s.plan.id === to.district) : undefined
+      if (target) arrival = { slot: target, left: STREAM.arrivalHold }
       const hero = ctx.services.hero as (typeof ctx.services.hero & { tube?(to: Vec3, yaw: number): Promise<void> }) | undefined
       ;(ctx.bus as unknown as { emit(k: string, p: unknown): void }).emit('tube:travel', { from: id, to: at })
       if (hero?.tube) void hero.tube({ x: at.x, y: at.y, z: at.z }, at.yaw)
