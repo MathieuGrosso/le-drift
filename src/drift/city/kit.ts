@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { ColliderKind, DeckId, DistrictId, DomeId, Vec3 } from '../../core/types'
+import { PROPS } from '../../core/tuning'
 import { GeoBuilder, UNIT } from '../builder'
 import { PAL } from '../palette'
 import { PANNEAUX } from '../text'
@@ -53,6 +54,9 @@ export interface RideSpec {
   yaw: number
   lock?: LockRule
 }
+export type PropModel = 'plante-pot' | 'plante-1' | 'plante-2' | 'plante-3'
+export const PROP_MODELS: readonly PropModel[] = ['plante-pot', 'plante-1', 'plante-2', 'plante-3']
+export interface PropSpec { model: PropModel; x: number; y: number; z: number; yaw: number; height: number }
 export interface PathSpec { district: DistrictId; pts: { x: number; z: number }[]; y: number; loop: boolean; busy: number; work: boolean }
 export interface SpotSpec { district: DistrictId; x: number; y: number; z: number; yaw: number; pose: 'lean' | 'stand' | 'sit' | 'work' | 'talk' }
 export interface DomeSpec { id: DomeId | 'dome-proue'; district: DistrictId; x: number; y: number; z: number; r: number; lunette: Vec3 }
@@ -115,6 +119,7 @@ export class Kit {
   readonly waters: WaterSpec[] = []
   readonly shafts: ShaftSpec[] = []
   readonly trouvailles: TrouvailleSpec[] = []
+  readonly props: PropSpec[] = []
   readonly pistons: PistonSpec[] = []
   readonly kelp: KelpSpec[] = []
   readonly steam: Vec3[] = []
@@ -506,13 +511,7 @@ export class Kit {
   }
 
   plant(x: number, y: number, z: number, s = 1): void {
-    this.b.cyl(x, y + 0.18 * s, z, 0.2 * s, 0.36 * s, C(PAL.rouille, 1.05))
-    const greens = [0x7fa86a, 0x8fbf6a, 0x5e8f5a, 0xb9d98a]
-    for (let i = 0; i < 5; i++) {
-      const a = this.rand() * Math.PI * 2
-      const r = 0.1 + this.rand() * 0.18
-      this.b.sphere(x + Math.cos(a) * r * s, y + (0.45 + this.rand() * 0.3) * s, z + Math.sin(a) * r * s, 0.18 * s, 0.24 * s, 0.18 * s, C(this.pick(greens)))
-    }
+    this.props.push({ model: this.pick(PROP_MODELS), x, y, z, yaw: this.rand() * Math.PI * 2, height: PROPS.plantHeight * s })
   }
 
   table(x: number, y: number, z: number, sx: number, sz: number, h = 0.78, color: number = PAL.bois): void {

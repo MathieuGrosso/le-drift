@@ -10,8 +10,9 @@ import type { DriftNavmesh } from '../nav/navmesh'
 import { ladderLink, type NavLink } from '../nav/soup'
 import { Crowd } from './crowd'
 import { Folk } from './folk'
+import type { PropLight } from './props'
 import { bakeGlow, CITY_UNIFORMS, glowMaterial, LampGrid, lightAt, skyAt, type BakeLamp, type SkyBake } from './glow'
-import type { Anchor, CellDef, DoorSpec, Kit, LadderSpec, LockRule, PlaceSpec, RideSpec, ScelleeSpec, SeatSpec, SignSpec, WaterSpec } from './kit'
+import type { Anchor, PropSpec, CellDef, DoorSpec, Kit, LadderSpec, LockRule, PlaceSpec, RideSpec, ScelleeSpec, SeatSpec, SignSpec, WaterSpec } from './kit'
 import { buildCity, type CityBuild } from './world'
 
 export type { Anchor, CellDef, PlaceSpec, ScelleeSpec } from './kit'
@@ -242,6 +243,7 @@ export class City {
     const allCells: CellDef[] = []
     const lanternIds: string[] = []
     const lanternPos: THREE.Vector3[] = []
+    const propSets: { g: THREE.Group; specs: PropSpec[]; light: PropLight }[] = []
 
     const groupsList: [GroupKey, Kit][] = [...this.build.kits.entries(), ['liens', this.build.links]]
     for (const [id, k] of groupsList) {
@@ -264,6 +266,7 @@ export class City {
         return mesh
       }
       add(k.b, glow, 'structure', true)
+      if (k.props.length > 0) propSets.push({ g, specs: k.props, light: { near: grid.near, base, sky } })
       add(k.cloth, glow2, 'tissus', true)
       add(k.e, emissive, 'lumieres', false)
       const shell = [add(k.shell, glow, 'enveloppe', true), add(k.skin, skinMat, 'peau', false), add(k.shellE, emissive, 'enveloppe-lum', false)]
@@ -320,6 +323,13 @@ export class City {
       this.portals.push(...k.portals)
     }
     this.cells = allCells.sort((a, b) => vol(a) - vol(b))
+    import('./props')
+      .then(async ({ loadProps, propMeshes }) => {
+        const geos = await loadProps()
+        if (this.districts.size === 0) return
+        for (const s of propSets) s.g.add(...propMeshes(s.specs, geos, glow, s.light))
+      })
+      .catch((err) => console.error('[drift] props', err))
 
     if (lanternIds.length > 0) {
       const geo = new THREE.SphereGeometry(0.55, 14, 10)

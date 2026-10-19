@@ -151,3 +151,6 @@ export const NAV = {
     faceSpeed: 0.05,
   },
 } as const
+
+// Kenney plants: height per unit of kit.plant scale; light sampled at this fraction of the height.
+export const PROPS = { plantHeight: 0.85, lightProbe: 0.6 } as const
