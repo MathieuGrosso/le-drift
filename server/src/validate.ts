@@ -50,6 +50,8 @@ export const clientMessages = {
   sit: z.object({ seatId: id(48).nullable() }),
   talk: z.object({ npcId: id(LIMITS.npcIdMax), text: text(LIMITS.chatMax).nullable() }),
   scrub: z.object({ windowId: id(LIMITS.windowIdMax), amount: z.number().min(0).max(1) }),
-  save: z.object({ save: playerSave }),
+  save: z.object({
+    save: playerSave.refine((s) => Buffer.byteLength(JSON.stringify(s)) <= LIMITS.saveBytesMax, 'sauvegarde trop lourde'),
+  }),
   profile,
 } satisfies { [K in keyof ClientMessages]: z.ZodType<ClientMessages[K]> }

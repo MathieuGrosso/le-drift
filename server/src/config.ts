@@ -8,10 +8,21 @@ function int(name: string, fallback: number): number {
 export const CONFIG = {
   port: int('PORT', DEFAULT_PORT),
   dataDir: process.env.DRIFT_DATA_DIR ?? new URL('../data/', import.meta.url).pathname,
+  flushMs: int('FLUSH_MS', 10_000),
   npcModel: process.env.NPC_MODEL ?? 'claude-opus-5-5',
   npcDailyTokens: int('NPC_DAILY_TOKENS', 200_000),
   npcTickMinMs: int('NPC_TICK_MIN_MS', 120_000),
   npcTickMaxMs: int('NPC_TICK_MAX_MS', 300_000),
   npcCallsPerMinute: int('NPC_CALLS_PER_MINUTE', 6),
-  patchRateMs: int('PATCH_RATE_MS', 80),
+} as const
+
+/** Server-side guards; not env-tunable on purpose. */
+export const GUARDS = {
+  chatWindowMs: 10_000,
+  invalidStrikesPerMinute: 20,
+  // Fastest legit traversal is a zip line or a tube slide; anything above is a teleport.
+  moveSpeedMax: 14,
+  teleportCooldownMs: 3_000,
+  moveMarginM: 25,
+  windowsMax: 12_000,
 } as const
