@@ -287,6 +287,7 @@ export function createHeroSystem(): System {
       ctrl = new HeroController(ctx)
       const f = fader
       ctrl.setFader((mid) => f.through(mid, 450))
+      ctrl.setTeleporter((p, yaw) => service.teleport(p, yaw))
       ctrl.loadFromState()
       cam = new HeroCamera(ctx)
       cam.snapBehind(ctrl.yaw)
@@ -322,7 +323,7 @@ export function createHeroSystem(): System {
       unsubs.push(ctx.bus.on('debug:pose', ({ name }) => {
         portrait = name === 'art-ilo'
       }))
-      if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __hero?: HeroServiceExt }).__hero = service
+      if (new URLSearchParams(location.search).has('debug')) Object.assign(window as unknown as Record<string, unknown>, { __hero: service, __heroCtrl: ctrl, __heroCam: cam })
     },
 
     update(dt, ctx) {

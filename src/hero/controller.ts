@@ -10,7 +10,7 @@ import type { CameraStyle } from './camera'
 export type PublicMode = HeroMode | 'run' | 'jump' | 'land' | 'zip' | 'tube' | 'slide' | 'carry'
 
 const T = {
-  sprint: 5.5,
+  sprint: 6.1,
   sprintCost: 0.1,
   jumpHeight: 1.2,
   carryJump: 0.5,
@@ -55,6 +55,10 @@ const CAP_HALF = 0.5
 const CAP_R = 0.3
 const CAP_CENTER = CAP_HALF + CAP_R
 const CHEST = 1.15
+const STICK_DOWN = 0.55
+const LADDER_EXITS: readonly [number, number][] = [
+  [-0.6, 0], [-0.9, 0], [-1.3, 0], [0.8, 0], [1.1, 0], [0, 0.8], [0, -0.8], [0.7, 0.8], [0.7, -0.8], [-0.6, 0.8], [-0.6, -0.8], [0, 1.2], [0, -1.2],
+]
 const SEAT_DROP = 0.43
 const WALK_WATER_SLOPE = 50 * (Math.PI / 180)
 const STEP_SURFACE: Partial<Record<ColliderKind, 'sable' | 'bois' | 'metal' | 'tapis'>> = {
@@ -76,7 +80,7 @@ type Activity =
   | { kind: 'sit'; seatId: string; anchor: THREE.Vector3; yaw: number; stage: 'approach' | 'down' | 'sit' | 'up'; t: number; standAt: THREE.Vector3 }
   | { kind: 'lean'; target: THREE.Vector3; stage: 'in' | 'lean' | 'up'; t: number }
   | { kind: 'sleep'; stage: 'down' | 'sleep' | 'up'; t: number; bed: Vec3 | null; bedYaw: number; from: THREE.Vector3 }
-  | { kind: 'ladder'; a: LadderA; s: number; topT: number; mountT: number }
+  | { kind: 'ladder'; a: LadderA; s: number; topT: number; mountT: number; from: THREE.Vector3; exit: THREE.Vector3 }
   | { kind: 'zip'; a: ZipA; s: number; v: number; dir: 1 | -1; swing: number; swingV: number; lastV: number }
   | { kind: 'slide'; a: SlideA; cum: number[]; d: number; v: number; off: number; lastYaw: number }
   | { kind: 'tube'; stage: 'in' | 'out'; t: number }
@@ -176,6 +180,10 @@ export class HeroController {
   private lastSafeT = 0
   private lastSafeLocal: Vec3 | null = null
   private stuckT = 0
+  private airStuckT = 0
+  private climbBlockedT = 0
+  private jumpCut = true
+  private lastAirY = 0
   private tautEmitted = false
   private pullT = 0
   private reeling: (() => void) | null = null
@@ -198,6 +206,8 @@ export class HeroController {
   private near: HeroAnchor[] = []
   private stepCb: (left: boolean) => void = () => undefined
   private fader: ((mid: () => void) => Promise<void>) | null = null
+  private teleporter: ((p: Vec3, yaw: number) => void) | null = null
+  private noWallT = 0
   private unsubs: (() => void)[] = []
 
   constructor(private ctx: GameContext) {
@@ -240,6 +250,10 @@ export class HeroController {
 
   onStep(cb: (left: boolean) => void): void {
     this.stepCb = cb
+  }
+
+  setTeleporter(f: (p: Vec3, yaw: number) => void): void {
+    this.teleporter = f
   }
 
   setFader(f: (mid: () => void) => Promise<void>): void {
@@ -421,13 +435,34 @@ export class HeroController {
       const drift = this.ctx.services.drift
       if (drift) {
         const heading = drift.pose().heading
-        this.teleport(drift.toWorld(toLocal), yaw + heading)
+        const to = drift.toWorld(toLocal)
+        if (this.teleporter) this.teleporter(to, yaw + heading)
+        else this.teleport(to, yaw + heading)
+        this.unstick(forward(this.yaw, this.tmp3))
+        this.stepOut(1.3)
       }
       this.activity = { kind: 'tube', stage: 'out', t: 0 }
       this.publish('tube')
     }
     if (this.fader) await this.fader(go)
     else go()
+  }
+
+  private stepOut(dist: number): void {
+    const f = forward(this.yaw, this.tmp3)
+    for (let d = dist; d > 0.2; d -= 0.3) {
+      const x = this.pos.x + f.x * d
+      const z = this.pos.z + f.z * d
+      const hit = this.ctx.physics.raycast({ x, y: this.pos.y + 0.6, z }, { x: 0, y: -1, z: 0 }, 1.2, { excludeKinds: [...IGNORE] })
+      if (!hit || hit.normal.y < 0.7 || Math.abs(hit.point.y - this.pos.y) > 0.3) continue
+      if (this.overlaps(x, hit.point.y + 0.02, z)) continue
+      const wall = this.castFwd({ x: this.pos.x, y: this.pos.y + CHEST, z: this.pos.z }, f, d + CAP_R)
+      if (wall) continue
+      this.pos.set(x, hit.point.y + 0.02, z)
+      this.syncLocal()
+      this.ctx.services.hero?.teleport({ x: this.pos.x, y: this.pos.y, z: this.pos.z }, this.yaw)
+      return
+    }
   }
 
   clipRing(id: string): boolean {
@@ -464,6 +499,7 @@ export class HeroController {
     this.climbJumpT += dt
     this.jumpT += dt
     this.skidT = Math.max(0, this.skidT - dt)
+    this.noWallT = Math.max(0, this.noWallT - dt)
     const prevYaw = this.yaw
     this.prevVel.copy(this.vel)
 
@@ -499,7 +535,7 @@ export class HeroController {
     else if (this.lock === 'cutscene' && this.activity.kind === 'none') this.updateCutscene(dt)
     else if (this.activity.kind !== 'none' && this.updateActivity(dt, wishLen, locked)) { /* handled */ }
     else if (this.medium === 'air') this.updateAir(dt, wishLen, locked)
-    else this.updateWater(dt, wishLen, locked, my, camPitch)
+    else this.updateWater(dt, wishLen, locked)
 
     this.yawRate = angleDiff(prevYaw, this.yaw) / Math.max(dt, 1e-4)
     if ((out.style as CameraStyle) !== 'slide') out.bank += (THREE.MathUtils.clamp(-this.yawRate * 0.22, -0.7, 0.7) - out.bank) * Math.min(1, dt * 5)
@@ -685,7 +721,7 @@ export class HeroController {
     this.tautEmitted = true
   }
 
-  private updateWater(dt: number, wishLen: number, locked: boolean, my: number, camPitch: number): void {
+  private updateWater(dt: number, wishLen: number, locked: boolean): void {
     const ctx = this.ctx
     const input = ctx.input
     const out = this.out
@@ -731,7 +767,6 @@ export class HeroController {
     let targetVy = 0
     if (!locked && input.down('up')) targetVy = T.swimVertical
     if (!locked && input.down('down')) targetVy = -T.swimVertical
-    if (my > 0.1 && targetVy === 0) targetVy = -Math.sin(camPitch) * 0.7 * speed
     this.vel.y += (targetVy - this.vel.y) * Math.min(1, 3 * dt)
     if (!locked && input.pressed('up') && this.wallAhead(0.8) && this.canAct()) {
       this.startClimb()
@@ -781,7 +816,7 @@ export class HeroController {
         this.vel.x = (hx / cur) * ns
         this.vel.z = (hz / cur) * ns
       }
-      if (ns < 0.4 && len > 1e-4) this.yaw = yawOf(this.wish.x, this.wish.z)
+      if (len > 1e-4) this.yaw += angleDiff(this.yaw, yawOf(this.wish.x, this.wish.z)) * Math.min(1, dt * (ns < 1.5 ? 18 : 6))
       return
     }
     if (target < 0.05 || len < 1e-4) {
@@ -950,7 +985,19 @@ export class HeroController {
     const gap = hit.distance - (CAP_R + 0.05)
     delta.addScaledVector(n, -gap)
     this.freeKcc()
+    const bx = this.pos.x, by = this.pos.y, bz = this.pos.z
     this.moveRaw(delta)
+    const want = delta.length()
+    if (want > 1e-3 && Math.hypot(this.pos.x - bx, this.pos.y - by, this.pos.z - bz) < want * 0.2) {
+      this.unstick(n)
+      this.climbBlockedT += dt
+      if (this.climbBlockedT > 0.35) {
+        this.climbBlockedT = 0
+        if (this.findLedge(n, 2.4) !== null) this.beginMantle()
+        else this.letGo(0.6)
+        return
+      }
+    } else this.climbBlockedT = 0
     if (this.grounded && my < -0.3 && n.y < 0.5 && !water) {
       this.climbing = false
       this.publish('idle')
@@ -1058,10 +1105,11 @@ export class HeroController {
       this.apexY = this.pos.y
       if (wishLen > 0.3 && this.tryLadder()) return
       if (this.trySlideEntry()) return
-      if (wishLen > 0.3 && !this.carrying && this.tryWall(dt)) return
+      if (wishLen > 0.3 && !this.carrying && this.noWallT <= 0 && this.tryWall(dt)) return
       let target = wishLen < 0.6 ? INDOOR.walk * (wishLen / 0.6) : THREE.MathUtils.lerp(INDOOR.walk, INDOOR.run, (wishLen - 0.6) / 0.4)
       sprint = !locked && input.down('sprint') && wishLen > 0.3 && !exhausted && !this.carrying
-      if (sprint && this.drain(T.sprintCost, dt)) target = T.sprint * wishLen
+      const pushing = Math.hypot(this.vel.x, this.vel.z) < 1.2 && this.hitWall
+      if (sprint && (pushing || this.drain(T.sprintCost, dt))) target = T.sprint * wishLen
       else sprint = false
       if (this.carrying) target *= 0.7
       if (exhausted) target = Math.min(target, INDOOR.walk * 0.8)
@@ -1080,7 +1128,8 @@ export class HeroController {
       if (this.gliding) this.updateGlide(dt)
       else {
         const held = !locked && input.down('up')
-        const gMul = this.vel.y > 0 ? (held || this.jumpT > 0.6 ? T.riseGravity : T.cutGravity) : T.fallGravity
+        if (!held && this.jumpT < 0.16) this.jumpCut = true
+        const gMul = this.vel.y > 0 ? (this.jumpCut ? T.cutGravity : T.riseGravity) : T.fallGravity
         this.vel.addScaledVector(this.gravity, dt * gMul)
         const h = Math.hypot(this.vel.x, this.vel.z)
         const len = this.wish.length()
@@ -1097,7 +1146,9 @@ export class HeroController {
       if (!this.carrying && wishLen > 0.2 && this.tryAirGrab()) return
     }
     const prevY = this.pos.y
+    const wasOnGround = this.grounded
     this.moveKcc(dt, this.vel.y > 0.1 ? 0 : INDOOR.stepHeight)
+    if (!this.grounded && wasOnGround && this.vel.y <= 0.1 && this.jumpT > 0.25) this.stickToGround()
     this.vyF += ((this.pos.y - prevY) / Math.max(dt, 1e-4) - this.vyF) * Math.min(1, dt * 5)
     const h = Math.hypot(this.vel.x, this.vel.z)
     out.speed = h
@@ -1151,6 +1202,7 @@ export class HeroController {
     this.coyote = 0
     this.jumpBuffer = 0
     this.jumpT = 0
+    this.jumpCut = false
     this.skidT = 0
     this.apexY = this.pos.y
   }
@@ -1262,7 +1314,7 @@ export class HeroController {
     const len = Math.max(0.1, a.top.y - a.bottom.y)
     const local = this.localNow()
     const start = s ?? THREE.MathUtils.clamp((local.y - a.bottom.y) / len, 0, 1)
-    this.activity = { kind: 'ladder', a, s: Math.min(start, 0.98), topT: -1, mountT: s !== undefined && s > 0.9 ? 0.5 : 0 }
+    this.activity = { kind: 'ladder', a, s: Math.min(start, 0.98), topT: -1, mountT: s !== undefined && s > 0.9 ? 0.5 : 0, from: new THREE.Vector3(), exit: new THREE.Vector3() }
     this.vel.set(0, 0, 0)
     this.climbing = false
     this.gliding = false
@@ -1281,15 +1333,21 @@ export class HeroController {
     this.out.style = 'ladder'
     if (a.topT >= 0) {
       a.topT += dt
-      const k = Math.min(1, a.topT / 0.9)
-      const from = top.clone().addScaledVector(n, 0.35)
-      const over = top.clone().addScaledVector(n, -0.55)
-      this.pos.lerpVectors(from, over, k * k)
-      this.pos.y = top.y + Math.sin(k * Math.PI) * 0.15
+      const k = Math.min(1, a.topT / 0.75)
+      const s = k * k * (3 - 2 * k)
+      this.pos.lerpVectors(a.from, a.exit, s)
+      this.pos.y = THREE.MathUtils.lerp(a.from.y, a.exit.y, Math.min(1, k * 1.6)) + Math.sin(k * Math.PI) * 0.12
+      const dx = a.exit.x - a.from.x
+      const dz = a.exit.z - a.from.z
+      if (dx * dx + dz * dz > 0.04) this.yaw += angleDiff(this.yaw, yawOf(dx, dz)) * Math.min(1, dt * 10)
       this.clip('ladder-top', 0.1)
       if (k >= 1) {
         this.activity = { kind: 'none' }
+        this.noWallT = 0.8
         this.apexY = this.pos.y
+        this.grounded = true
+        this.wasGrounded = true
+        this.vel.set(0, 0, 0)
         this.publish('idle')
       }
       this.syncLocal()
@@ -1304,16 +1362,22 @@ export class HeroController {
       this.activity = { kind: 'none' }
       this.vel.copy(n).multiplyScalar(0.8)
       this.apexY = this.pos.y
+      this.pos.addScaledVector(n, 0.1)
+      this.unstick(n)
       this.publish('fall')
       return true
     }
-    if (!locked && input.pressed('up') && a.s < 0.97) {
+    const atTop = a.s >= 0.999
+    if (!locked && input.pressed('up') && !(atTop && this.ladderExit(a, top, n))) {
       this.activity = { kind: 'none' }
-      this.vel.copy(n).multiplyScalar(2.6)
-      this.vel.y = 3.4
+      const head = this.ctx.physics.raycast({ x: this.pos.x, y: this.pos.y + 1.6, z: this.pos.z }, { x: 0, y: 1, z: 0 }, 1.2, { excludeKinds: [...IGNORE] })
+      this.vel.copy(n).multiplyScalar(head ? 3.2 : 2.6)
+      this.vel.y = head ? Math.min(3.4, Math.sqrt(2 * 9.81 * T.riseGravity * Math.max(0.05, head.distance - 0.3))) : 3.4
       this.yaw = yawOf(n.x, n.z)
       this.jumpT = 0
       this.apexY = this.pos.y
+      this.pos.addScaledVector(n, 0.12)
+      this.unstick(n)
       this.publish('jump')
       return true
     }
@@ -1324,7 +1388,7 @@ export class HeroController {
     this.phase += (Math.abs(sliding ? 0 : my) * speed * dt) / 0.7
     if (a.s >= 1) {
       a.s = 1
-      if (my > 0.2 || (!locked && input.pressed('up'))) a.topT = 0
+      if (my > 0.2) this.ladderExit(a, top, n)
     }
     if (a.s <= 0) {
       a.s = 0
@@ -1340,6 +1404,24 @@ export class HeroController {
     this.publish('ladder')
     this.clip(sliding ? 'ladder-slide' : 'ladder', sliding ? 0.08 : 0.2)
     return true
+  }
+
+  private ladderExit(a: Extract<Activity, { kind: 'ladder' }>, top: THREE.Vector3, n: THREE.Vector3): boolean {
+    const rx = n.z
+    const rz = -n.x
+    const phys = this.ctx.physics
+    for (const [fa, fb] of LADDER_EXITS) {
+      const x = top.x + n.x * fa + rx * fb
+      const z = top.z + n.z * fa + rz * fb
+      const hit = phys.raycast({ x, y: top.y + 1.4, z }, { x: 0, y: -1, z: 0 }, 2.4, { excludeKinds: [...IGNORE] })
+      if (!hit || hit.normal.y < 0.7 || Math.abs(hit.point.y - top.y) > 0.7) continue
+      if (this.overlaps(x, hit.point.y + 0.03, z)) continue
+      a.from.copy(this.pos)
+      a.exit.set(x, hit.point.y + 0.02, z)
+      a.topT = 0
+      return true
+    }
+    return false
   }
 
   private tryZipCatch(holdingUp: boolean): boolean {
@@ -1825,6 +1907,56 @@ export class HeroController {
     }
   }
 
+  private stickToGround(): void {
+    const hit = this.ctx.physics.raycast({ x: this.pos.x, y: this.pos.y + 0.2, z: this.pos.z }, { x: 0, y: -1, z: 0 }, 0.2 + STICK_DOWN, { excludeKinds: [...IGNORE] })
+    if (!hit || hit.normal.y < 0.7) return
+    this.pos.y = hit.point.y + 0.005
+    this.vel.y = 0
+    this.grounded = true
+    this.wasGrounded = true
+    this.coyote = T.coyote
+    this.probeGround()
+  }
+
+  private overlaps(x: number, y: number, z: number): boolean {
+    const phys = this.ctx.physics
+    const R = phys.rapier
+    this.capShape ??= new R.Capsule(CAP_HALF, CAP_R * 0.92)
+    let hit = false
+    phys.world.intersectionsWithShape(
+      { x, y: y + CAP_CENTER + 0.02, z }, { x: 0, y: 0, z: 0, w: 1 }, this.capShape,
+      () => {
+        hit = true
+        return false
+      },
+      R.QueryFilterFlags.EXCLUDE_SENSORS, undefined, this.collider, undefined, this.filter,
+    )
+    return hit
+  }
+  private capShape: RAPIER.Capsule | null = null
+
+  private unstick(prefer?: THREE.Vector3): boolean {
+    if (!this.overlaps(this.pos.x, this.pos.y, this.pos.z)) return false
+    const dirs: [number, number, number][] = []
+    if (prefer) dirs.push([prefer.x, 0, prefer.z])
+    for (let a = 0; a < 8; a++) dirs.push([Math.cos((a * Math.PI) / 4), 0, Math.sin((a * Math.PI) / 4)])
+    dirs.push([0, 1, 0], [0, -1, 0])
+    for (const r of [0.15, 0.3, 0.5, 0.75]) {
+      for (const [dx, dy, dz] of dirs) {
+        const l = Math.hypot(dx, dy, dz) || 1
+        const x = this.pos.x + (dx / l) * r
+        const y = this.pos.y + (dy / l) * r
+        const z = this.pos.z + (dz / l) * r
+        if (!this.overlaps(x, y, z)) {
+          this.pos.set(x, y, z)
+          this.syncLocal()
+          return true
+        }
+      }
+    }
+    return false
+  }
+
   private liftOutOfFloor(): void {
     const hit = this.ctx.physics.raycast({ x: this.pos.x, y: this.pos.y + 0.45, z: this.pos.z }, { x: 0, y: -1, z: 0 }, 0.5, { excludeKinds: [...IGNORE] })
     if (hit && hit.normal.y > 0.7 && hit.point.y > this.pos.y + 0.003) this.pos.y = hit.point.y + 0.01
@@ -1969,6 +2101,23 @@ export class HeroController {
         s.hero.lastSafe = { x: this.pos.x, y: this.pos.y, z: this.pos.z }
       }
     }
+    if (this.medium === 'air' && free && !this.grounded && this.vel.y < -1) {
+      this.airStuckT = Math.abs(this.pos.y - this.lastAirY) < 0.004 ? this.airStuckT + dt : 0
+      this.lastAirY = this.pos.y
+      if (this.airStuckT > 0.2) {
+        this.airStuckT = 0
+        if (!this.unstick()) {
+          const f = forward(this.yaw, this.tmp2)
+          for (const r of [0.2, 0.4]) {
+            if (!this.overlaps(this.pos.x - f.x * r, this.pos.y - 0.1, this.pos.z - f.z * r)) {
+              this.pos.set(this.pos.x - f.x * r, this.pos.y - 0.1, this.pos.z - f.z * r)
+              break
+            }
+          }
+          this.syncLocal()
+        }
+      }
+    } else this.airStuckT = 0
     if (this.medium === 'air' && free && this.grounded) {
       const trying = Math.hypot(ctx.input.move.x, ctx.input.move.y) > 0.5
       const moved = Math.hypot(this.vel.x, this.vel.z)
