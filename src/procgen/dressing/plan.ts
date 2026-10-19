@@ -207,14 +207,16 @@ export class Dresser {
   }
 }
 
+// Layout's convention: yaw turns +z into the room (v), sol and plafond slots are anchored at their centre.
 function frameOf(slot: DressSlot, d: Dresser): Frame {
   const c = Math.cos(slot.yaw)
   const s = Math.sin(slot.yaw)
+  const back = slot.kind === 'sol' || slot.kind === 'plafond' ? slot.d / 2 : 0
   return {
     slot,
     d,
-    at: (u, v, y = 0) => ({ x: slot.at.x + c * u + s * v, y: slot.at.y + y, z: slot.at.z + s * u - c * v }),
-    rot: (local = 0) => Math.PI - slot.yaw + local,
+    at: (u, v, y = 0) => ({ x: slot.at.x + c * u + s * (v - back), y: slot.at.y + y, z: slot.at.z - s * u + c * (v - back) }),
+    rot: (local = 0) => slot.yaw + local,
   }
 }
 
