@@ -57,7 +57,8 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
 #ifdef CEL_INDOOR
   float overhead = smoothstep(0.2, 0.55, -N.y) * smoothstep(1.7, 2.3, W.y - rdHeroPos.y);
   if (overhead > 0.0 && dot(vRdLN, vRdLN) > 1e-6) albedo = mix(albedo, rd_vault(albedo, vRdL, normalize(vRdLN)), overhead);
-  albedo = mix(albedo, rd_paintWall(albedo, W, N), smoothstep(0.75, 0.9, length(N.xz)));
+  float wallK = smoothstep(0.75, 0.9, length(N.xz));
+  if (wallK > 0.0) albedo = mix(albedo, rd_paintWall(albedo, W, N), wallK);
   float floorUp = smoothstep(0.75, 0.95, N.y);
   albedo = mix(albedo, albedo * vec3(1.07, 1.0, 0.86), floorUp * 0.75);
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
@@ -75,7 +76,8 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     if (lp.w <= 0.0) continue;
     vec3 tl = lp.xyz - W;
     float d = length(tl);
-    float x = clamp(d / lp.w, 0.0, 1.0);
+    if (d >= lp.w) continue;
+    float x = d / lp.w;
     float att = (1.0 - x * x);
     att *= att;
     att /= 1.0 + x * x * 5.0 + d * d * 0.03;
