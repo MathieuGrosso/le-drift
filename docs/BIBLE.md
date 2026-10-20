@@ -782,7 +782,7 @@ and the Grande Vitre's canopy.
 | Se déplacer | ZQSD / WASD (same physical keys) | Stick gauche |
 | Caméra | Souris (pointer lock on click) | Stick droit |
 | Sauter / s'agripper / monter | Espace | A |
-| Lâcher / s'accroupir / descendre | Ctrl | B |
+| Lâcher / s'accroupir / descendre | C | B |
 | Courir | Maj | LT |
 | Interagir / parler / tyrolienne / tube | E | X |
 | Frotter | F | Y |
@@ -800,7 +800,7 @@ and the Grande Vitre's canopy.
 | Step (autostep) / max slope | 0.35 m / 40° |
 | Climb | 1.2 m/s, 0.08/s moving, 0.02/s hanging; climb jump 1.8 m for 0.18 |
 | Ladder | 1.6 m/s, free (no endurance) |
-| Zip line | 9 m/s down the slope, 0.03/s hanging; Ctrl lets go |
+| Zip line | 9 m/s down the slope, 0.03/s hanging; C lets go |
 | Toile (from a zip end or a ledge) | 5 m/s forward, fall 1.2 m/s, 0.04/s; rises in steam |
 | Tube pneumatique | 3 s ride, any unlocked station |
 | Fall | ≤ 4 m: land; 4-8 m: roll, −0.2; > 8 m: no gap may allow it without a net below |
@@ -810,7 +810,7 @@ and the Grande Vitre's canopy.
 | Sortie (outside) | Value |
 |---|---|
 | Swim / sprint | 3.0 / 5.0 m/s (sprint 0.12/s) |
-| Up / down | Espace / Ctrl, 2.0 m/s |
+| Up / down | Espace / C, 2.0 m/s |
 | Hull climb | 1.4 m/s, 0.06/s |
 | Longe | 35 m, re-clip at rings; taut = held; « Rentrer » (hold E 1 s) reels at 4 m/s |
 | Scrub | F held, 0.05/s endurance |

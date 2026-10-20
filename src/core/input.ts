@@ -7,7 +7,7 @@ const ACTIONS: readonly ButtonAction[] = [
 
 const KEY_BINDINGS: Record<ButtonAction, readonly string[]> = {
   up: ['Space'],
-  down: ['ControlLeft', 'ControlRight'],
+  down: ['KeyC'],
   sprint: ['ShiftLeft', 'ShiftRight'],
   interact: ['KeyE'],
   scrub: ['KeyF'],
@@ -40,7 +40,7 @@ const PAD_LABELS: Record<ButtonAction, string> = {
 }
 
 const FIXED_KEY_LABELS: Record<string, string> = {
-  Space: 'Espace', ControlLeft: 'Ctrl', ControlRight: 'Ctrl', ShiftLeft: 'Maj', ShiftRight: 'Maj',
+  Space: 'Espace', ShiftLeft: 'Maj', ShiftRight: 'Maj',
   Tab: 'Tab', Escape: 'Échap',
 }
 

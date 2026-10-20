@@ -15,7 +15,7 @@ Corriger d'abord le premier contact et la boucle vitre ; l'émotion (fin, Ondine
 3. **Le frottement devient un geste** — drift · L — Masque peint sous la brosse, Ilo plaqué contre le verre, paillettes de crasse et visages qui apparaissent : c'est le verbe central, aujourd'hui on tient F à 3 m.
 4. **Les vitres propres montrent une mer vivante** — world · L — La Grande Vitre et les vigies ne sont qu'un aplat cyan, donc nettoyer ne rapporte rien à voir.
 5. **La Chose plonge dans le champ** — gameplay · M — Elle passe à 74° de l'axe pour un champ de 55°, avec un décalage en repère monde : le « waouh » central est raté si la souris ne bouge pas.
-6. **Objectif, invites et commandes lisibles** — gameplay · S — L'objectif s'efface, l'invite de quête perd contre « Parler » ou « Prendre », rien n'apprend à bouger ou regarder, et Ctrl+W en nage ferme l'onglet.
+6. **Objectif, invites et commandes lisibles** — gameplay · S — L'objectif s'efface, l'invite de quête perd contre « Parler » ou « Prendre » et rien n'apprend à bouger ou regarder.
 
 ## Ça ferait la différence
 
