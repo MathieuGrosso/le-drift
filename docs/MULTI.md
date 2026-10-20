@@ -116,11 +116,11 @@ Emotes, seats, saves, profile changes and new window ids have per-player windows
 | Module | Role |
 |---|---|
 | `index.ts` | boot: store, brains, `defineServer` with `monde` + `quartier`, periodic flush, shutdown flush |
-| `config.ts` | env: `PORT` (8787), `DRIFT_DATA_DIR` (`server/data/`), `NPC_MODEL`, `NPC_DAILY_TOKENS`, tick and rate limits |
+| `config.ts` | env: `PORT` (8787), `DRIFT_STORE` (`json`), `DRIFT_DATA_DIR` (`server/data/`), `NPC_MODEL`, `NPC_DAILY_TOKENS`, tick and rate limits |
 | `state.ts` | Colyseus schemas (`schema()` + `t`) |
 | `validate.ts` | zod schemas, each checked against the protocol type with `satisfies` |
 | `identity.ts` | first join claims the uuid; later joins must present the same secret (sha-256, constant-time compare) |
-| `persist.ts` | JSON store: `players.json` (profile, secret hash, `PlayerSave`), `world.json` (epoch, windows, NPC memories, token budget); atomic writes |
+| `persist/` | `PersistencePort` (`port.ts`), the write-behind `Store` the rooms read synchronously (`store.ts`), the JSON adapter (`json.ts`: `players.json` with profile, secret hash, `PlayerSave`; `world.json` with epoch, windows, NPC memories, token budget; atomic writes), the adapter picked by `DRIFT_STORE` (`index.ts`) |
 | `clock.ts` | shared clock from `TIME` |
 | `rooms/monde.ts`, `rooms/quartier.ts` | handlers above |
 | `npc/brain.ts` | contracts: `NpcSheet`, `NpcTrigger`, `NpcBrains`, `DecideFn` |
@@ -129,8 +129,8 @@ Emotes, seats, saves, profile changes and new window ids have per-player windows
 | `npc/budget.ts` | daily token budget + calls per minute |
 | `npc/index.ts` | `createBrains()`: Claude brains when credentials resolve, `createScriptedBrains()` otherwise or with `NPC_BRAINS=scripted`; the boot logs which |
 
-Persistence is JSON on purpose (tens of players, a few kB each). If it grows: `node:sqlite`, same
-`Store` interface. `server/data/` is gitignored.
+Persistence is JSON by default (tens of players, a few kB each); another backend is one more adapter behind
+`PersistencePort`, Supabase is specified in `docs/SUPABASE.md`. `server/data/` is gitignored.
 
 ## 5. Client modules (`src/net`)
 
