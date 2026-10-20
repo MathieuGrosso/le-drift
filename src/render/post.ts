@@ -166,9 +166,10 @@ export function createPost(
   })
   const ao = new N8AOPostPass(scene, mainCamera, 1, 1)
   ao.setDepthTexture(depthTex)
+  ao.autoDetectTransparency = false
   Object.assign(ao.configuration, {
     aoRadius: POST.ao.radius, distanceFalloff: POST.ao.falloff, halfRes: true, depthAwareUpsampling: true,
-    gammaCorrection: false, screenSpaceRadius: false, colorMultiply: true,
+    gammaCorrection: false, screenSpaceRadius: false, colorMultiply: true, transparencyAware: false,
   })
   const aoTint = new THREE.Color()
   const seaShadow = new THREE.Color(PALETTE.rocheOmbre)

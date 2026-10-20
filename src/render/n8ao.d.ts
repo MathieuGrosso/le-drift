@@ -15,12 +15,14 @@ declare module 'n8ao' {
     screenSpaceRadius: boolean
     colorMultiply: boolean
     accumulate: boolean
+    transparencyAware: boolean
   }
 
   export class N8AOPostPass extends Pass {
     constructor(scene: Scene, camera: Camera, width?: number, height?: number)
     camera: Camera
     readonly configuration: N8AOConfiguration
+    autoDetectTransparency: boolean
     setQualityMode(mode: N8AOQualityMode): void
     setDepthTexture(depthTexture: DepthTexture): void
     setSize(width: number, height: number): void
