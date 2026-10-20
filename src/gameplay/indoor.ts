@@ -13,6 +13,7 @@ const DOOR_REACH = 1.7
 const DOOR_CONE = 0.6
 const SAS_FLOOR_REACH = 1.5
 const SAS_DOOR_REACH = 5
+const ROOF_EXIT_RISE = 1.6
 
 const BED = /^(lit|couchette|bunk|bed|hamac)/
 const SEAT = /^(banc|siege|chaise|tabouret|seat)/
@@ -26,6 +27,7 @@ const ZIP = /^tyrolienne-/
 const TUBE = /^tube-([a-z]+)-([a-z]+)$/
 const CLIMBING: ReadonlySet<string> = new Set(['ladder', 'climb'])
 
+type QuarterLock = 'sas' | 'echelle-toit'
 type HeroExt = HeroService & { zip?(id: string): boolean; activity?(): string }
 
 // Everything Ilo can use indoors: drift's furniture, rides and doors, the people, and the lock out.
@@ -61,7 +63,18 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     await gp.cine.fade(null, 0.5)
   }
 
-  const airlock = async (dir: 'in' | 'out', lockId: 'sas' | 'echelle-toit' = 'sas') => {
+  const aboveRoofHatch = async () => {
+    const hero = ctx.services.hero
+    const drift = ctx.services.drift
+    const anchor = drift?.lockAnchor('echelle-toit')
+    if (!hero || !drift || !anchor) return
+    await gp.cine.fade('black', 0.35)
+    const local = drift.toLocal(anchor)
+    hero.teleportLocal({ x: local.x, y: local.y + ROOF_EXIT_RISE, z: local.z })
+    await gp.cine.fade(null, 0.5)
+  }
+
+  const airlock = async (dir: 'in' | 'out', lockId: QuarterLock = 'sas') => {
     if (dir === 'out' && boardPending()) {
       gp.quests.talk('mme-rouille')
       return
@@ -72,7 +85,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
       if (drift) {
         gp.heroMode('airlock')
         await drift.cycleAirlock(lockId, dir)
-        if (dir === 'out' && lockId === 'sas') await faceAlongHull()
+        if (dir === 'out') await (lockId === 'sas' ? faceAlongHull() : aboveRoofHatch())
         gp.heroMode(ctx.state.hero.medium === 'air' ? 'idle' : 'swim')
       } else {
         await gp.cine.fade('black', 0.5)
@@ -88,7 +101,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
   }
 
   const reelIn = async () => {
-    const lockId = ctx.state.hero.sortie?.lockId === 'echelle-toit' ? 'echelle-toit' : 'sas'
+    const lockId: QuarterLock = ctx.state.hero.sortie?.lockId === 'echelle-toit' ? 'echelle-toit' : 'sas'
     const h = ctx.services.hero as (HeroExt & { reelIn?(): Promise<void> }) | undefined
     gp.lock.count++
     try {
@@ -212,6 +225,11 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     }
   }
 
+  const swamBackIntoSas = () => {
+    const h = ctx.state.hero
+    return ctx.state.mode === 'sortie' && h.medium === 'water' && h.sortie?.lockId === 'sas' && ctx.services.drift?.cellAt(gp.heroLocal()) === 'sas'
+  }
+
   const api: Indoor = {
     airlock: (dir) => airlock(dir),
     async returnToLock() {
@@ -252,6 +270,10 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     },
     update(dt) {
       const h = ctx.state.hero
+      if (swamBackIntoSas() && !gp.busy()) {
+        void airlock('in')
+        return
+      }
       if (h.medium === 'water' && h.sortie && h.sortie.lockId !== 'dome-proue' && ctx.input.down('interact') && !gp.busy()) {
         reelHold += dt
         gp.hud.progress(Math.min(1, reelHold / REEL_HOLD))
