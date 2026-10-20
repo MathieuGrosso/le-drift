@@ -69,7 +69,8 @@ function inPlace(clip: THREE.AnimationClip): THREE.AnimationClip {
   return clip
 }
 
-interface MocapSpec { clip: string; once?: boolean; speed?: number }
+// rooted: the clip's pelvis translation is dropped so the body turns about the hips, not the clip's floor.
+interface MocapSpec { clip: string; once?: boolean; speed?: number; rooted?: boolean }
 
 const MOCAP: Partial<Record<string, MocapSpec>> = {
   idle: { clip: 'Idle_Loop' }, 'idle-dry': { clip: 'Idle_Loop' }, 'idle-floor': { clip: 'Idle_Loop' },
@@ -79,7 +80,8 @@ const MOCAP: Partial<Record<string, MocapSpec>> = {
   jump: { clip: 'Jump_Start', once: true }, fall: { clip: 'Jump_Loop' },
   land: { clip: 'Jump_Land', once: true }, 'land-dry': { clip: 'Jump_Land', once: true },
   roll: { clip: 'Roll', once: true },
-  swim: { clip: 'Swim_Fwd_Loop', speed: 1.4 }, 'swim-sprint': { clip: 'Swim_Fwd_Loop', speed: 1.0 },
+  swim: { clip: 'Swim_Fwd_Loop', speed: 1.4, rooted: true }, 'swim-sprint': { clip: 'Swim_Fwd_Loop', speed: 1.0, rooted: true },
+  tread: { clip: 'Swim_Idle_Loop', rooted: true },
   'sit-down': { clip: 'Sitting_Enter', once: true }, sit: { clip: 'Sitting_Idle_Loop' }, 'stand-up': { clip: 'Sitting_Exit', once: true },
   talk: { clip: 'Idle_Talking_Loop' }, eat: { clip: 'Consume', once: true },
   'open-hatch': { clip: 'Interact', once: true }, 'clip-ring': { clip: 'Interact', once: true }, pump: { clip: 'Push_Loop' },
@@ -233,7 +235,7 @@ export class CharacterRig {
     }
     const pelvis = this.byName.get('pelvis')!
     va.copy(this.pelvisRef).addScaledVector(this.pelvisUp, hipsY)
-    if (k >= 0.999) pelvis.position.copy(va)
+    if (k >= 0.999 || spec?.rooted) pelvis.position.copy(va)
     else if (k > 0.001) pelvis.position.lerp(va, k)
   }
 

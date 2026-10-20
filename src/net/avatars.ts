@@ -133,6 +133,7 @@ class RemoteAvatar {
     let clip = this.gesture?.clip ?? MODE_CLIP[view.mode] ?? 'idle-dry'
     if (clip === 'walk-dry' && speed > RUN_THRESHOLD) clip = 'run-dry'
     if (clip === 'walk-dry' && speed < STILL_SPEED) clip = 'idle-dry'
+    if (clip === 'swim' && speed < STILL_SPEED) clip = 'tread'
     const p = this.params
     p.t = t
     p.speed = THREE.MathUtils.lerp(p.speed, speed, Math.min(1, dt * SPEED_SMOOTHING))

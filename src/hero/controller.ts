@@ -833,7 +833,7 @@ export class HeroController {
       return this.clip('swim', 0.3)
     }
     this.phase += dt * 0.14
-    return this.clip('swim', 0.6)
+    return this.clip('tread', 0.6)
   }
 
   private steerHorizontal(dt: number, speed: number, accel: number, turn: number): void {

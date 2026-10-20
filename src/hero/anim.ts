@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { BONES, type BoneName, type HeroModel } from './model'
 
 export type ClipId =
-  | 'idle' | 'idle-floor' | 'walk' | 'run' | 'swim' | 'swim-sprint' | 'kick' | 'sink' | 'land'
+  | 'idle' | 'idle-floor' | 'walk' | 'run' | 'swim' | 'swim-sprint' | 'tread' | 'kick' | 'sink' | 'land'
   | 'climb' | 'climb-idle' | 'climb-jump' | 'glide' | 'scrub' | 'ride' | 'exhausted' | 'talk' | 'hand-on-ceiling'
   | 'idle-dry' | 'walk-dry' | 'run-dry' | 'stairs-up' | 'stairs-down' | 'ladder' | 'ladder-top' | 'fall' | 'land-dry'
   | 'shake-off' | 'sit-down' | 'sit' | 'eat' | 'stand-up' | 'lean' | 'open-hatch' | 'lie-down' | 'sleep' | 'wake'
@@ -146,6 +146,9 @@ const CLIPS: Record<ClipId, Clip> = {
     o.r('footL', -0.5)
     o.r('footR', -0.5)
   },
+  tread(o, s) {
+    CLIPS.idle(o, s)
+  },
   'idle-floor'(o, s) {
     breathe(o, s)
     o.buf.lift = sin(s.t * 0.9) * 0.01
@@ -200,7 +203,7 @@ const CLIPS: Record<ClipId, Clip> = {
     const p = s.phase * TAU
     const go = THREE.MathUtils.smoothstep(s.speed, 0.5, 1.6)
     const t = s.t
-    o.buf.pitch = -1.12 - go * 0.2 + s.pitch
+    o.buf.pitch = s.pitch
     o.buf.twist = s.bank * 0.6 + (1 - go) * 0.28
     o.buf.roll = (1 - go) * sin(t * 0.8) * 0.04
     o.buf.lift = sin(p * 2) * 0.03 * go + sin(t * 1.1) * 0.02 * (1 - go)
@@ -243,7 +246,7 @@ const CLIPS: Record<ClipId, Clip> = {
   },
   'swim-sprint'(o, s) {
     const p = s.phase * TAU
-    o.buf.pitch = -1.45 + s.pitch
+    o.buf.pitch = s.pitch
     o.buf.twist = s.bank * 0.6 + sin(p) * 0.35
     const l = p
     const r = p + PI
