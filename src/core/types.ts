@@ -369,7 +369,7 @@ export interface DebugApi {
   step(frames: number): Promise<void>
   screenshotPose(name: string): Promise<string>
   poses(): string[]
-  stats(): { fps: number; drawCalls: number; triangles: number }
+  stats(): { fps: number; drawCalls: number; triangles: number; frameMs: number; pixelRatio: number }
   enterRoom(room: RoomId): void
   goto(place: PlaceId): boolean
   places(): PlaceId[]

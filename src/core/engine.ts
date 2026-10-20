@@ -4,6 +4,7 @@ import { createInput } from './input'
 import { createPhysics } from './physics'
 import { createPoseRegistry, registerCorePoses } from './poses'
 import { createQuality, isQualityLevel, QUALITY_ORDER } from './quality'
+import { createDynamicResolution } from './resolution'
 import { seededRng } from './rng'
 import { createSaveStore } from './save'
 import { createInitialState, phaseAt } from './state'
@@ -122,10 +123,13 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     renderer.info.autoReset = false
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 4000)
+    const ceilingRatio = () => Math.min(window.devicePixelRatio || 1, quality.settings.pixelRatio)
+    const resolution = createDynamicResolution(ceilingRatio())
     const resize = () => {
       const w = window.innerWidth
       const h = window.innerHeight
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.settings.pixelRatio))
+      resolution.setCeiling(ceilingRatio())
+      renderer.setPixelRatio(resolution.pixelRatio)
       renderer.setSize(w, h, false)
       camera.aspect = w / Math.max(h, 1)
       camera.updateProjectionMatrix()
@@ -204,6 +208,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     let slowFrames = 0
     let slowSum = 0
     let autoDropped = false
+    let warmup: number = AUTO_QUALITY.warmupSeconds
     let menuOpen = false
 
     const setPaused = (p: boolean) => {
@@ -256,6 +261,8 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         fps: Math.round(fps),
         drawCalls: r?.drawCalls ?? renderer.info.render.calls,
         triangles: r?.triangles ?? renderer.info.render.triangles,
+        frameMs: resolution.frameMs,
+        pixelRatio: resolution.pixelRatio,
       }
     }
 
@@ -300,6 +307,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       const render = ctx.services.render
       if (render) render.draw(ctx)
       else renderer.render(scene, camera)
+      if (!paused && resolution.update(rawDt)) resize()
       while (afterDraw.length > 0) afterDraw.shift()!()
 
       ctx.clock.frame++
@@ -317,7 +325,9 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         save.write()
       }
 
-      if (!autoDropped && !paused && document.visibilityState === 'visible') {
+      warmup = Math.max(0, warmup - rawDt)
+      const hitch = rawDt * 1000 > AUTO_QUALITY.hitchMs
+      if (!autoDropped && !paused && warmup === 0 && !hitch && document.visibilityState === 'visible') {
         slowTimer += rawDt
         slowFrames++
         slowSum += rawDt * 1000
@@ -340,6 +350,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         overlay.textContent =
           `${s.fps} ips · ${s.drawCalls} appels · ${(s.triangles / 1000).toFixed(0)} k tri` +
           (ms !== undefined ? ` · ${ms.toFixed(1)} ms` : '') +
+          ` · ×${s.pixelRatio.toFixed(3)}` +
           ` · ${quality.settings.level} · j${state.time.day} ${state.time.hours.toFixed(2)} h`
       }
     }
@@ -517,9 +528,8 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       ctx.services.audio?.unlock().catch(() => undefined)
     })
 
-    const teardown = (e: PageTransitionEvent) => {
+    const teardown = () => {
       save.write()
-      if (e.persisted) return
       unloading = true
       window.removeEventListener('pagehide', teardown)
       window.removeEventListener('resize', resize)
@@ -537,6 +547,12 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       renderer.forceContextLoss()
     }
     window.addEventListener('pagehide', teardown)
+    // The back/forward cache would freeze a whole world (~250 MB) per visit: the unload listener opts out,
+    // and a page restored anyway was torn down on pagehide, so it reloads.
+    window.addEventListener('unload', () => undefined)
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) location.reload()
+    })
   } catch (err) {
     ui.error(err)
     throw err

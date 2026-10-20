@@ -107,7 +107,13 @@ export const INPUT = {
 } as const
 
 export const AUTOSAVE_SECONDS = 60
-export const AUTO_QUALITY = { frameMs: 24, windowSeconds: 5 } as const
+// Pixel ratio follows the smoothed frame time; pixel count goes with the square of the ratio.
+export const DYNAMIC_RESOLUTION = {
+  targetFps: 60, shrinkAbove: 1.12, growBelow: 1.05, growAfterSeconds: 2, maxGrowWaitSeconds: 32, probeSeconds: 4,
+  settleSeconds: 1, step: 0.125, minRatio: 0.75, smoothing: 0.05, hitchMs: 250,
+} as const
+// Shader compiles and world loads stall single frames: skip the warm-up and any frame past hitchMs.
+export const AUTO_QUALITY = { frameMs: 24, windowSeconds: 5, warmupSeconds: 4, hitchMs: 250 } as const
 
 export const WINDOWS = {
   initialCoat: 0.9,
