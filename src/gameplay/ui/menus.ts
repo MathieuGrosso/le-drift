@@ -251,15 +251,20 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
 
   const sleep = () => {
     const panel = open('pause', ['pause'])
-    title(panel, UI.sommeil.titre)
+    const online = gp.online()
+    title(panel, UI.sommeil.titre, online ? UI.sommeil.enLigne : undefined)
     const stack = h('div', 'gp-stack', undefined, panel)
-    const go = (hour: number) => {
+    const go = (hour: number | null) => {
       api.close()
       void gp.sleepUntil(hour)
     }
-    button(UI.sommeil.aube, () => go(6), stack, 'gp-btn primary')
-    button(UI.sommeil.midi, () => go(12), stack)
-    button(UI.sommeil.soir, () => go(18), stack)
+    if (online) {
+      button(UI.sommeil.reposer, () => go(null), stack, 'gp-btn primary')
+    } else {
+      button(UI.sommeil.aube, () => go(6), stack, 'gp-btn primary')
+      button(UI.sommeil.midi, () => go(12), stack)
+      button(UI.sommeil.soir, () => go(18), stack)
+    }
     button(UI.sommeil.annuler, () => api.close(), stack)
   }
 

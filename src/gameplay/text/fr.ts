@@ -237,6 +237,8 @@ export const UI = {
   },
   sommeil: {
     titre: 'Dormir',
+    enLigne: 'À bord, l’horloge est la même pour tous',
+    reposer: 'Faire une sieste',
     aube: "Dormir jusqu'à l'aube",
     midi: "Dormir jusqu'à midi",
     soir: "Dormir jusqu'au soir",

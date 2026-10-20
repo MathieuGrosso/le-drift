@@ -38,8 +38,8 @@ export function createTours(gp: Gp): Tours {
       gp.inv.give('mie-du-cuistot', 1, true)
     }
   })
-  ctx.bus.on('sleep:done', () => {
-    count = 0
+  ctx.bus.on('sleep:done', ({ fromHour, toHour }) => {
+    if (toHour !== fromHour) count = 0
   })
   ctx.bus.on('time:hour', ({ hour }) => {
     if (hour === 6) count = 0

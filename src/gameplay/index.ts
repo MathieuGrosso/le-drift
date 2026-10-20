@@ -102,16 +102,19 @@ function createRuntime(ctx: GameContext): Runtime {
     say: (lines: Parameters<Gp['say']>[0], npc?: string) => gp.dialogue.play(lines, npc),
     busy: () =>
       gp.lock.count > 0 || gp.dialogue.active() || gp.menus.active() || gp.chart.isOpen() || gp.cine.active() || gp.ending.playing(),
-    async sleepUntil(hour: number) {
+    online: () => ctx.services.net?.status() === 'online',
+    async sleepUntil(hour: number | null) {
       const s = ctx.state
       gp.lock.count++
       try {
         await gp.cine.fade('black', 1.2)
         gp.heroMode('sleep')
         const from = s.time.hours
-        const target = ((hour % 24) + 24) % 24
-        if (target <= from) s.time.day += 1
-        s.time.hours = target
+        const target = hour === null || gp.online() ? from : ((hour % 24) + 24) % 24
+        if (target !== from) {
+          if (target < from) s.time.day += 1
+          s.time.hours = target
+        }
         gp.endurance.refill()
         let saved = false
         const offSaved = ctx.bus.on('save:written', () => {
@@ -119,7 +122,7 @@ function createRuntime(ctx: GameContext): Runtime {
         })
         ctx.bus.emit('sleep:done', { fromHour: from, toHour: target, day: s.time.day })
         offSaved()
-        if (target === 6) gp.weather.morning()
+        if (target === 6 && from !== 6) gp.weather.morning()
         await gp.cine.wait(1.2)
         gp.heroMode('idle')
         await gp.cine.fade(null, 1.6)

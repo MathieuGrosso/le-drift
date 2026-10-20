@@ -202,7 +202,8 @@ export interface Gp {
   heroLocal(): Vec3
   heroMode(m: GameContext['state']['hero']['mode']): void
   driftLock(): Vec3
-  sleepUntil(hour: number): Promise<void>
+  sleepUntil(hour: number | null): Promise<void>
+  online(): boolean
   say(lines: readonly Line[], npc?: string): Promise<void>
   emit(name: string, payload: unknown): void
   progress(): Progress
