@@ -44,7 +44,7 @@ case $cmd in
     node_modules/.bin/vite preview --outDir "$rig/dist" --host 127.0.0.1 --port "$web" --strictPort >"$rig/preview.out" 2>&1 &
     echo $! >"$rig/preview.pid"
     cdp=$(free_port)
-    "$chrome" --headless=new --use-angle=metal --enable-gpu --ignore-gpu-blocklist \
+    "$chrome" --headless=new --mute-audio --use-angle=metal --enable-gpu --ignore-gpu-blocklist \
       --user-data-dir="$rig/profile" --remote-debugging-port="$cdp" --window-size=1280,720 \
       --no-first-run --no-default-browser-check about:blank >"$rig/chrome.out" 2>&1 &
     echo $! >"$rig/chrome.pid"
@@ -52,7 +52,7 @@ case $cmd in
       curl -sf "http://127.0.0.1:$cdp/json/version" >/dev/null && curl -sf "http://127.0.0.1:$web/" >/dev/null && break
       sleep 0.25
     done
-    url="http://127.0.0.1:$web/${3:+?$3}"
+    url="http://127.0.0.1:$web/?mute${3:+&$3}"
     "${ab[@]}" connect "$cdp" >/dev/null
     "${ab[@]}" open "$url" >/dev/null
     cat <<EOF

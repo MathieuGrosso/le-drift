@@ -24,6 +24,8 @@ interface LooseBus { on(k: string, fn: (p: Payload) => void): () => void }
 const num = (p: Payload, k: string, d = 0) => (typeof p[k] === 'number' ? (p[k] as number) : d)
 const str = (p: Payload, k: string) => (typeof p[k] === 'string' ? (p[k] as string) : '')
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+// ?mute never creates an AudioContext, so nothing downstream can reach the speakers.
+const MUTED = new URLSearchParams(location.search).has('mute')
 
 interface Live {
   rig: Rig
@@ -172,6 +174,7 @@ export function createAudioSystem(): System {
   }
 
   function unlock(): Promise<void> {
+    if (MUTED) return Promise.resolve()
     if (live) return live.rig.ctx.state === 'running' ? Promise.resolve() : live.rig.ctx.resume()
     if (starting) return starting
     const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
