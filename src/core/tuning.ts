@@ -132,6 +132,8 @@ export const NET = {
   chatBubbleSeconds: 6,
   nameTagMaxDistance: 30,
   saveDebounceMs: 2000,
+  // Open-space hysteresis only: inside a quarter room or a city cell the district is the place's own.
+  districtLeaveMarginM: 6,
 } as const
 
 // Recast voxel sizes are metres; walkable* are converted to voxels in drift/nav.

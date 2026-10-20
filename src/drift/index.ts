@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { DISTRICT_BY_ID, DISTRICT_NEIGHBOURS, DRIFT_BOUNDS, DRIFT_Y, PLACES, districtAt, inDistrict } from '../core/layout'
 import type { CameraEnv, CellId, DistrictId, DriftService, GameContext, LockId, Medium, RoomId, System, Vec3 } from '../core/types'
+import { NET } from '../core/tuning'
 import { ForecastBoard } from './board'
 import { ChartTable } from './chart'
 import { Chatter } from './chatter'
@@ -484,7 +485,8 @@ export function createDriftSystem(): System {
     const ref = st.mode === 'inside' && st.hero.localPosition ? st.hero.localPosition : heroLocal
     const cell = cityCell(ref)
     const here = cell?.district ?? districtAt(ref)
-    if (here !== district && (cell || !inDistrict(DISTRICT_BY_ID[district], ref, 20))) {
+    const placed = cell !== null || quarter?.roomAt(ref) != null
+    if (here !== district && (placed || !inDistrict(DISTRICT_BY_ID[district], ref, NET.districtLeaveMarginM))) {
       const from = district
       district = here
       st.hero.district = here
