@@ -1,8 +1,8 @@
 import { mulberry32 } from '../../core/rng'
 import type { Vec3 } from '../../core/types'
 import type { Anchor } from '../../drift/procgen-hook'
-import type { Box, ColliderSpec, DistrictPlan, LandmarkKitId, Spot } from '../types'
-import { PHARES } from './tuning'
+import type { Box, ColliderSpec, DistrictPlan, DistrictShell, LandmarkKitId, Spot } from '../types'
+import { PHARES, SITE } from './tuning'
 
 export type FarForm = 'tour' | 'roue' | 'dome' | 'arbre' | 'mur' | 'nef' | 'cuve' | 'ecran' | 'colonne'
 export type SiteKind = 'centre' | 'flanc' | 'long'
@@ -89,7 +89,6 @@ export const KITS: Readonly<Record<LandmarkKitId, KitDef>> = {
 }
 
 const LAYER_TOP = { haut: 30, bas: -6 } as const
-const LAYER_FLOOR = { haut: { centre: -6, flanc: 0, long: 0 }, bas: { centre: -22, flanc: -22, long: -22 } } as const
 const HEADROOM = 1.5
 
 export function phareTier(plan: DistrictPlan): number | null {
@@ -107,38 +106,137 @@ export function kitDef(id: LandmarkKitId): KitDef {
   return d
 }
 
+export function vaultY(plan: DistrictPlan): number {
+  return LAYER_TOP[plan.layer]
+}
+
 export function kitScale(def: KitDef, plan: DistrictPlan, baseY: number): number {
   return Math.min(1, (LAYER_TOP[plan.layer] - baseY - HEADROOM) / def.h)
 }
 
-// Plan-only, so the far silhouette and the built district agree before any layout exists.
-export function landmarkSites(plan: DistrictPlan, kits: readonly LandmarkKitId[]): Spot[] {
+// Half extents of what blocks the walk (local x, local z): round forms block less than their reach.
+function blockHalf(def: KitDef): readonly [number, number] {
+  switch (def.form) {
+    case 'nef': return [0.8, def.r]
+    case 'mur':
+    case 'ecran': return [def.r, 0.6]
+    case 'tour':
+    case 'colonne':
+    case 'arbre': return [def.r * 0.45, def.r * 0.45]
+    case 'roue': return [def.r * 0.25, def.r * 0.5]
+    case 'dome':
+    case 'cuve': return [def.r * 0.75, def.r * 0.75]
+  }
+}
+
+interface Site extends Spot { half: readonly [number, number] }
+
+function localXZ(s: Spot, x: number, z: number): readonly [number, number] {
+  const dx = x - s.x
+  const dz = z - s.z
+  const c = Math.cos(s.yaw)
+  const n = Math.sin(s.yaw)
+  return [dx * c - dz * n, dx * n + dz * c]
+}
+
+function insideRect(s: Spot, half: readonly [number, number], x: number, z: number, pad: number): boolean {
+  const [lx, lz] = localXZ(s, x, z)
+  return Math.abs(lx) < half[0] + pad && Math.abs(lz) < half[1] + pad
+}
+
+// Sited on the built floor, in the open: the first kit prefers a void and a clear line from the spawn,
+// so every arrondissement pulls the eye from its entrance (bible §2.5 triangle rule).
+export function landmarkSites(shell: DistrictShell, kits: readonly LandmarkKitId[]): Spot[] {
+  const plan = shell.plan
   const rng = mulberry32(plan.seed ^ 0x6c616e64)
-  const b = plan.bounds
-  const cx = (b.x0 + b.x1) / 2
-  const cz = (b.z0 + b.z1) / 2
-  const hx = (b.x1 - b.x0) / 2
-  const hz = (b.z1 - b.z0) / 2
-  const outer = Math.abs(b.x0) > Math.abs(b.x1) ? b.x0 : b.x1
-  const inward = -Math.sign(outer)
-  const sites: Spot[] = []
-  kits.forEach((id, i) => {
-    const def = kitDef(id)
-    const side = i % 2 === 0 ? 1 : -1
-    const along = cz + side * hz * (0.18 + 0.22 * rng()) * (i === 0 ? 0.6 : 1)
-    let x = cx + (rng() - 0.5) * hx * 0.4
-    let yaw = Math.atan2(inward, 0)
-    if (def.site === 'flanc') x = outer + inward * (def.r + 6)
-    if (def.site === 'long') {
-      x = cx + (rng() - 0.5) * hx * 0.3
-      yaw = 0
+  const street = shell.cells.find((c) => c.id === plan.id)
+  const spawn = street?.spawn ?? { x: (plan.bounds.x0 + plan.bounds.x1) / 2, y: 0, z: plan.bounds.z0, yaw: 0 }
+  const lots = shell.cells.filter((c) => c.id !== plan.id).flatMap((c) => c.boxes.map((b) => ({ ...b, y1: Math.max(b.y1, c.roof) })))
+  const byId = new Map(shell.walk.nodes.map((n) => [n.id, n.at]))
+  const path: Vec3[] = []
+  for (const e of shell.walk.edges) {
+    if (!e.main) continue
+    const a = byId.get(e.a)
+    const b = byId.get(e.b)
+    if (!a || !b) continue
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / SITE.pathStep))
+    for (let i = 0; i <= n; i++) path.push({ x: a.x + ((b.x - a.x) * i) / n, y: a.y, z: a.z + ((b.z - a.z) * i) / n })
+  }
+  const inVoid = (x: number, z: number) => shell.voids.find((v) => x > v.box.x0 && x < v.box.x1 && z > v.box.z0 && z < v.box.z1) ?? null
+  const ground: Vec3[] = [
+    ...shell.voids.map((v) => ({ x: (v.box.x0 + v.box.x1) / 2, y: v.box.y0, z: (v.box.z0 + v.box.z1) / 2 })),
+    ...shell.slots.filter((s) => s.kind === 'sol').map((s) => s.at),
+  ]
+  const stride = Math.max(1, Math.ceil(ground.length / SITE.maxCandidates))
+  const candidates = ground.filter((_, i) => i < shell.voids.length || i % stride === 0)
+  const eye = { x: spawn.x, y: spawn.y + SITE.eye, z: spawn.z }
+  const seen = (x: number, y: number, z: number, skip: number) => {
+    const len = Math.hypot(x - eye.x, z - eye.z)
+    const n = Math.ceil(len / SITE.sightStep)
+    for (let i = 1; i < n; i++) {
+      const t = i / n
+      if (len * (1 - t) < skip) break
+      const px = eye.x + (x - eye.x) * t
+      const py = eye.y + (y - eye.y) * t
+      const pz = eye.z + (z - eye.z) * t
+      if (lots.some((b) => px > b.x0 && px < b.x1 && pz > b.z0 && pz < b.z1 && py < b.y1 && py > b.y0 - 0.5)) return false
     }
-    const margin = def.r + 4
-    const z = Math.min(b.z1 - margin, Math.max(b.z0 + margin, def.site === 'long' ? cz : along))
-    x = Math.min(b.x1 - margin, Math.max(b.x0 + margin, x))
-    sites.push({ x, y: LAYER_FLOOR[plan.layer][def.site], z, yaw })
+    return true
+  }
+  const b = plan.bounds
+  const sites: Site[] = []
+  for (const id of kits) {
+    const def = kitDef(id)
+    const thin = def.form === 'nef' || def.form === 'mur' || def.form === 'ecran'
+    let best: { site: Site; score: number } | null = null
+    for (const c of candidates) {
+      const scale = kitScale(def, plan, c.y)
+      const toSpawn = Math.atan2(spawn.x - c.x, spawn.z - c.z)
+      const v = inVoid(c.x, c.z)
+      const along = v && v.box.x1 - v.box.x0 > v.box.z1 - v.box.z0 ? Math.PI / 2 : 0
+      const yaws = def.form === 'nef' ? [along, along + Math.PI / 2] : thin ? [toSpawn, toSpawn + Math.PI / 2] : [toSpawn]
+      for (const yaw of yaws) {
+        const half = [blockHalf(def)[0] * scale, blockHalf(def)[1] * scale] as const
+        const s: Site = { x: c.x, y: c.y, z: c.z, yaw, half }
+        const reach = Math.max(half[0], half[1])
+        if (c.x - reach < b.x0 || c.x + reach > b.x1 || c.z - reach < b.z0 || c.z + reach > b.z1) continue
+        if (path.some((p) => Math.abs(p.y - c.y) < 2 && insideRect(s, half, p.x, p.z, SITE.pathGap))) continue
+        if (sites.some((o) => Math.hypot(o.x - c.x, o.z - c.z) < Math.max(...o.half) + reach + SITE.between)) continue
+        if (insideRect(s, half, spawn.x, spawn.z, SITE.pathGap * 2)) continue
+        const d = Math.hypot(c.x - spawn.x, c.z - spawn.z)
+        let score = rng() * SITE.jitter
+        if (v) score += SITE.voidBonus
+        if (seen(c.x, c.y + def.h * scale * SITE.sightAt, c.z, reach)) score += SITE.sightBonus
+        if (d < SITE.near) score -= ((SITE.near - d) / SITE.near) * SITE.distWeight
+        if (d > SITE.far) score -= ((d - SITE.far) / SITE.far) * SITE.distWeight
+        const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1], [0, 0]] as const
+        for (const [u, w] of corners) {
+          const cs = Math.cos(yaw)
+          const sn = Math.sin(yaw)
+          const lx = u * half[0]
+          const lz = w * half[1]
+          const x = c.x + lx * cs + lz * sn
+          const z = c.z - lx * sn + lz * cs
+          if (lots.some((l) => x > l.x0 && x < l.x1 && z > l.z0 && z < l.z1 && c.y + 1 > l.y0 && c.y + 1 < l.y1)) score -= SITE.lotPenalty
+        }
+        if (!best || score > best.score) best = { site: s, score }
+      }
+    }
+    sites.push(best?.site ?? { x: (b.x0 + b.x1) / 2, y: spawn.y, z: (b.z0 + b.z1) / 2, yaw: 0, half: [0, 0] })
+  }
+  return sites.map(({ x, y, z, yaw }) => ({ x, y, z, yaw }))
+}
+
+// A zip ends on the nearest street node, never in a lot or under the floor.
+export function landZips(anchors: readonly Anchor[], shell: DistrictShell): Anchor[] {
+  const nodes = shell.walk.nodes.filter((n) => !n.id.startsWith('p:'))
+  return anchors.flatMap((a): Anchor[] => {
+    if (a.kind !== 'zip' || nodes.length === 0) return [a]
+    const end = nodes.reduce((m, n) => (Math.hypot(n.at.x - a.to.x, n.at.z - a.to.z) < Math.hypot(m.at.x - a.to.x, m.at.z - a.to.z) ? n : m), nodes[0]!)
+    const to = { x: end.at.x, y: end.at.y + SITE.zipLand, z: end.at.z }
+    const run = Math.hypot(to.x - a.from.x, to.z - a.from.z)
+    return run < SITE.zipMinRun || a.from.y - to.y < run * SITE.zipMinSlope ? [] : [{ ...a, to }]
   })
-  return sites
 }
 
 function rot(s: Spot, x: number, y: number, z: number, scale: number): Vec3 {

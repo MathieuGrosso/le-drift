@@ -50,3 +50,11 @@ export const THIRDS_Z = [40, 280] as const
 export const KIND_GLOW: Readonly<Partial<Record<ContentKind, number>>> = {
   trouvaille: 0xffd27a, phare: 0xffe2a8, coque: 0x9fd6d0,
 }
+
+export const SITE = {
+  eye: 1.6, sightAt: 0.7, sightStep: 1.5, pathStep: 1, pathGap: 1.8, between: 5, maxCandidates: 160,
+  near: 24, far: 70, distWeight: 3, voidBonus: 3, sightBonus: 4, lotPenalty: 1.2, jitter: 0.3,
+  zipLand: 1.5, zipMinRun: 8, zipMinSlope: 0.06,
+} as const
+
+export const BEACON = { minLift: 16, gap: 2.5, under: 2, body: 1.1, color: 0xffb766, satellites: 3, satR: 0.45, satDrop: 2.2, satSpread: 2.4, radius: 20, power: 1.1 } as const

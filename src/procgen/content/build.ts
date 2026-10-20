@@ -4,17 +4,19 @@ import { GeoBuilder } from '../../drift/builder'
 import { bakeGlow, glowMaterial, type BakeLamp } from '../../drift/city/glow'
 import type { Anchor, Mats } from '../../drift/procgen-hook'
 import { ARCHETYPES } from '../archetypes'
-import type { BuildContentFn, ContentPoint, DistrictPlan, Rng, Spot } from '../types'
+import type { BuildContentFn, ContentPoint, DistrictPlan, LandmarkPlacement, Rng, Spot } from '../types'
 import { Kb, buildFar, buildKit, type KitLamp, type KitPalette } from './kits'
 import { MICRO_DEFIS, type MicroDefi } from './tuning'
 import { placeDefi, type DefiMat, type DefiPlaced } from './defis'
-import { COQUE_KIT, districtKits, kitDef, kitScale, landmarkSites } from './landmarks'
-import { KIND_GLOW } from './tuning'
+import { districtContent } from './catalogue'
+import { COQUE_KIT, kitDef, kitScale, vaultY } from './landmarks'
+import { BEACON, KIND_GLOW } from './tuning'
 
 const SHIFT = { hue: 8 / 360, value: 0.06 } as const
 const SIGN = { w: 2.4, h: 0.6, px: 512, row: 96, font: '600 52px Georgia, serif', ink: '#3e3a5a', paper: '#f1e4c8' } as const
 const TROUVAILLE = { bob: 0.12, speed: 1.6, spin: 0.9, size: 0.22, poll: 0.5, lift: 0.2 } as const
 const NET_MESH = 0.35
+const LAMP_POWER = 0.6
 const CORDE = 0xc9a66b
 const SOMBRE = 0x4a3c48
 const VITRE = 0x9fd6d0
@@ -50,6 +52,32 @@ export function districtPalette(plan: DistrictPlan): KitPalette {
 
 function frameOf(at: Spot, scale = 1): THREE.Matrix4 {
   return new THREE.Matrix4().compose(new THREE.Vector3(at.x, at.y, at.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), at.yaw), new THREE.Vector3(scale, scale, scale))
+}
+
+// A warm lantern hung from the vault over every landmark: the tallest lit thing of its district, even over a low kit.
+function beacon(k: Kb, plan: DistrictPlan, l: LandmarkPlacement, p: KitPalette, far: boolean): void {
+  const def = kitDef(l.kit)
+  const top = l.at.y + def.h * kitScale(def, plan, l.at.y)
+  const vault = vaultY(plan)
+  const y = Math.min(vault - BEACON.under, Math.max(top + BEACON.gap, l.at.y + BEACON.minLift))
+  const { x, z } = l.at
+  k.beam([x, vault, z], [x, y + BEACON.body, z], 0.08, p.metal)
+  k.ball(x, y, z, BEACON.body, BEACON.color, true)
+  k.cone(x, y + BEACON.body * 0.8, z, BEACON.body * 1.3, BEACON.body * 0.9, p.metal)
+  if (far) return
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2
+    k.beam([x + Math.cos(a) * BEACON.body, y - BEACON.body, z + Math.sin(a) * BEACON.body], [x + Math.cos(a) * BEACON.body, y + BEACON.body, z + Math.sin(a) * BEACON.body], 0.07, p.metal)
+  }
+  for (let i = 0; i < BEACON.satellites; i++) {
+    const a = (i / BEACON.satellites) * Math.PI * 2 + l.at.yaw
+    const sx = x + Math.cos(a) * BEACON.satSpread
+    const sz = z + Math.sin(a) * BEACON.satSpread
+    const sy = y - BEACON.satDrop * (1 + (i % 2))
+    k.beam([x, y + BEACON.body, z], [sx, sy + BEACON.satR, sz], 0.04, p.metal)
+    k.ball(sx, sy, sz, BEACON.satR, BEACON.color, true)
+  }
+  k.lamps.push({ x, y, z, color: BEACON.color, radius: BEACON.radius, power: BEACON.power })
 }
 
 function drawAnchor(k: Kb, a: Anchor, p: KitPalette): void {
@@ -228,7 +256,9 @@ export const buildContent: BuildContentFn = function* (content, shell, host) {
     yield
   }
   const world = new Kb(o, e, new THREE.Matrix4())
+  for (const l of content.landmarks) beacon(world, plan, l, pal, false)
   for (const a of content.anchors) if (!a.id.includes('/banc-') && !a.id.includes('/hamac-')) drawAnchor(world, a, pal)
+  lamps.push(...world.lamps)
   for (const pt of content.points) {
     const defi = pt.kind === 'trouvaille' ? defiOf(pt) : null
     if (defi) {
@@ -248,7 +278,7 @@ export const buildContent: BuildContentFn = function* (content, shell, host) {
   const disposables: { dispose(): void }[] = []
   const { glow, lit } = materials(host.mats)
   const base = new THREE.Color(ARCHETYPES[plan.archetype].light.ambiance[0]).multiplyScalar(0.5)
-  const bake: BakeLamp[] = lamps.map((l) => ({ x: l.x, y: l.y, z: l.z, color: new THREE.Color(l.color), radius: l.radius, power: 0.6 }))
+  const bake: BakeLamp[] = lamps.map((l) => ({ x: l.x, y: l.y, z: l.z, color: new THREE.Color(l.color), radius: l.radius, power: l.power ?? LAMP_POWER }))
   const addMesh = (b: GeoBuilder, mat: THREE.Material, name: string, baked: boolean) => {
     if (b.vertexCount === 0) return
     const geo = b.build()
@@ -355,11 +385,11 @@ export function buildFarLandmarks(plans: readonly DistrictPlan[], mats: Mats): {
   for (const plan of plans) {
     const pal = districtPalette(plan)
     const s0 = [o.vertexCount, e.vertexCount] as const
-    const kits = districtKits(plan)
-    landmarkSites(plan, kits).forEach((at, i) => {
-      const def = kitDef(kits[i]!)
-      buildFar(def, new Kb(o, e, frameOf(at, kitScale(def, plan, at.y))), pal)
-    })
+    for (const l of districtContent(plan.id)?.landmarks ?? []) {
+      const def = kitDef(l.kit)
+      buildFar(def, new Kb(o, e, frameOf(l.at, kitScale(def, plan, l.at.y))), pal)
+      beacon(new Kb(o, e, new THREE.Matrix4()), plan, l, pal, true)
+    }
     ranges.set(plan.id, [
       { start: s0[0], count: o.vertexCount - s0[0], saved: null },
       { start: s0[1], count: e.vertexCount - s0[1], saved: null },

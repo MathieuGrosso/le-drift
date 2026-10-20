@@ -4,7 +4,7 @@ import type { LandmarkKitId, Rng } from '../types'
 import { COQUE_KIT, PHARE_KIT, type FarForm, type KitDef } from './landmarks'
 
 export interface KitPalette { mur: number; bois: number; metal: number; tissu: readonly number[]; accent: number; lampe: number; glow: number }
-export interface KitLamp { x: number; y: number; z: number; color: number; radius: number }
+export interface KitLamp { x: number; y: number; z: number; color: number; radius: number; power?: number }
 type P3 = readonly [number, number, number]
 
 const CONE = new THREE.CylinderGeometry(0, 1, 1, 10)

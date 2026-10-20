@@ -7,7 +7,7 @@ import type {
   Box, ChartEntry, ColliderSpec, ContentKind, ContentPoint, DistrictPlan, DistrictShell,
   LandmarkPlacement, PopulateFn, Rng, Spot, XZ,
 } from '../types'
-import { COQUE_KIT, PHARE_KIT, districtKits, kitAnchors, kitBounds, kitColliders, kitDef, kitScale, landmarkSites, phareTier } from './landmarks'
+import { COQUE_KIT, PHARE_KIT, districtKits, kitAnchors, kitBounds, kitColliders, kitDef, kitScale, landZips, landmarkSites, phareTier } from './landmarks'
 import { deNom, shipNoms, type DistrictNoms, type Personne } from './noms'
 import { quete, vignette } from './recits'
 import { defiCorners, defiFits, placeDefi, type DefiPlaced } from './defis'
@@ -243,13 +243,13 @@ export const populate: PopulateFn = (plan, shell) => {
 
   const phareIdx = phareTier(plan)
   const kits = districtKits(plan)
-  const sites = landmarkSites(plan, kits)
+  const sites = landmarkSites(shell, kits)
   const landmarks: LandmarkPlacement[] = kits.map((kit, i) => {
     const def = kitDef(kit)
     const at = sites[i]!
     const scale = kitScale(def, plan, at.y)
     const id = `${plan.id}/repere-${kit}`
-    anchors.push(...kitAnchors(id, def, at, scale))
+    anchors.push(...landZips(kitAnchors(id, def, at, scale), shell))
     colliders.push(...kitColliders(id, def, at, scale))
     reserved.push(kitBounds(def, at, scale, RESERVE.margin))
     const nom = kit === PHARE_KIT ? `Le Phare de veille ${deNom(plan.nom)}` : def.nom
