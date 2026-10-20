@@ -10,7 +10,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 |---|---|---|---|
 | QA-01 | blocker | `index.html`, `src/net` | Le calque réseau plein écran avale tous les clics des menus — CORRIGÉ (commit bf5b7d4) |
 | QA-02 | blocker | `src/gameplay/ui` | Menu Dormir (et tous les menus) sans chemin clavier : dormir impossible |
-| QA-03 | major | `src/hero`, `src/drift/city` | Échelle du sas : bloqué à 1,35 m du sommet, caméra dans le plafond |
+| QA-03 | major | `src/hero`, `src/drift/city` | Échelle du sas : bloqué à 1,35 m du sommet, caméra dans le plafond — CORRIGÉ (commit 4506c84) |
 | QA-04 | major | `src/drift` (nav) | 43 sites injoignables depuis la cabine, dont la table des cartes et les 12 coques scellées |
 | QA-05 | major | `src/render`, `src/drift` | Réfectoire au petit-déj : 9 ips, 1,93 M triangles |
 | QA-06 | major | (global) | Tas JS à 1,2 Go trois minutes après un rechargement (0,43 Go au premier chargement) |
@@ -63,6 +63,10 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 - **Obtenu** : `mode: ladder`, y figé à 6,05 ; W ne fait plus rien, seul S redescend. La caméra est dans le
   plafond (écran flou, Ilo invisible).
 - **Capture** : `shots/qa/bug-16-ladder-top-stuck-camera-in-wall.jpg`
+- **Correction** : le haut de l'échelle est la trappe du toit (eau au-dessus, d'où l'arrêt à 6,05). La pièce
+  n'était pas suivie en mode échelle, donc l'invite de la trappe ne venait jamais ; elle s'affiche maintenant et
+  E lance l'écluse du toit. Dans le puits, la caméra passe sous Ilo et regarde vers la trappe
+  (`shots/moteur/h-ladder-after3-6.jpg`).
 
 ## QA-04 — major — sites injoignables à pied
 - **Dossier** : `src/drift` (navmesh), audit au démarrage.
