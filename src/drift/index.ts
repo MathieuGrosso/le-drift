@@ -452,7 +452,8 @@ export function createDriftSystem(): System {
     }
     loaded.clear()
     loaded.add(district)
-    for (const n of DISTRICT_NEIGHBOURS[district].slice(0, levelLoad(ctx))) loaded.add(n)
+    const arrondissement = (service as DriftServiceV2 & ProcgenAware).procgen?.()?.cellAt(ref)
+    if (!arrondissement) for (const n of DISTRICT_NEIGHBOURS[district].slice(0, levelLoad(ctx))) loaded.add(n)
     loaded.add('ecluse')
     loaded.add('hauts')
     const heroCell = cityCell(ref)
