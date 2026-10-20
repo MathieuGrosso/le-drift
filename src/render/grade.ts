@@ -108,7 +108,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
   vec2 vq = uv - 0.5;
   float vig = smoothstep(0.25, 0.95, length(vq * vec2(1.15, 1.0)));
   vec3 plumHue = uInterieur / max(max(uInterieur.r, uInterieur.g), uInterieur.b);
-  vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * plumHue * 0.5, uIndoor);
+  vec3 vigCol = mix(col * 0.6 + uProfond * 0.25, col * mix(vec3(1.0), plumHue, 0.5) * 0.62, uIndoor);
   col = mix(col, vigCol, vig * mix(uVignetteOut, uVignetteIn, uIndoor));
   col = applyLut(col);
 #ifdef PAINTERLY

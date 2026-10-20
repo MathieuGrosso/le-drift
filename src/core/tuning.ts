@@ -170,9 +170,9 @@ export const POST = {
     radius: 1.1, falloff: 1.0, intensity: 2.6, indoorScale: 0.6, tintMix: 0.55, floor: 0.4,
     levels: { high: { k: 1, mode: 'Medium' }, medium: { k: 0.85, mode: 'Low' }, low: { k: 0, mode: 'Performance' } },
   },
-  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.34, minOut: 0.86, minIn: 0.82, maxOut: 1.18, maxIn: 1.1, maxInNight: 1.0 },
+  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.46, minOut: 0.86, minIn: 0.82, maxOut: 1.18, maxIn: 1.9, maxInNight: 1.15 },
   shoulder: 0.82,
-  vignette: { outdoor: 0.35, indoor: 0.45 },
+  vignette: { outdoor: 0.35, indoor: 0.28 },
 } as const
 
 // Colour grade per mood, baked into one LUT atlas. Tints are hex, ks are blend weights.
@@ -193,8 +193,8 @@ const moodBase: GradeMood = {
   gain: [1, 1, 1], contrast: 1, saturation: 1.06, midDesat: 0, toe: 0x07061a,
 }
 const indoorBase: GradeMood = {
-  ...moodBase, shadowTint: 0x3e3a5a, shadowK: 0.32, highTint: 0xffd9a0, highK: 0.2,
-  gain: [1.08, 1, 0.87], contrast: 1.25, saturation: 1.08, midDesat: 0.1, toe: 0x2e2a44,
+  ...moodBase, shadowTint: 0x3e3a5a, shadowK: 0.24, highTint: 0xffd9a0, highK: 0.08,
+  gain: [1.03, 1, 0.95], contrast: 1.12, saturation: 1.04, midDesat: 0.1, toe: 0x2e2a44,
 }
 
 export const GRADE = {
@@ -205,10 +205,10 @@ export const GRADE = {
     merAube: { ...moodBase, highTint: 0xffc98a, highK: 0.38, gain: [1.04, 0.99, 0.92] },
     merNuit: { ...moodBase, shadowTint: 0x12305a, shadowK: 0.3, gain: [0.72, 0.84, 1.12], saturation: 0.92 },
     foyer: indoorBase,
-    foyerNuit: { ...indoorBase, highTint: 0xffc27a, highK: 0.2, gain: [0.98, 0.95, 0.98], saturation: 0.94 },
-    serres: { ...indoorBase, shadowTint: 0x34464a, highTint: 0xe8f2c0, highK: 0.22, gain: [0.98, 1.03, 0.94], contrast: 1.2 },
-    machines: { ...indoorBase, shadowTint: 0x3a2e3e, highTint: 0xff9e5e, highK: 0.2, gain: [1.06, 0.98, 0.88], contrast: 1.38 },
-    scellees: { ...indoorBase, shadowTint: 0x2e3a4a, highTint: 0x9fd6d0, highK: 0.2, gain: [0.94, 1.0, 1.04], saturation: 0.86 },
+    foyerNuit: { ...indoorBase, highTint: 0xffc27a, highK: 0.08, gain: [0.98, 0.95, 0.98], saturation: 0.94 },
+    serres: { ...indoorBase, shadowTint: 0x34464a, highTint: 0xe8f2c0, highK: 0.08, gain: [0.98, 1.03, 0.94], contrast: 1.2 },
+    machines: { ...indoorBase, shadowTint: 0x3a2e3e, highTint: 0xff9e5e, highK: 0.08, gain: [1.06, 0.98, 0.88], contrast: 1.38 },
+    scellees: { ...indoorBase, shadowTint: 0x2e3a4a, highTint: 0x9fd6d0, highK: 0.08, gain: [0.94, 1.0, 1.04], saturation: 0.86 },
   } satisfies Record<string, GradeMood>,
 } as const
 

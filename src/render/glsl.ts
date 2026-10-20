@@ -104,8 +104,7 @@ float rd_hazeAmount(float d) {
 // Sea haze is water between the eye and the thing: from inside, only the stretch beyond the glass counts.
 // Air haze is dust in a big room, over the in-air stretch only. Never mix the two.
 float rd_airAmount(float d) {
-  float x = max(d - 15.0, 0.0) / 65.0;
-  return (1.0 - exp(-1.2 * pow(x, 1.6))) * 0.78 * rdAirHaze * rdIndoor;
+  return (1.0 - exp(-d / 140.0)) * 0.45 * rdAirHaze * rdIndoor;
 }
 vec3 rd_airColor(float d) {
   float near = step(0.001, rdLamps[0].w);
@@ -113,7 +112,7 @@ vec3 rd_airColor(float d) {
   vec3 c = rdAirBrume * mix(vec3(1.0), mix(vec3(1.0), lamp, 0.2), near * (1.0 - smoothstep(20.0, 60.0, d)));
   c = mix(c, rdAirTint.rgb, rdAirTint.w * smoothstep(25.0, 60.0, d));
   c = mix(c, rdVitreMer * dot(c, vec3(0.33)) / max(dot(rdVitreMer, vec3(0.33)), 1e-3), 0.2 * smoothstep(30.0, 80.0, d));
-  return c * 0.62;
+  return c * mix(0.5, 0.82, rdDay);
 }
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;

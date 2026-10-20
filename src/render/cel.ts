@@ -62,13 +62,13 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   float floorUp = smoothstep(0.75, 0.95, N.y);
   albedo = mix(albedo, albedo * vec3(1.07, 1.0, 0.86), floorUp * 0.75);
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
-  float dayK = 0.55 + 0.45 * rdDay;
-  vec3 skyB = rdCreme * mix(0.17, 0.26, rdAirHaze);
-  vec3 floorB = rdBoisOmbre * 0.22 + rdCreme * 0.025;
-  vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(mix(vec3(1.0), plum, 0.6), vec3(1.0), smoothstep(0.0, 0.9, N.y) * 0.6);
+  float dayK = 0.4 + 0.6 * rdDay;
+  vec3 skyB = mix(vec3(1.0), rdCreme / max(rdCreme.r, 1e-3), 0.2) * 0.62;
+  vec3 floorB = rdBoisOmbre * 0.4 + rdCreme * 0.12;
+  vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(mix(vec3(1.0), plum, 0.3), vec3(1.0), smoothstep(0.0, 0.9, N.y) * 0.6);
   amb *= dayK * (1.0 + 0.3 * rdAirHaze * rdDay);
   float fillL = dot(rdLampFill, vec3(0.33));
-  amb += mix(vec3(fillL), rdLampFill, 0.6) * 0.1;
+  amb += mix(vec3(fillL), rdLampFill, 0.3) * 0.1;
   vec3 key = vec3(0.0);
   vec3 lampRim = vec3(0.0);
   for (int i = 0; i < ${MAX_LAMPS}; i++) {
@@ -89,7 +89,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     float nl = dot(N, Ld);
     float wrap = smoothstep(-0.2, 0.3, nl);
     vec3 tone = mix(plum * 0.3, vec3(1.0), wrap);
-    vec3 lc = mix(vec3(1.0), rdLampColors[i], 0.4);
+    vec3 lc = mix(vec3(1.0), rdLampColors[i], 0.22);
     float pool = smoothstep(0.55, 0.92, down) * smoothstep(0.35, 0.85, N.y) * smoothstep(0.0, 0.35, att);
     key += lc * (tone * band * shade + pool * 0.55) * flick;
     lampRim += rdLampColors[i] * smoothstep(0.0, 0.25, att) * smoothstep(-0.1, 0.6, dot(-V, Ld)) * (1.0 - smoothstep(0.3, 0.75, nl));
