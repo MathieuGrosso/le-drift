@@ -9,6 +9,7 @@ import { HeroCamera } from './camera'
 import { HeroController } from './controller'
 import { Fader, Footprints, Particles } from './fx'
 import { Longe } from './longe'
+import { loadCharacterKit } from './character'
 import { buildHero, type HeroModel } from './model'
 import { Scarf } from './scarf'
 import { Secondary } from './secondary'
@@ -266,7 +267,8 @@ export function createHeroSystem(): System {
 
   return {
     id: 'hero',
-    init(ctx: GameContext) {
+    async init(ctx: GameContext) {
+      await loadCharacterKit()
       mats = createHeroMaterials(ctx)
       model = buildHero(mats)
       onBack(model)
@@ -294,7 +296,7 @@ export function createHeroSystem(): System {
       anim = new Animator(model)
       const shadows = (on: boolean) => {
         if (!model || !scarf) return
-        model.mesh.castShadow = on
+        for (const m of model.meshes) m.castShadow = on
         model.scrubber.castShadow = on
         model.voile.castShadow = on
         model.poulie.castShadow = on
@@ -485,7 +487,7 @@ export function createHeroSystem(): System {
       fader?.dispose()
       if (model) {
         model.root.removeFromParent()
-        model.mesh.geometry.dispose()
+        model.rig.dispose()
         model.scrubber.geometry.dispose()
         model.voile.geometry.dispose()
         model.poulie.geometry.dispose()

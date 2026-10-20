@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "server": "npm --prefix server start",
-    "typecheck:server": "npm --prefix server run typecheck"
+    "typecheck:server": "npm --prefix server run typecheck",
+    "characters": "node scripts/characters.mjs"
   },
   "dependencies": {
     "@colyseus/sdk": "0.18.5",
@@ -22,7 +23,11 @@
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@gltf-transform/core": "4.2.1",
+    "@gltf-transform/extensions": "4.2.1",
+    "@gltf-transform/functions": "4.2.1",
     "@types/three": "0.186.0",
+    "meshoptimizer": "0.25.0",
     "typescript": "5.9.3",
     "vite": "7.1.12"
   }

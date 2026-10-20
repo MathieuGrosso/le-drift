@@ -742,15 +742,16 @@ export class Animator {
     this.out.hipsY = lerp(this.from.hipsY, this.cur.hipsY, k)
 
     const m = this.model
-    BONES.forEach((name, i) => m.bones[name].quaternion.fromArray(q, i * 4))
-    m.bones.hips.position.y = m.rest.hips.y + this.out.hipsY
+    BONES.forEach((name, i) => m.pose[name].quaternion.fromArray(q, i * 4))
+    m.pose.hips.position.y = m.rest.hips.y + this.out.hipsY
     m.pivot.rotation.set(this.out.pitch, this.out.twist, this.out.roll, 'XYZ')
     m.pivot.position.y = m.pivotHeight + this.out.lift
     if (headLook) {
       this.headEuler.set(0, 0, 0)
       headLook(this.headEuler)
       this.qWork.setFromEuler(this.headEuler)
-      m.bones.head.quaternion.premultiply(this.qWork)
+      m.pose.head.quaternion.premultiply(this.qWork)
     }
+    m.rig.update(dt, this.clip, this.blendTime, s.speed, this.out.hipsY)
   }
 }
