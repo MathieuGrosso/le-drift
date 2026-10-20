@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { GameContext, Vec3 } from '../core/types'
 import type { Bubbles } from './bubbles'
 import { curiousBodyGeometry, curiousEyesGeometry } from './models'
-import { PALETTE, celMaterial, clampWaterY, hideInstance, patchVertex, writeBasis } from './shared'
+import { PALETTE, celMaterial, clampWaterY, fitInstances, hideInstance, patchVertex, writeBasis } from './shared'
 import type { Stage } from './stage'
 
 const MAX = 7
@@ -69,12 +69,12 @@ transformed.y += sin(uFaunaTime * 9.0 + aPhase * 12.0) * 0.03 * cFin;`,
       this.body.setColorAt(i, col)
     }
     for (const m of [this.body, this.eyes]) {
-      m.frustumCulled = false
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       const arr = m.instanceMatrix.array as Float32Array
       for (let i = 0; i < MAX; i++) hideInstance(arr, i * 16)
     }
     this.body.name = 'fauna-curieux'
+    this.eyes.name = 'fauna-curieux-yeux'
     this.group.add(this.body, this.eyes)
   }
 
@@ -283,6 +283,8 @@ transformed.y += sin(uFaunaTime * 9.0 + aPhase * 12.0) * 0.03 * cFin;`,
     }
     this.body.instanceMatrix.needsUpdate = true
     this.eyes.instanceMatrix.needsUpdate = true
+    fitInstances(this.body, 0.1)
+    fitInstances(this.eyes, 0)
   }
 
   dispose(): void {

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { GameContext } from '../core/types'
 import type { Bubbles } from './bubbles'
 import { turtleGeometry } from './models'
-import { celMaterial, clampWaterY, patchVertex, writeBasis } from './shared'
+import { celMaterial, clampWaterY, padBounds, patchVertex, writeBasis } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
 const IN = 9
@@ -51,9 +51,8 @@ transformed.y += sin(uTurtlePhase) * 0.35 * tFront * (tx - 0.4);
 transformed.z += cos(uTurtlePhase) * 0.18 * tFront * (tx - 0.4);
 transformed.y += sin(uTurtlePhase * 2.0) * 0.06 * tBack;`,
     })
-    this.mesh = new THREE.Mesh(turtleGeometry().scale(1.25, 1.25, 1.25), mat)
+    this.mesh = new THREE.Mesh(padBounds(turtleGeometry().scale(1.25, 1.25, 1.25), 0.5), mat)
     this.mesh.matrixAutoUpdate = false
-    this.mesh.frustumCulled = false
     this.mesh.name = 'fauna-tortue'
     this.group.add(this.mesh)
     this.group.visible = false

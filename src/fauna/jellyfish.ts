@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { GameContext, Vec3 } from '../core/types'
 import { jellyBellGeometry, jellyTentacleGeometry } from './models'
-import { PALETTE, celMaterial, clampWaterY, currentAt, heroInWater, hideInstance, patchVertex, setOpacity } from './shared'
+import { PALETTE, celMaterial, clampWaterY, currentAt, fitInstances, heroInWater, hideInstance, patchVertex, setOpacity } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
 const MAX = 120
@@ -61,12 +61,13 @@ transformed.z += cos(uFaunaTime * 1.1 + aPhase * 4.0 + jd * 2.1) * 0.1 * jd;`,
     })
     this.tentacles = new THREE.InstancedMesh(tGeo, tMat, MAX)
     for (const m of [this.bell, this.tentacles]) {
-      m.frustumCulled = false
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       const arr = m.instanceMatrix.array as Float32Array
       for (let i = 0; i < MAX; i++) hideInstance(arr, i * 16)
       m.renderOrder = 2
     }
+    this.bell.name = 'fauna-meduse-cloche'
+    this.tentacles.name = 'fauna-meduse-filaments'
     this.group.add(this.tentacles, this.bell)
   }
 
@@ -221,6 +222,8 @@ transformed.z += cos(uFaunaTime * 1.1 + aPhase * 4.0 + jd * 2.1) * 0.1 * jd;`,
     }
     this.bell.instanceMatrix.needsUpdate = true
     this.tentacles.instanceMatrix.needsUpdate = true
+    fitInstances(this.bell, 0.1)
+    fitInstances(this.tentacles, 0.3)
   }
 
   dispose(): void {

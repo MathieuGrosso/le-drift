@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { GameContext } from '../core/types'
 import { mantaGeometry } from './models'
-import { celMaterial, clampWaterY, patchVertex, writeBasis } from './shared'
+import { celMaterial, clampWaterY, padBounds, patchVertex, writeBasis } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
 const COUNT = 3
@@ -39,11 +39,10 @@ float mw = pow(clamp((mx - 0.35) / 2.3, 0.0, 1.0), 1.4);
 transformed.y += sin(uMantaPhase - mx * 0.9) * 0.95 * mw;
 transformed.y += sin(uMantaPhase * 0.5 - position.z * 1.2) * 0.12 * smoothstep(-0.8, -3.2, position.z);`,
     })
-    const geo = mantaGeometry().scale(1.3, 1.3, 1.3)
+    const geo = padBounds(mantaGeometry().scale(1.3, 1.3, 1.3), 1.2)
     for (let i = 0; i < COUNT; i++) {
       const mesh = new THREE.Mesh(geo, mat)
       mesh.matrixAutoUpdate = false
-      mesh.frustumCulled = false
       mesh.name = 'fauna-raie'
       this.meshes.push(mesh)
       this.group.add(mesh)

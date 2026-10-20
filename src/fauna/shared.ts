@@ -182,3 +182,41 @@ export function hideInstance(out: Float32Array, offset: number): void {
   out.fill(0, offset, offset + 16)
   out[offset + 15] = 1
 }
+
+/** Grows a deformed mesh's bounding sphere by the vertex shader's reach `pad`, so frustum culling stays safe. */
+export function padBounds(geo: THREE.BufferGeometry, pad: number): THREE.BufferGeometry {
+  if (!geo.boundingSphere) geo.computeBoundingSphere()
+  geo.boundingSphere!.radius += pad
+  return geo
+}
+
+/** Fits `mesh.boundingSphere` around its shown instances so three culls it (camera and shadow); hides it when none is shown. */
+export function fitInstances(mesh: THREE.InstancedMesh, pad: number): void {
+  const a = mesh.instanceMatrix.array as Float32Array
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity
+  let s2 = 0
+  for (let i = 0; i < mesh.count; i++) {
+    const o = i * 16
+    const c0 = a[o]! * a[o]! + a[o + 1]! * a[o + 1]! + a[o + 2]! * a[o + 2]!
+    const c1 = a[o + 4]! * a[o + 4]! + a[o + 5]! * a[o + 5]! + a[o + 6]! * a[o + 6]!
+    const c2 = a[o + 8]! * a[o + 8]! + a[o + 9]! * a[o + 9]! + a[o + 10]! * a[o + 10]!
+    const m = Math.max(c0, c1, c2)
+    if (m === 0) continue
+    if (m > s2) s2 = m
+    const x = a[o + 12]!, y = a[o + 13]!, z = a[o + 14]!
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (y < y0) y0 = y
+    if (y > y1) y1 = y
+    if (z < z0) z0 = z
+    if (z > z1) z1 = z
+  }
+  mesh.visible = s2 > 0
+  if (!mesh.visible) return
+  const geo = mesh.geometry
+  if (!geo.boundingSphere) geo.computeBoundingSphere()
+  const g = geo.boundingSphere!
+  const sphere = mesh.boundingSphere ?? (mesh.boundingSphere = new THREE.Sphere())
+  sphere.center.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+  sphere.radius = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + (g.center.length() + g.radius + pad) * Math.sqrt(s2)
+}

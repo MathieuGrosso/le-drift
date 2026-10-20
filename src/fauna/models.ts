@@ -23,6 +23,14 @@ export function fishGeometry(): THREE.BufferGeometry {
   return merge([body, tail, dorsal, eyeL, eyeR])
 }
 
+/** The same fish seen from afar: a coarser body, no eyes (a quarter of the triangles). */
+export function fishGeometryFar(): THREE.BufferGeometry {
+  const body = paintGradientY(ellipsoid(0.065, 0.1, 0.2, 6, 4), 0xb8c4c8, 0xffffff, -0.08, 0.08)
+  const tail = paint(finTriangle([0, 0, -0.16], [0, 0.1, -0.3], [0, -0.1, -0.3]), 0xd8e0e2)
+  const dorsal = paint(finTriangle([0, 0.08, 0.04], [0, 0.15, -0.06], [0, 0.07, -0.1]), 0xc8d2d6)
+  return merge([body, tail, dorsal])
+}
+
 export function jellyBellGeometry(): THREE.BufferGeometry {
   const pts: THREE.Vector2[] = []
   for (let i = 0; i <= 10; i++) {

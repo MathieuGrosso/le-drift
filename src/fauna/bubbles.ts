@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { CEILING_Y } from '../core/layout'
 import type { GameContext } from '../core/types'
-import { hideInstance, patchVertex } from './shared'
+import { fitInstances, hideInstance, patchVertex } from './shared'
 
 const BUBBLES = 600
 const RINGS = 720
@@ -35,7 +35,7 @@ void main() {
 }
 `
 
-/** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws. */
+/** Bubble bursts and expanding rings under the ceiling (dives, rain). Two instanced draws, culled when empty. */
 export class Bubbles {
   readonly group = new THREE.Group()
   private readonly bubbleMesh: THREE.InstancedMesh
@@ -64,7 +64,6 @@ export class Bubbles {
       uniforms: { uBubColor: { value: new THREE.Color(0xb8e2d8) } },
     })
     this.bubbleMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(2, 2), bMat, BUBBLES)
-    this.bubbleMesh.frustumCulled = false
     this.bubbleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     const bArr = this.bubbleMesh.instanceMatrix.array as Float32Array
     for (let i = 0; i < BUBBLES; i++) hideInstance(bArr, i * 16)
@@ -83,10 +82,11 @@ export class Bubbles {
       fragment: { after: '#include <opaque_fragment>', code: 'gl_FragColor.a *= vRingAlpha;' },
     })
     this.ringMesh = new THREE.InstancedMesh(rGeo, rMat, RINGS)
-    this.ringMesh.frustumCulled = false
     this.ringMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     const rArr = this.ringMesh.instanceMatrix.array as Float32Array
     for (let i = 0; i < RINGS; i++) hideInstance(rArr, i * 16)
+    this.bubbleMesh.name = 'fauna-bulles'
+    this.ringMesh.name = 'fauna-ronds'
     this.group.add(this.bubbleMesh, this.ringMesh)
   }
 
@@ -165,6 +165,7 @@ export class Bubbles {
       bArr[o + 12] = this.bp[k]; bArr[o + 13] = y; bArr[o + 14] = this.bp[k + 2]; bArr[o + 15] = 1
     }
     this.bubbleMesh.instanceMatrix.needsUpdate = true
+    fitInstances(this.bubbleMesh, 0)
 
     const rArr = this.ringMesh.instanceMatrix.array as Float32Array
     const alpha = this.ringAlpha.array as Float32Array
@@ -190,6 +191,7 @@ export class Bubbles {
     }
     this.ringMesh.instanceMatrix.needsUpdate = true
     this.ringAlpha.needsUpdate = true
+    fitInstances(this.ringMesh, 0)
   }
 
   dispose(): void {

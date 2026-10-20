@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { GameContext, Vec3 } from '../core/types'
 import type { Bubbles } from './bubbles'
 import { fishGeometry, whaleGeometry } from './models'
-import { celMaterial, clampWaterY, hideInstance, patchVertex, writeBasis } from './shared'
+import { celMaterial, clampWaterY, fitInstances, hideInstance, padBounds, patchVertex, writeBasis } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
 const SPEED = 3.2
@@ -45,12 +45,11 @@ export class Whale {
 
   constructor(private readonly ctx: GameContext, private readonly frame: DriftFrame, private readonly bubbles: Bubbles) {
     this.rng = ctx.rng('fauna:whale')
-    const geo = whaleGeometry()
+    const geo = padBounds(whaleGeometry(), 1.6)
     this.mesh = new THREE.Mesh(geo, this.material('whale', this.swim))
     this.calf = new THREE.Mesh(geo, this.material('whale-calf', this.calfSwim))
     for (const m of [this.mesh, this.calf]) {
       m.matrixAutoUpdate = false
-      m.frustumCulled = false
       this.group.add(m)
     }
     this.mesh.name = 'fauna-baleine'
@@ -69,7 +68,6 @@ transformed.x += sin(uFaunaTime * 10.0 + aPhase * 6.2831 + position.z * 9.0) * 0
     this.pilots = new THREE.InstancedMesh(pGeo, pMat, PILOTS)
     const col = new THREE.Color()
     for (let i = 0; i < PILOTS; i++) this.pilots.setColorAt(i, col.setHex(i % 3 === 0 ? 0xf2d06b : 0xe8eef0))
-    this.pilots.frustumCulled = false
     this.pilots.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     this.pilots.name = 'fauna-poissons-pilotes'
     this.group.add(this.pilots)
@@ -186,6 +184,7 @@ transformed.y += sin(uWhalePhase * 0.5 + 0.6) * 0.5 * wFin;`,
       else writeBasis(arr, i * 16, w.x, w.y, w.z, vx + Math.sin(t + i) * 0.05, vy * 0.5, vz, 1.1)
     }
     this.pilots.instanceMatrix.needsUpdate = true
+    fitInstances(this.pilots, 0.08)
   }
 
   stop(): void {

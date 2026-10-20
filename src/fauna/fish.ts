@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import { DRIFT_Y } from '../core/layout'
 import type { GameContext, Vec3 } from '../core/types'
-import { fishGeometry } from './models'
-import { PALETTE, celMaterial, clampWaterY, currentAt, heroInWater, hideInstance, patchVertex, writeBasis } from './shared'
+import { fishGeometry, fishGeometryFar } from './models'
+import { PALETTE, celMaterial, clampWaterY, currentAt, fitInstances, heroInWater, hideInstance, patchVertex, writeBasis } from './shared'
 import type { DriftFrame, Stage } from './stage'
 
 interface Species { color: number; scale: number; speed: number; weight: number; swirl: number; spread: number }
@@ -32,6 +32,9 @@ interface School {
   sway: number
   phase: number
   active: boolean
+  mesh: THREE.InstancedMesh
+  near: THREE.BufferGeometry
+  far: THREE.BufferGeometry
 }
 
 const K = 5
@@ -42,22 +45,27 @@ const SORTIE_CLEAR = 7
 const SORTIE_NEAR = 4
 const SORTIE_FULL = 6
 const SORTIE_SIZE = 0.8
+const TAIL_REACH = 0.08
+const LOD_FAR = 22
+const LOD_NEAR = 18
+const LOD_SCALE = 0.7
 
 /**
- * Instanced fish in boids schools (sampled-neighbour boids: separation, alignment, cohesion), one draw call.
+ * Instanced fish in boids schools (sampled-neighbour boids: separation, alignment, cohesion), one culled draw call per school.
  * Schools gather in front of whatever glass is being looked through; none ever sits behind it.
  */
 export class FishSchools {
   readonly group = new THREE.Group()
-  private mesh: THREE.InstancedMesh | null = null
   private material: THREE.Material
   private geometry: THREE.BufferGeometry
+  private geometryFar: THREE.BufferGeometry
   private schools: School[] = []
   private pos = new Float32Array(0)
   private vel = new Float32Array(0)
   private scale = new Float32Array(0)
   private nbr = new Int32Array(0)
   private taken = new Float32Array(0)
+  private color = new Float32Array(0)
   private n = 0
   private readonly rng: () => number
   private frameN = 0
@@ -70,6 +78,7 @@ export class FishSchools {
   constructor(private readonly ctx: GameContext, private readonly stage: Stage, private readonly frame: DriftFrame, count: number) {
     this.rng = ctx.rng('fauna:fish')
     this.geometry = fishGeometry()
+    this.geometryFar = fishGeometryFar()
     this.material = celMaterial(ctx, { color: 0xffffff, vertexColors: true, rim: 0.55 })
     patchVertex(this.material, {
       key: 'fish',
@@ -85,10 +94,7 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
   }
 
   resize(count: number): void {
-    if (this.mesh) {
-      this.mesh.removeFromParent()
-      this.mesh.dispose()
-    }
+    this.disposeSchools()
     const n = Math.max(90, Math.floor(count))
     this.n = n
     this.pos = new Float32Array(n * 3)
@@ -96,14 +102,7 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     this.scale = new Float32Array(n)
     this.nbr = new Int32Array(n * K)
     this.taken = new Float32Array(n)
-    const phase = new Float32Array(n)
-    const geo = this.geometry.clone()
-    geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1))
-    const mesh = new THREE.InstancedMesh(geo, this.material, n)
-    mesh.frustumCulled = false
-    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    mesh.name = 'fauna-fish'
-    this.mesh = mesh
+    this.color = new Float32Array(n * 3)
 
     const r = this.rng
     const perSchool = n < 400 ? 60 : n < 900 ? 100 : 150
@@ -128,28 +127,37 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
       const sp = p.species
       const big = sp.scale > 1.5
       const used = big ? Math.min(cnt, 9) : cnt
+      const phase = new Float32Array(used)
+      const aPhase = new THREE.InstancedBufferAttribute(phase, 1)
+      const near = this.geometry.clone().setAttribute('aPhase', aPhase)
+      const far = this.geometryFar.clone().setAttribute('aPhase', aPhase)
+      const mesh = new THREE.InstancedMesh(far, this.material, used)
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+      mesh.name = 'fauna-fish'
       const school: School = {
         kind: p.kind, start, count: used,
         c: new THREE.Vector3(), v: new THREE.Vector3((r() - 0.5) * 2, 0, (r() - 0.5) * 2),
         goal: new THREE.Vector3(), goalUntil: 0, attractUntil: 0,
         species: sp, shown: used, radius: ((big ? 3.5 : 1.6) + Math.cbrt(used) * 0.55 * sp.scale) * sp.spread,
-        depth: p.depth, sway: 6 + r() * 10, phase: r() * Math.PI * 2, active: false,
+        depth: p.depth, sway: 6 + r() * 10, phase: r() * Math.PI * 2, active: false, mesh, near, far,
       }
       this.schools.push(school)
       for (let i = start; i < start + cnt; i++) {
-        phase[i] = r()
+        const j = i - start
+        if (j < used) phase[j] = r()
         this.scale[i] = sp.scale * (0.8 + r() * 0.4)
         col.setHex(sp.color).offsetHSL((r() - 0.5) * 0.03, 0, (r() - 0.5) * 0.08)
-        mesh.setColorAt(i, col)
+        col.toArray(this.color, i * 3)
+        if (j < used) mesh.setColorAt(j, col)
         for (let k = 0; k < K; k++) this.nbr[i * K + k] = start + Math.floor(r() * used)
-        if (i >= start + used) this.taken[i] = Number.POSITIVE_INFINITY
+        if (j >= used) this.taken[i] = Number.POSITIVE_INFINITY
       }
+      const arr = mesh.instanceMatrix.array as Float32Array
+      for (let j = 0; j < used; j++) hideInstance(arr, j * 16)
+      mesh.visible = false
+      this.group.add(mesh)
       start += cnt
     })
-    const arr = mesh.instanceMatrix.array as Float32Array
-    for (let i = 0; i < n; i++) hideInstance(arr, i * 16)
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-    this.group.add(mesh)
     this.epoch = -1
   }
 
@@ -294,8 +302,7 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
   }
 
   fishColor(i: number, out: THREE.Color): THREE.Color {
-    if (this.mesh) this.mesh.getColorAt(i, out)
-    return out
+    return out.fromArray(this.color, i * 3)
   }
 
   take(i: number): void {
@@ -303,15 +310,12 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
   }
 
   update(dt: number): void {
-    const mesh = this.mesh
-    if (!mesh) return
     const ctx = this.ctx
     const now = ctx.clock.elapsed
     const st = this.stage
     const sortie = st.kind === 'sortie'
     const hero = ctx.state.hero.position
     const heroWater = heroInWater(ctx)
-    const arr = mesh.instanceMatrix.array as Float32Array
     const r = this.rng
     this.frameN++
     const jumped = st.epoch !== this.epoch
@@ -353,9 +357,19 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
         if (dl < clear) s.c.addScaledVector(dl > 1e-3 ? away.divideScalar(dl) : st.normal, clear - dl)
       }
       s.shown = sortie ? sortieShown(s) : s.count
-      this.stepSchool(s, dt, now, hero, heroWater, sortie, arr)
+      s.mesh.count = s.shown
+      this.stepSchool(s, dt, now, hero, heroWater, sortie, s.mesh.instanceMatrix.array as Float32Array)
+      s.mesh.instanceMatrix.needsUpdate = true
+      fitInstances(s.mesh, TAIL_REACH)
+      if (s.mesh.visible) this.pickLod(s)
     }
-    mesh.instanceMatrix.needsUpdate = true
+  }
+
+  private pickLod(s: School): void {
+    const b = s.mesh.boundingSphere!
+    const d = (b.center.distanceTo(this.ctx.camera.position) - b.radius) * LOD_SCALE / s.species.scale
+    const geo = s.mesh.geometry === s.far ? (d < LOD_NEAR ? s.near : s.far) : (d > LOD_FAR ? s.far : s.near)
+    if (geo !== s.mesh.geometry) s.mesh.geometry = geo
   }
 
   private stepSchool(s: School, dt: number, now: number, hero: Vec3, heroWater: boolean, sortie: boolean, arr: Float32Array): void {
@@ -371,9 +385,9 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     const gx = st.pos.x, gy = st.pos.y, gz = st.pos.z
     const cam = this.ctx.camera.position
     const camX = cam.x, camY = cam.y, camZ = cam.z
-    for (let i = s.start; i < s.start + s.count; i++) {
-      const o = i * 16
-      if (this.taken[i]! > now || i >= s.start + s.shown) {
+    for (let i = s.start; i < s.start + s.shown; i++) {
+      const o = (i - s.start) * 16
+      if (this.taken[i]! > now) {
         hideInstance(arr, o)
         continue
       }
@@ -466,13 +480,21 @@ transformed.x += sin(uFaunaTime * (8.0 + aPhase * 3.0) + aPhase * 6.2831 + posit
     }
   }
 
+  private disposeSchools(): void {
+    for (const s of this.schools) {
+      s.mesh.removeFromParent()
+      s.near.dispose()
+      s.far.dispose()
+      s.mesh.dispose()
+    }
+    this.schools = []
+  }
+
   dispose(): void {
     this.group.removeFromParent()
-    if (this.mesh) {
-      this.mesh.geometry.dispose()
-      this.mesh.dispose()
-    }
+    this.disposeSchools()
     this.geometry.dispose()
+    this.geometryFar.dispose()
     this.material.dispose()
   }
 }
