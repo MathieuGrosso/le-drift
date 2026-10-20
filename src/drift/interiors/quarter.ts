@@ -102,11 +102,17 @@ varying vec3 vWorldPos;
 ${NOISE_GLSL}
 void main() {
   vec2 e = min(vUv, 1.0 - vUv);
-  float edge = 1.0 - smoothstep(0.0, 0.08, min(e.x, e.y));
   float n = dFbm(vUv * 6.0 + vec2(uTime * 0.3, -uTime * 0.2));
-  float foam = clamp(edge * (0.6 + n), 0.0, 1.0);
-  vec3 c = mix(uColor, vec3(0.95, 0.98, 0.96), foam * 0.85) + n * 0.06;
-  gl_FragColor = vec4(c, mix(0.55, 0.9, foam));
+  float edge = 1.0 - smoothstep(0.0, 0.025, min(e.x, e.y));
+  float foam = edge * smoothstep(0.35, 0.7, n + 0.3);
+  vec3 view = normalize(cameraPosition - vWorldPos);
+  float grazing = pow(1.0 - abs(view.y), 3.0);
+  if (!gl_FrontFacing) {
+    gl_FragColor = vec4(mix(uColor, vec3(0.8, 0.95, 0.95), 0.35 + grazing * 0.4), 0.2 + grazing * 0.45);
+    return;
+  }
+  vec3 c = mix(uColor, vec3(0.95, 0.98, 0.96), foam * 0.7) + n * 0.05;
+  gl_FragColor = vec4(c, mix(0.25 + grazing * 0.25, 0.7, foam));
 }`
 
 const STEAM_VERT = /* glsl */ `
