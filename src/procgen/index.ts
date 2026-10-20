@@ -39,6 +39,7 @@ interface Slot {
 const UP = new THREE.Vector3(0, 1, 0)
 // Ports sit on the district boundary: the audit reaches a few metres into the neighbour so they are interior.
 const AUDIT_PAD = 3
+const LONG_SLICE_MS = 33
 const _q = new THREE.Quaternion()
 
 function boxDist(p: DistrictPlan, l: Vec3): number {
@@ -78,6 +79,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   const charted = new Map<string, ChartEntry>()
   let heroSlot: Slot | null = null
   let arrival: { slot: Slot; left: number } | null = null
+  let dwell = 0
   const debug = new URLSearchParams(location.search).has('procgen')
   let camCell: CellSpec | null = null
   let clock = 0
@@ -162,7 +164,9 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     for (const slot of slots) {
       if (!slot.job) continue
       while (performance.now() - t0 < budgetMs) {
+        const t1 = performance.now()
         const r = slot.job.next()
+        if (debug && performance.now() - t1 > LONG_SLICE_MS) console.info(`[procgen] ${slot.plan.id} slice ${(performance.now() - t1).toFixed(0)} ms`)
         if (r.done) {
           slot.job = null
           attach(slot, r.value)
@@ -272,13 +276,15 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
       _q.setFromAxisAngle(UP, -pose.heading)
       linksBuilt.body!.setNextKinematicTranslation(pose.position)
       linksBuilt.body!.setNextKinematicRotation(_q)
+      const was = heroSlot
       heroSlot = slots.find((s) => s.built && inBox(s.plan.bounds, heroLocal)) ?? null
+      dwell = heroSlot === was ? dwell + dt : 0
       const hb = heroSlot?.built
       if (hb) {
         for (const e of hb.content.chart) if (e.reveal === 'visite') charted.set(e.id, e)
         hb.crowd ??= districtCrowd(hb.shell, host.mats, ctx.quality.level)
         if (!hb.crowd.group.parent) hb.group.add(hb.crowd.group)
-        if (!hb.navReady && !hb.nav) {
+        if (!hb.navReady && !hb.nav && dwell > STREAM.navDwell) {
           const crowd = hb.crowd
           hb.nav = bake(hb, heroSlot!.plan.id).then((n) => {
             if (n && hb.crowd === crowd) crowd.useNav(n)

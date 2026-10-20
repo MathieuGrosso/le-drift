@@ -66,6 +66,8 @@ export const STREAM = {
   budgetMs: { high: 2, medium: 1.5, low: 1 } as const,
   variants: 3,
   arrivalHold: 6,
+  // The bake blocks the main thread (~100-200 ms): only for a district the hero lingers in.
+  navDwell: 20,
 }
 
 export const SILHOUETTE = { color: 0x6f6a78, tint: 0.45, valueJitter: 0.12, girth: 0.92, capSegments: 2, radial: 8 }
