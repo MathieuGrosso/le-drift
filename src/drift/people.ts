@@ -68,9 +68,10 @@ class FigB {
 }
 
 interface Detail { blob: THREE.SphereGeometry; small: THREE.SphereGeometry; head: THREE.SphereGeometry; seg: number }
-const DETAIL: Record<'hi' | 'lo', Detail> = {
+const DETAIL: Record<'hi' | 'lo' | 'far', Detail> = {
   hi: { blob: new THREE.SphereGeometry(1, 12, 9), small: new THREE.SphereGeometry(1, 7, 5), head: new THREE.SphereGeometry(1, 18, 14), seg: 14 },
   lo: { blob: new THREE.SphereGeometry(1, 8, 6), small: new THREE.SphereGeometry(1, 5, 3), head: new THREE.SphereGeometry(1, 11, 8), seg: 8 },
+  far: { blob: new THREE.SphereGeometry(1, 6, 4), small: new THREE.SphereGeometry(1, 4, 2), head: new THREE.SphereGeometry(1, 7, 5), seg: 5 },
 }
 
 const _q = new THREE.Quaternion()
@@ -276,20 +277,21 @@ export interface FigParts {
   shin: THREE.BufferGeometry
 }
 
-export function figureParts(): FigParts {
+export function figureParts(detail: 'hi' | 'lo', feats: readonly number[] | null): FigParts {
+  const set = feats ? new Set(feats) : null
   const one = (fn: (p: Part) => void) => {
     const b = new FigB()
-    fn(new Part(b, new THREE.Matrix4(), DETAIL.hi, 0, null))
+    fn(new Part(b, new THREE.Matrix4(), DETAIL[detail], 0, set))
     return b.build()
   }
   return { torso: one(torso), head: one(head), arm: one(arm), thigh: one(thigh), shin: one(shin) }
 }
 
 // Whole figure in one mesh, standing at rest, feet at y = 0; only the features `feats` lists are built.
-export function rigGeometry(feats: readonly number[]): THREE.BufferGeometry {
+export function rigGeometry(feats: readonly number[], detail: 'lo' | 'far'): THREE.BufferGeometry {
   const b = new FigB()
   const set = new Set(feats)
-  const d = DETAIL.lo
+  const d = DETAIL[detail]
   const T = (x: number, y: number, z: number) => new THREE.Matrix4().makeTranslation(x, y, z)
   torso(new Part(b, T(0, RIG.hip, 0), d, L.body, set))
   head(new Part(b, T(0, RIG.hip + RIG.headY, 0), d, L.head, set))

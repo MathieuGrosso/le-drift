@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { Crowd as NavCrowd, CrowdAgent } from '@recast-navigation/core'
-import { NAV } from '../../core/tuning'
+import { NAV, NPC_LOD } from '../../core/tuning'
 import type { DistrictId, QualityLevel, Vec3 } from '../../core/types'
 import type { DriftNavmesh } from '../nav/navmesh'
 import type { Mats } from '../materials'
@@ -41,12 +41,16 @@ const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const _p = new THREE.Vector3()
 const _s = new THREE.Vector3()
+const _eye = new THREE.Vector3()
+
+type CrowdLod = 'near' | 'far'
+const CROWD_LODS: readonly CrowdLod[] = ['near', 'far']
 
 // The many: cheap residents walking district paths and holding spots, by the hour.
 export class Crowd {
   readonly group = new THREE.Group()
   private readonly walkers: Walker[] = []
-  private readonly meshes = new Map<Role, THREE.InstancedMesh>()
+  private readonly meshes = new Map<`${Role}:${CrowdLod}`, THREE.InstancedMesh>()
   private time = 0
   private active: ReadonlySet<DistrictId> | null = null
   private shown: ReadonlySet<DistrictId> | null = null
@@ -70,15 +74,17 @@ export class Crowd {
     const mat = figureMaterial(mats, true)
     for (const role of ROLES) {
       const n = Math.max(1, this.walkers.filter((w) => w.look.role === role).length)
-      const geo = rigGeometry(ROLE_FEATS[role])
-      instanceLooks(geo, n, true)
-      const im = new THREE.InstancedMesh(geo, mat, n)
-      im.count = 0
-      im.frustumCulled = false
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      im.name = `foule:${role}`
-      this.meshes.set(role, im)
-      this.group.add(im)
+      for (const lod of CROWD_LODS) {
+        const geo = rigGeometry(ROLE_FEATS[role], lod === 'near' ? 'lo' : 'far')
+        instanceLooks(geo, n, true)
+        const im = new THREE.InstancedMesh(geo, mat, n)
+        im.count = 0
+        im.frustumCulled = false
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+        im.name = `foule:${role}:${lod}`
+        this.meshes.set(`${role}:${lod}`, im)
+        this.group.add(im)
+      }
     }
   }
 
@@ -190,11 +196,14 @@ export class Crowd {
     return out
   }
 
-  update(dt: number, hours: number): void {
+  // Without a camera every walker keeps the near geometry.
+  update(dt: number, hours: number, camera?: THREE.Object3D): void {
     this.time += dt
     const meal = hours >= 7.5 && hours < 8.5
-    const slots = new Map<Role, number>()
-    for (const r of ROLES) slots.set(r, 0)
+    const slots = new Map<string, number>()
+    for (const key of this.meshes.keys()) slots.set(key, 0)
+    if (camera) this.group.worldToLocal(camera.getWorldPosition(_eye))
+    const near2 = camera ? NPC_LOD.crowdNear * NPC_LOD.crowdNear : Infinity
     this.nav?.update(dt)
     for (let i = 0; i < this.walkers.length; i++) {
       const w = this.walkers[i]!
@@ -226,9 +235,11 @@ export class Crowd {
         }
       }
       if (!drawn) continue
-      const im = this.meshes.get(w.look.role)!
-      const slot = slots.get(w.look.role)!
-      slots.set(w.look.role, slot + 1)
+      const d2 = (w.x - _eye.x) ** 2 + (w.y - _eye.y) ** 2 + (w.z - _eye.z) ** 2
+      const key = `${w.look.role}:${d2 < near2 ? 'near' : 'far'}` as const
+      const im = this.meshes.get(key)!
+      const slot = slots.get(key)!
+      slots.set(key, slot + 1)
       _e.set(-lean, -w.yaw, roll, 'YXZ')
       _q.setFromEuler(_e)
       _m.compose(_p.set(w.x, w.y + bob, w.z), _q, _s.setScalar(w.scale))
@@ -236,8 +247,8 @@ export class Crowd {
       writeLook(im.geometry, slot, w.look)
       writePose(im.geometry, slot, w.speed * 5.5, w.phase * w.speed * 5.5, swing, bend)
     }
-    for (const [role, im] of this.meshes) {
-      im.count = slots.get(role)!
+    for (const [key, im] of this.meshes) {
+      im.count = slots.get(key)!
       im.visible = im.count > 0
       im.instanceMatrix.needsUpdate = true
       touchLooks(im.geometry)

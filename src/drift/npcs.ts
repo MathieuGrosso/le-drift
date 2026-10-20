@@ -1,11 +1,12 @@
 import * as THREE from 'three'
+import { NPC_LOD } from '../core/tuning'
 import type { GameContext } from '../core/types'
 import { PORTHOLES } from './interiors/layout'
 import type { Quarter } from './interiors/quarter'
 import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
-import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, touchLooks, writeLook, type Look, type Role as Fig } from './people'
+import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, ROLE_FEATS, touchLooks, writeLook, type Look, type Role as Fig } from './people'
 import { mapX, mapZ } from '../core/quarter'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
@@ -105,6 +106,12 @@ function roster(rand: () => number): NpcDef[] {
 
 const PARTS_PER_NPC = { torso: 1, head: 1, arm: 2, thigh: 2, shin: 2 } as const
 type PartKey = keyof typeof PARTS_PER_NPC
+type Lod = 'hi' | 'lo'
+const LODS: readonly Lod[] = ['hi', 'lo']
+// Torso and head carry the clothes and hair features, so they are built per role with only that role's features.
+const BODY: readonly PartKey[] = ['torso', 'head']
+const LIMBS: readonly PartKey[] = ['arm', 'thigh', 'shin']
+interface Batch { meshes: Partial<Record<PartKey, THREE.InstancedMesh>>; used: number }
 
 interface PoseParams {
   hipY: number; lean: number; headYaw: number; headPitch: number
@@ -122,33 +129,43 @@ const _r = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
 const _e = new THREE.Euler()
 const _v = new THREE.Vector3()
+const _w = new THREE.Vector3()
 const _one = new THREE.Vector3(1, 1, 1)
 
 export class Npcs {
   private readonly list: Npc[] = []
-  private readonly meshes = {} as Record<PartKey, THREE.InstancedMesh>
+  private readonly batches = new Map<string, Batch>()
   private readonly overrides = new Map<string, { act: Activity; until: number }>()
   private standAll = 0
   private time = 0
-  private slotNext = 0
   private readonly seats: (Spot & { part: string })[]
   private readonly portholeSpots: (Spot & { part: string })[] = []
   readonly group = new THREE.Group()
 
   constructor(private readonly ctx: GameContext, mats: Mats, private readonly quarter: Quarter) {
     this.group.name = 'drift-habitants'
-    const geo = figureParts()
     const mat = figureMaterial(mats, false)
     const defs = roster(ctx.rng('drift-habitants'))
     const n = defs.length
-    for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
-      instanceLooks(geo[key], n * PARTS_PER_NPC[key], false)
-      const im = new THREE.InstancedMesh(geo[key], mat, n * PARTS_PER_NPC[key])
-      im.frustumCulled = false
-      im.userData.fadeable = true
-      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      this.meshes[key] = im
-      this.group.add(im)
+    const batch = (name: string, parts: readonly PartKey[], geo: Record<PartKey, THREE.BufferGeometry>, count: number) => {
+      const b: Batch = { meshes: {}, used: 0 }
+      for (const key of parts) {
+        instanceLooks(geo[key], count * PARTS_PER_NPC[key], false)
+        const im = new THREE.InstancedMesh(geo[key], mat, count * PARTS_PER_NPC[key])
+        im.frustumCulled = false
+        im.userData.fadeable = true
+        im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+        im.name = `habitants:${name}:${key}`
+        b.meshes[key] = im
+        this.group.add(im)
+      }
+      this.batches.set(name, b)
+    }
+    for (const lod of LODS) {
+      batch(lod, LIMBS, figureParts(lod, null), n)
+      for (const role of new Set(defs.map((d) => d.look.role))) {
+        batch(`${lod}:${role}`, BODY, figureParts(lod, ROLE_FEATS[role]), defs.filter((d) => d.look.role === role).length)
+      }
     }
     defs.forEach((d, i) => {
       this.list.push({
@@ -321,7 +338,7 @@ export class Npcs {
     const q = this.ctx.quality.level
     let seatedBudget = q === 'high' ? 40 : q === 'medium' ? 25 : 12
     let walkBudget = q === 'high' ? 12 : q === 'medium' ? 8 : 4
-    this.slotNext = 0
+    for (const b of this.batches.values()) b.used = 0
     for (const n of this.list) {
       const ov = this.overrides.get(n.def.id)
       let act: Activity
@@ -346,13 +363,17 @@ export class Npcs {
       if (live) n.t += dt
       this.pose(n, act)
     }
-    this.group.visible = this.slotNext > 0
-    for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
-      const im = this.meshes[key]
-      im.count = this.slotNext * PARTS_PER_NPC[key]
-      im.instanceMatrix.needsUpdate = true
-      touchLooks(im.geometry)
+    let shown = 0
+    for (const b of this.batches.values()) {
+      shown += b.used
+      for (const [key, im] of Object.entries(b.meshes) as [PartKey, THREE.InstancedMesh][]) {
+        im.count = b.used * PARTS_PER_NPC[key]
+        im.visible = im.count > 0
+        im.instanceMatrix.needsUpdate = true
+        touchLooks(im.geometry)
+      }
     }
+    this.group.visible = shown > 0
   }
 
   private enter(n: Npc, act: Activity): void {
@@ -534,10 +555,17 @@ export class Npcs {
 
   private pose(n: Npc, act: Activity): void {
     const p = this.params(n, act)
-    const i = this.slotNext++
+    _w.copy(n.pos).applyMatrix4(this.group.matrixWorld)
+    const lod: Lod = _w.distanceTo(this.ctx.camera.position) < NPC_LOD.hiDistance ? 'hi' : 'lo'
     const look = n.def.look
-    for (const key of Object.keys(PARTS_PER_NPC) as PartKey[]) {
-      for (let k = 0; k < PARTS_PER_NPC[key]; k++) writeLook(this.meshes[key].geometry, i * PARTS_PER_NPC[key] + k, look)
+    const body = this.batches.get(`${lod}:${look.role}`)!
+    const limbs = this.batches.get(lod)!
+    const b = body.used++
+    const i = limbs.used++
+    for (const [batch, slot] of [[body, b], [limbs, i]] as const) {
+      for (const [key, im] of Object.entries(batch.meshes) as [PartKey, THREE.InstancedMesh][]) {
+        for (let k = 0; k < PARTS_PER_NPC[key]; k++) writeLook(im.geometry, slot * PARTS_PER_NPC[key] + k, look)
+      }
     }
     const s = n.scale
     const w = look.width
@@ -555,28 +583,28 @@ export class Npcs {
       _hip.copy(_base).multiply(_m.makeTranslation(0, p.hipY + seatY / s, 0))
     }
     const torso = _m2.copy(_hip).multiply(_r.makeRotationX(-p.lean))
-    this.meshes.torso.setMatrixAt(i, _m.copy(torso).multiply(_r.makeScale(w, 1, 1 + (w - 1) * 0.55)))
+    body.meshes.torso!.setMatrixAt(b, _m.copy(torso).multiply(_r.makeScale(w, 1, 1 + (w - 1) * 0.55)))
     const headM = _m.copy(torso).multiply(_r.makeTranslation(0, RIG.headY + (look.head - 1) * RIG.headR, 0))
     _e.set(p.headPitch, p.headYaw, 0, 'YXZ')
     headM.multiply(_r.makeRotationFromEuler(_e)).multiply(_r.makeScale(look.head, look.head, look.head))
-    this.meshes.head.setMatrixAt(i, headM)
+    body.meshes.head!.setMatrixAt(b, headM)
     for (let k = 0; k < 2; k++) {
       const side = k === 0 ? -1 : 1
       const [pitch, roll] = k === 0 ? p.armL : p.armR
       const arm = _m.copy(torso).multiply(_r.makeTranslation(side * RIG.shX * w, RIG.shY, 0))
       _e.set(pitch, 0, roll + side * 0.07, 'XYZ')
       arm.multiply(_r.makeRotationFromEuler(_e))
-      this.meshes.arm.setMatrixAt(i * 2 + k, arm)
+      limbs.meshes.arm!.setMatrixAt(i * 2 + k, arm)
       const thigh = _m.copy(_hip).multiply(_r.makeTranslation(side * (RIG.legX + (w - 1) * 0.06), 0, 0))
       thigh.multiply(_r.makeRotationX(k === 0 ? p.thighL : p.thighR))
-      this.meshes.thigh.setMatrixAt(i * 2 + k, thigh)
+      limbs.meshes.thigh!.setMatrixAt(i * 2 + k, thigh)
       const shin = thigh.multiply(_r.makeTranslation(0, -RIG.thigh, 0)).multiply(_r.makeRotationX(k === 0 ? p.kneeL : p.kneeR))
-      this.meshes.shin.setMatrixAt(i * 2 + k, shin)
+      limbs.meshes.shin!.setMatrixAt(i * 2 + k, shin)
     }
   }
 
   dispose(): void {
-    for (const im of Object.values(this.meshes)) im.geometry.dispose()
+    for (const b of this.batches.values()) for (const im of Object.values(b.meshes)) im.geometry.dispose()
     this.group.removeFromParent()
   }
 }

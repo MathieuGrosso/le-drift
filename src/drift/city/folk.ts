@@ -113,7 +113,7 @@ export class Folk {
     }))
     for (const role of new Set(ROSTER.map((d) => d.role))) {
       const n = ROSTER.filter((d) => d.role === role).length
-      const geo = rigGeometry(ROLE_FEATS[role])
+      const geo = rigGeometry(ROLE_FEATS[role], 'lo')
       instanceLooks(geo, n, true)
       const im = new THREE.InstancedMesh(geo, mat, n)
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)

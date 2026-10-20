@@ -859,7 +859,7 @@ export class City {
       this.syncDoor(d)
       if (d.t === target && !d.open) this.sfx('hatch-clang', d.spec)
     }
-    this.crowd.update(dt, h)
+    this.crowd.update(dt, h, this.ctx.camera)
     this.folk.update(dt, h)
     for (const pool of this.pools.values()) {
       pool.level += (pool.target - pool.level) * Math.min(1, dt * 0.8)

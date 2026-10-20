@@ -218,6 +218,9 @@ export const PROPS = {
   chairHalf: 0.22,
 } as const
 
+// Figures nearer the camera than these distances (m) use the finer geometry: quarter NPCs, then the city crowd.
+export const NPC_LOD = { hiDistance: 7, crowdNear: 14 } as const
+
 export const HOMES = {
   open: { nef: 14, marche: 10, serres: 9, ateliers: 9, scellees: 8 } as Partial<Record<string, number>>,
   buildRadius: 24,

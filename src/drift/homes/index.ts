@@ -64,7 +64,7 @@ export class Homes {
     this.group.add(this.leaves)
     const figMat = figureMaterial(mats, true)
     for (const role of new Set(defs.map((d) => d.role))) {
-      const geo = rigGeometry(ROLE_FEATS[role])
+      const geo = rigGeometry(ROLE_FEATS[role], 'lo')
       instanceLooks(geo, HOMES.maxBuilt, true)
       const im = new THREE.InstancedMesh(geo, figMat, HOMES.maxBuilt)
       im.name = `habitants-maisons:${role}`
