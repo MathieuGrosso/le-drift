@@ -34,6 +34,8 @@ export interface Hud {
 
 export interface Dialogue {
   play(lines: readonly Line[], npcId?: string): Promise<void>
+  /** Shown while the player keeps control: no cutscene, no prompt lock, fades out on its own. */
+  aside(lines: readonly Line[]): Promise<void>
   active(): boolean
   update(dt: number): void
 }

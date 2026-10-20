@@ -3,8 +3,10 @@ import { SPEAKERS } from '../text/fr'
 import { h } from './dom'
 
 const CHARS_PER_SEC = 48
+const ASIDE_HOLD_S = 2.5
+const ASIDE_READ_CHARS_PER_SEC = 16
 
-interface Job { lines: readonly Line[]; npcId: string | undefined; resolve: () => void }
+interface Job { lines: readonly Line[]; npcId: string | undefined; aside: boolean; resolve: () => void }
 
 export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
   const ctx = gp.ctx
@@ -21,6 +23,7 @@ export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
   let full = ''
   let clicked = false
   let cooldown = 0
+  let hold = 0
   let prevMode: string | null = null
 
   wrap.addEventListener('click', () => {
@@ -34,6 +37,7 @@ export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
     name.textContent = who ? SPEAKERS[who] ?? who : ''
     full = t
     shown = 0
+    hold = ASIDE_HOLD_S + t.length / ASIDE_READ_CHARS_PER_SEC
     text.textContent = ''
     next.classList.remove('show')
   }
@@ -43,8 +47,10 @@ export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
     if (!job) return
     index = 0
     wrap.classList.add('show')
+    wrap.classList.toggle('aside', job.aside)
     const mode = ctx.state.hero.mode
-    if (mode !== 'sit' && mode !== 'lean' && mode !== 'cutscene') {
+    if (job.aside) prevMode = null
+    else if (mode !== 'sit' && mode !== 'lean' && mode !== 'cutscene') {
       prevMode = mode
       gp.heroMode('cutscene')
     } else prevMode = null
@@ -63,18 +69,21 @@ export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
     if (queue.length > 0) begin()
   }
 
+  const enqueue = (lines: readonly Line[], npcId: string | undefined, aside: boolean) =>
+    new Promise<void>((resolve) => {
+      if (lines.length === 0) {
+        resolve()
+        return
+      }
+      queue.push({ lines, npcId, aside, resolve })
+      if (!job) begin()
+      else if (job.aside && !aside) finish()
+    })
+
   return {
-    play(lines, npcId) {
-      return new Promise<void>((resolve) => {
-        if (lines.length === 0) {
-          resolve()
-          return
-        }
-        queue.push({ lines, npcId, resolve })
-        if (!job) begin()
-      })
-    },
-    active: () => job !== null,
+    play: (lines, npcId) => enqueue(lines, npcId, false),
+    aside: (lines) => enqueue(lines, undefined, true),
+    active: () => job !== null && !job.aside,
     update(dt) {
       if (!job) return
       if (shown < full.length) {
@@ -84,7 +93,8 @@ export function createDialogue(gp: Gp, root: HTMLElement): Dialogue {
       }
       cooldown -= dt
       const input = ctx.input
-      const advance = clicked || input.pressed('interact') || input.pressed('up')
+      if (job.aside && shown >= full.length) hold -= dt
+      const advance = clicked || (job.aside ? hold <= 0 : input.pressed('interact') || input.pressed('up'))
       clicked = false
       if (!advance || cooldown > 0) return
       cooldown = 0.12

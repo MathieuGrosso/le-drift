@@ -87,6 +87,8 @@ export const GAMEPLAY_CSS = `
 .gp-dialogue.narration .box { background: none; border: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; text-align: center; }
 .gp-dialogue.narration .text { font-family: var(--gp-serif); font-style: italic; font-size: 24px; text-shadow: 0 2px 18px rgba(6,24,38,.9), 0 0 2px rgba(6,24,38,.6); }
 .gp-dialogue.narration .name { display: none; }
+.gp-dialogue.aside { bottom: auto; top: 15%; }
+.gp-dialogue.aside .next { display: none; }
 
 .gp-menu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto;
   background: radial-gradient(ellipse at 50% 30%, rgba(27,94,115,.55), rgba(8,30,46,.82)); animation: gp-in .35s ease; }

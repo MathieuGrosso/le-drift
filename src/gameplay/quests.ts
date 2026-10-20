@@ -250,12 +250,16 @@ export function createQuests(gp: Gp): Quests {
       void scene(async () => say(DIALOGUES.nefArrivee))
     }
   })
+  ctx.bus.on('mode:changed', ({ to }) => {
+    if (to !== 'sortie' || step('a1-sortie') !== 'coque' || st().flags['premiere-sortie']) return
+    st().flags['premiere-sortie'] = true
+    gp.hud.tip(TIPS.nage(ctx.input.keyLabel('up'), ctx.input.keyLabel('down')), 8)
+    void gp.dialogue.aside(DIALOGUES.premiereSortie)
+  })
   ctx.bus.on('hero:medium', ({ medium }) => {
     if (medium === 'water' && (step('a1-reveil') === 'sortir' || step('a1-reveil') === 'tableau')) {
       set('a1-reveil', 'done')
       set('a1-sortie', 'coque')
-      gp.hud.tip(TIPS.nage(ctx.input.keyLabel('up'), ctx.input.keyLabel('down')), 8)
-      void scene(async () => say(DIALOGUES.premiereSortie))
     }
     if (medium === 'air' && step('a1-petit-dejeuner') === 'rentrer') set('a1-petit-dejeuner', 'cuisine')
     if (medium === 'air' && step('a3-dome-proue') === 'rentrer') {
