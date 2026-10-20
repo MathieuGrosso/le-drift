@@ -30,7 +30,7 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
     },
     update(dt) {
       if (dt * 1000 > DR.hitchMs) return false
-      ms += (dt * 1000 - ms) * DR.smoothing
+      ms += (Math.min(dt * 1000, targetMs * DR.sampleCap) - ms) * DR.smoothing
       since += dt
       if (since < DR.settleSeconds) return false
       if (probing && since > DR.probeSeconds) {
@@ -45,7 +45,7 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
         calm = 0
       } else if (ms < targetMs * DR.growBelow && ratio < max) {
         calm += dt
-        if (calm >= growWait) {
+        if (calm >= (ms < targetMs * DR.headroomBelow ? DR.growAfterSeconds : growWait)) {
           next = Math.min(max, ratio + DR.step)
           probing = true
         }

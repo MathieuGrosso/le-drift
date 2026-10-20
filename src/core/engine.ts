@@ -307,7 +307,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       const render = ctx.services.render
       if (render) render.draw(ctx)
       else renderer.render(scene, camera)
-      if (!paused && resolution.update(rawDt)) resize()
+      if (!paused && warmup === 0 && resolution.update(rawDt)) resize()
       while (afterDraw.length > 0) afterDraw.shift()!()
 
       ctx.clock.frame++
