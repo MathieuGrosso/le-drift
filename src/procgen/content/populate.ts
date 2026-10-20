@@ -110,6 +110,10 @@ function fallbackTrack(plan: DistrictPlan, rng: Rng): Track {
   return track(pts)
 }
 
+function cellOfPlan(shell: DistrictShell) {
+  return shell.cells.find((c) => c.id === shell.plan.id)
+}
+
 function loopTracks(shell: DistrictShell): Track[] {
   const byId = new Map(shell.walk.nodes.map((n) => [n.id, n]))
   return shell.walk.edges
@@ -288,11 +292,32 @@ export const populate: PopulateFn = (plan, shell) => {
     return sample(main, main.length)
   }
 
-  const porche = sample(main, Math.min(ACCUEIL.porche, main.length * 0.3))
-  push('panneau', 'petit', porche.cell, { ...porche.at, yaw: Math.atan2(-porche.dir.x, -porche.dir.z) }, plan.nom, { porche: ACCUEIL.largeur, haut: ACCUEIL.hautSign }, `${plan.id}/porche`)
-  const atelier = sample(main, Math.min(ACCUEIL.scene, main.length * 0.5))
+  const lots = shell.cells.filter((c) => c.id !== plan.id).flatMap((c) => c.boxes)
+  const open = (p: Vec3, r: number) => [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].every(([dx, dz]) =>
+    !lots.some((b) => p.x + dx! > b.x0 && p.x + dx! < b.x1 && p.z + dz! > b.z0 && p.z + dz! < b.z1 && p.y + 1 > b.y0 && p.y + 1 < b.y1))
+  const spawn = cellOfPlan(shell)?.spawn ?? main.pts[0]!.at
+  const near0 = main.pts.reduce((m, p, i) => (dist(p.at, spawn) < dist(main.pts[m]!.at, spawn) ? i : m), 0)
+  const s0 = main.cum[near0]!
+  const fwd = main.length - s0 >= s0 ? 1 : -1
+  const onTrack = dist(main.pts[near0]!.at, spawn) <= ACCUEIL.track
+  const toTrack = { x: main.pts[near0]!.at.x - spawn.x, z: main.pts[near0]!.at.z - spawn.z }
+  const tl = Math.hypot(toTrack.x, toTrack.z) || 1
+  const ahead = (d: number) => {
+    if (!onTrack) {
+      const dir = { x: toTrack.x / tl, z: toTrack.z / tl }
+      return { at: { x: spawn.x + dir.x * d, y: spawn.y, z: spawn.z + dir.z * d }, cell: plan.id, dir }
+    }
+    const p = sample(main, Math.min(main.length, Math.max(0, s0 + fwd * d)))
+    return { ...p, dir: { x: p.dir.x * fwd, z: p.dir.z * fwd } }
+  }
+  const porche = ahead(ACCUEIL.porche)
+  let half: number = ACCUEIL.largeur
+  while (half - ACCUEIL.pas >= ACCUEIL.largeurMin && !(open(side(porche.at, porche.dir, half), 0.3) && open(side(porche.at, porche.dir, -half), 0.3))) half -= ACCUEIL.pas
+  push('panneau', 'petit', porche.cell, { ...porche.at, yaw: Math.atan2(-porche.dir.x, -porche.dir.z) }, plan.nom, { porche: half, haut: ACCUEIL.hautSign }, `${plan.id}/porche`)
+  const atelier = ahead(ACCUEIL.scene)
   const awayFromBooth = -atelier.dir.z < 0 ? 1 : -1
-  const scene = side(atelier.at, atelier.dir, awayFromBooth * ACCUEIL.side)
+  const offsets = [1, -1, 0.6, -0.6].map((f) => f * awayFromBooth * ACCUEIL.side)
+  const scene = offsets.map((d) => side(atelier.at, atelier.dir, d)).find((p) => open(p, ACCUEIL.reserve)) ?? side(atelier.at, atelier.dir, offsets[2]!)
   const crew = [pools.pnj(), pools.pnj(), pools.pnj()]
   push('vignette', 'petit', atelier.cell, { ...scene, yaw: Math.atan2(atelier.at.x - scene.x, atelier.at.z - scene.z) }, null, {
     accueil: true, a: crew[0]!.nom, b: crew[1]!.nom, c: crew[2]!.nom, metier: arch.jobs[0]!, scene: travail(plan.archetype, crew[0]!.nom, crew[1]!.nom, crew[2]!.nom),
