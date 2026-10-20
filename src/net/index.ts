@@ -152,7 +152,7 @@ export function createNetSystem(): System {
       }
       let profile: Profile | null = loadProfile()
       if (!profile) {
-        const picked = await askProfile(ui.root, loadProfile())
+        const picked = await askProfile(loadProfile())
         if (!picked) {
           canRejoin = true
           return

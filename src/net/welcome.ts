@@ -2,8 +2,11 @@ import { AVATAR_COLORS, LIMITS, sanitizeText, type Profile } from '../shared/pro
 import { el, hexColor } from './style'
 import { TEXT } from './text'
 
-/** First join only: a name and a colour. Resolves null when the player prefers to stay alone. */
-export function askProfile(parent: HTMLElement, previous: Profile | null): Promise<Profile | null> {
+/**
+ * First join only: a name and a colour. Resolves null when the player prefers to stay alone.
+ * Mounted on its own layer above the title screen, which otherwise takes the clicks and starts the game.
+ */
+export function askProfile(previous: Profile | null): Promise<Profile | null> {
   return new Promise((resolve) => {
     const form = el('form', 'net-welcome net-panel')
     const input = el('input')
@@ -32,8 +35,10 @@ export function askProfile(parent: HTMLElement, previous: Profile | null): Promi
     row.append(solo, go)
     form.append(el('h2', '', TEXT.welcomeTitle), input, el('div', '', TEXT.welcomeColour), swatches, row)
     for (const type of ['keydown', 'keyup', 'mousedown', 'click'] as const) form.addEventListener(type, (e) => e.stopPropagation())
+    const layer = el('div', 'net-ui')
+    layer.append(form)
     const finish = (p: Profile | null) => {
-      form.remove()
+      layer.remove()
       resolve(p)
     }
     form.addEventListener('submit', (e) => {
@@ -46,7 +51,7 @@ export function askProfile(parent: HTMLElement, previous: Profile | null): Promi
       finish({ name, color })
     })
     solo.addEventListener('click', () => finish(null))
-    parent.appendChild(form)
+    document.body.appendChild(layer)
     if (document.pointerLockElement) document.exitPointerLock()
     input.focus()
   })
