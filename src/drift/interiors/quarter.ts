@@ -86,32 +86,43 @@ interface Timer { left: number; total: number; fast: LockId | null; resolve: (el
 
 const WATER_VERT = /* glsl */ `
 varying vec2 vUv;
+varying vec2 vLocal;
 varying vec3 vWorldPos;
 void main() {
   vUv = uv;
+  vLocal = position.xz;
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorldPos = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
 }`
 const WATER_FRAG = /* glsl */ `
 uniform float uTime;
+uniform float uDepth;
 uniform vec3 uColor;
 varying vec2 vUv;
+varying vec2 vLocal;
 varying vec3 vWorldPos;
 ${NOISE_GLSL}
+float ripple(vec2 p) {
+  return dFbm(p * 3.0 + vec2(uTime * 0.35, -uTime * 0.25)) + 0.5 * dFbm(p * 7.0 - vec2(uTime * 0.5, uTime * 0.3));
+}
 void main() {
-  vec2 e = min(vUv, 1.0 - vUv);
-  float n = dFbm(vUv * 6.0 + vec2(uTime * 0.3, -uTime * 0.2));
-  float edge = 1.0 - smoothstep(0.0, 0.025, min(e.x, e.y));
-  float foam = edge * smoothstep(0.35, 0.7, n + 0.3);
+  vec2 p = vLocal;
+  float h = ripple(p);
+  vec3 nrm = normalize(vec3(h - ripple(p + vec2(0.05, 0.0)), 0.12, h - ripple(p + vec2(0.0, 0.05))));
   vec3 view = normalize(cameraPosition - vWorldPos);
-  float grazing = pow(1.0 - abs(view.y), 3.0);
-  if (!gl_FrontFacing) {
-    gl_FragColor = vec4(mix(uColor, vec3(0.8, 0.95, 0.95), 0.35 + grazing * 0.4), 0.2 + grazing * 0.45);
-    return;
-  }
-  vec3 c = mix(uColor, vec3(0.95, 0.98, 0.96), foam * 0.7) + n * 0.05;
-  gl_FragColor = vec4(c, mix(0.25 + grazing * 0.25, 0.7, foam));
+  vec3 n = gl_FrontFacing ? nrm : -nrm;
+  float fresnel = pow(1.0 - clamp(abs(dot(n, view)), 0.0, 1.0), 4.0);
+  float spec = pow(max(dot(reflect(-view, n), normalize(vec3(0.25, 1.0, 0.15))), 0.0), 140.0) * 0.6;
+  float caustic = pow(1.0 - abs(dFbm(p * 2.2 + uTime * 0.2) * 2.0 - 1.0), 8.0);
+  vec2 e = min(vUv, 1.0 - vUv);
+  float foam = (1.0 - smoothstep(0.0, 0.012, min(e.x, e.y))) * smoothstep(0.5, 0.8, dFbm(vUv * 40.0 + uTime));
+  float body = clamp(uDepth * 0.22, 0.0, 0.4);
+  vec3 deep = uColor * 0.45;
+  vec3 c = mix(uColor, deep, body) + caustic * 0.12 + vec3(0.9, 0.97, 1.0) * (fresnel * 0.35 + spec * 1.2);
+  c = mix(c, vec3(0.93, 0.97, 0.96), foam * 0.6);
+  float a = gl_FrontFacing ? 0.12 + body + fresnel * 0.45 + spec + foam * 0.5 : 0.15 + fresnel * 0.4;
+  gl_FragColor = vec4(c, clamp(a, 0.0, 0.9));
 }`
 
 const STEAM_VERT = /* glsl */ `
@@ -352,7 +363,7 @@ export class Quarter {
       const g = new THREE.PlaneGeometry(b.x1 - b.x0, b.z1 - b.z0)
       g.rotateX(-Math.PI / 2)
       const m = new THREE.ShaderMaterial({
-        uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(PAL.eauSas) } },
+        uniforms: { uTime: { value: 0 }, uDepth: { value: 0 }, uColor: { value: new THREE.Color(PAL.eauSas) } },
         vertexShader: WATER_VERT,
         fragmentShader: WATER_FRAG,
         transparent: true,
@@ -718,6 +729,7 @@ export class Quarter {
       const y = a.def.yMin + a.level * (a.def.yMax - a.def.yMin)
       a.water.position.y = y
       a.water.visible = a.level > 0.01 && a.level < 0.99
+      ;(a.water.material as THREE.ShaderMaterial).uniforms.uDepth!.value = y - a.def.yMin
     }
     for (const m of this.waterMats) m.uniforms.uTime!.value = this.time
     for (const m of this.steamMats) m.uniforms.uTime!.value = this.time
