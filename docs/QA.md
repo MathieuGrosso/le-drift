@@ -8,7 +8,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 
 | id | sév. | dossier | titre |
 |---|---|---|---|
-| QA-01 | blocker | `index.html`, `src/net` | Le calque réseau plein écran avale tous les clics des menus |
+| QA-01 | blocker | `index.html`, `src/net` | Le calque réseau plein écran avale tous les clics des menus — CORRIGÉ (commit bf5b7d4) |
 | QA-02 | blocker | `src/gameplay/ui` | Menu Dormir (et tous les menus) sans chemin clavier : dormir impossible |
 | QA-03 | major | `src/hero`, `src/drift/city` | Échelle du sas : bloqué à 1,35 m du sommet, caméra dans le plafond |
 | QA-04 | major | `src/drift` (nav) | 43 sites injoignables depuis la cabine, dont la table des cartes et les 12 coques scellées |
@@ -34,7 +34,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef |
 | QA-25 | minor | `src/render`, `src/drift/interiors` | Cabine au réveil presque noire, moiré sur les cercles au sol |
 | QA-26 | minor | `src/net` | Avertissement Colyseus « Network offline » en solo |
-| QA-27 | minor | `vite.config.ts` | Un seul bundle de 4,1 Mo (avertissement de taille de chunk) |
+| QA-27 | minor | `vite.config.ts` | Un seul bundle de 4,1 Mo (avertissement de taille de chunk) — CORRIGÉ (commit bf5b7d4) |
 
 ---
 
