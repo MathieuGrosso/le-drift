@@ -115,7 +115,7 @@ class RemoteAvatar {
     return this.model.bones.head.getWorldPosition(out)
   }
 
-  update(dt: number, ctx: GameContext, view: AvatarView, now: number, toWorld: (p: Vec3) => Vec3, heading: number): void {
+  update(dt: number, t: number, view: AvatarView, now: number, toWorld: (p: Vec3) => Vec3, heading: number): void {
     this.sample(now - NET.interpDelayMs)
     const w = toWorld(this.local)
     const root = this.model.root
@@ -127,7 +127,6 @@ class RemoteAvatar {
     root.position.set(w.x, w.y, w.z)
     root.quaternion.copy(this.q.setFromAxisAngle(UP, -(this.local.yaw + heading)))
 
-    const t = ctx.clock.elapsed
     if (this.gesture && this.gesture.until < t) this.gesture = null
     let clip = this.gesture?.clip ?? MODE_CLIP[view.mode] ?? 'idle-dry'
     if (clip === 'walk-dry' && speed > RUN_THRESHOLD) clip = 'run-dry'
@@ -189,10 +188,13 @@ class RemoteAvatar {
 /** Every other player of the district, drawn as Ilo in their colour, 150 ms behind the server. */
 export class RemoteAvatars {
   private readonly avatars = new Map<PlayerId, RemoteAvatar>()
+  private t = 0
 
   constructor(private readonly ctx: GameContext) {}
 
-  update(dt: number, views: ReadonlyMap<PlayerId, AvatarView> | null, me: PlayerId | null): void {
+  /** `t` is the net system's own clock: the game clock stops in the pause menu, the others do not. */
+  update(dt: number, t: number, views: ReadonlyMap<PlayerId, AvatarView> | null, me: PlayerId | null): void {
+    this.t = t
     const drift = this.ctx.services.drift
     const now = performance.now()
     for (const [id, a] of this.avatars) {
@@ -213,12 +215,12 @@ export class RemoteAvatars {
         this.avatars.set(id, a)
       }
       a.push(view, now)
-      a.update(dt, this.ctx, view, now, toWorld, heading)
+      a.update(dt, t, view, now, toWorld, heading)
     })
   }
 
   emote(id: PlayerId, emote: EmoteId): void {
-    this.avatars.get(id)?.play(emote, this.ctx.clock.elapsed)
+    this.avatars.get(id)?.play(emote, this.t)
   }
 
   head(id: PlayerId, out: THREE.Vector3): THREE.Vector3 | null {

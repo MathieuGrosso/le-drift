@@ -212,6 +212,8 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     let autoDropped = false
     let warmup: number = AUTO_QUALITY.warmupSeconds
     let menuOpen = false
+    // The net system keeps running in pause: online, the others, the shared clock and « À bord » never stop.
+    const runsPaused = (id: System['id']) => id === 'render' || id === 'gameplay' || id === 'net'
 
     const setPaused = (p: boolean) => {
       if (ctx.clock.paused === p) return
@@ -287,7 +289,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         advanceTime(dt)
       }
       for (const s of systems) {
-        if (paused && s.id !== 'render' && s.id !== 'gameplay') continue
+        if (paused && !runsPaused(s.id)) continue
         try {
           s.update(dt, ctx)
         } catch (err) {
@@ -296,7 +298,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       }
       if (!paused) physicsRt.step(dt)
       for (const s of systems) {
-        if (!s.lateUpdate || (paused && s.id !== 'render' && s.id !== 'gameplay')) continue
+        if (!s.lateUpdate || (paused && !runsPaused(s.id))) continue
         try {
           s.lateUpdate(dt, ctx)
         } catch (err) {

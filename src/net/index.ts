@@ -56,6 +56,8 @@ export function createNetSystem(): System {
   let lastMoveAt = 0
   let sendTimer = 0
   let presenceTimer = 0
+  // Runs while the game is paused, unlike ctx.clock.elapsed: bubbles and remote gestures still expire.
+  let elapsed = 0
   let lastMove = ''
   const unsubs: (() => void)[] = []
   const v = new THREE.Vector3()
@@ -88,7 +90,7 @@ export function createNetSystem(): System {
   const sayOver = (id: PlayerId, text: string) => {
     if (!ctx || !ui) return
     const head = id === me ? ctx.services.hero?.headPosition() : avatars?.head(id, v)
-    if (head) ui.overlay.say(id === me ? ME : id, v.set(head.x, head.y, head.z), text, ctx.clock.elapsed)
+    if (head) ui.overlay.say(id === me ? ME : id, v.set(head.x, head.y, head.z), text, elapsed)
   }
 
   const onMessage: Dispatch = (type, payload) => {
@@ -173,6 +175,7 @@ export function createNetSystem(): System {
     takenOverHere = false
     try {
       const endpoint = serverEndpoint()
+      if (!endpoint) return
       if (!(await probe(endpoint))) {
         canRejoin = true
         scheduleRejoin()
@@ -248,9 +251,9 @@ export function createNetSystem(): System {
       p: [local.x, local.y, local.z], yaw: h.yaw - drift.pose().heading, mode: avatarMode(h.mode), outside: c.state.mode === 'sortie',
     }
     const key = `${move.p.map((x) => x.toFixed(2)).join()}|${move.yaw.toFixed(2)}|${move.mode}|${move.outside}`
-    if (key === lastMove && c.clock.elapsed - lastMoveAt < NET.moveKeepaliveSeconds) return
+    if (key === lastMove && elapsed - lastMoveAt < NET.moveKeepaliveSeconds) return
     lastMove = key
-    lastMoveAt = c.clock.elapsed
+    lastMoveAt = elapsed
     session.send('move', move)
   }
 
@@ -292,7 +295,7 @@ export function createNetSystem(): System {
         line: (name, text) => ui?.chat.line(name, text),
         bubble: (npcId, text) => {
           const p = c.services.drift?.npcPosition(npcId)
-          if (p) ui?.overlay.say(`npc:${npcId}`, v.set(p.x, p.y + NPC_HEAD, p.z), text, c.clock.elapsed)
+          if (p) ui?.overlay.say(`npc:${npcId}`, v.set(p.x, p.y + NPC_HEAD, p.z), text, elapsed)
         },
       })
       world = new SharedWorld(c.state, (m) => session?.send('scrub', m))
@@ -330,6 +333,7 @@ export function createNetSystem(): System {
 
     update(dt, c) {
       if (!ui || !avatars) return
+      elapsed += dt
       const online = status() === 'online'
       const title = !titleGone()
       if (!title && placement && me) {
@@ -361,10 +365,10 @@ export function createNetSystem(): System {
           sendMove(c)
         }
       }
-      avatars.update(dt, online ? session?.quartierState?.avatars ?? null : null, me)
+      avatars.update(dt, elapsed, online ? session?.quartierState?.avatars ?? null : null, me)
       markTags(c)
       c.camera.getWorldPosition(eye)
-      ui.overlay.flush(c.clock.elapsed, eye)
+      ui.overlay.flush(elapsed, eye)
     },
 
     dispose() {

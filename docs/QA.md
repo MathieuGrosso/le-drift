@@ -42,7 +42,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-30 | major | `src/core/state.ts`, `src/net` | Après un rechargement pendant l'écran titre ou une session en ligne, l'horloge solo reste figée (`time.scale` 0 sauvegardé) — CORRIGÉ (commit bcc8785) |
 | QA-31 | minor | `src/net`, `server/src/rooms` | Serveur arrêté : avertissement SDK « Room connection was closed unexpectedly » (le quartier rejoignait le serveur mourant) et « Error: disposing » côté serveur — CORRIGÉ (commits f3ba9f6, bcc8785) |
 | QA-32 | minor | `src/net/avatars.ts` | Un avatar distant immobile part d'un bond au premier pas ; une téléportation glisse à travers les murs — CORRIGÉ (commit 668d16a) |
-| QA-33 | minor | `src/core/engine.ts` | Menu pause en ligne : le panneau « À bord », les avatars distants et l'horloge partagée se figent (le système `net` ne tourne pas en pause) — OUVERT |
+| QA-33 | minor | `src/core/engine.ts` | Menu pause en ligne : le panneau « À bord », les avatars distants et l'horloge partagée se figent (le système `net` ne tourne pas en pause) — CORRIGÉ (le système `net` tourne en pause, sur sa propre horloge) |
 
 ---
 
