@@ -17,7 +17,8 @@ export class SharedWorld {
 
   apply(dt: number, m: MondeStateView): void {
     const t = this.state.time
-    if (this.savedScale === null) this.savedScale = t.scale
+    // The title screen also holds the clock at 0 and restores its own copy: only a running solo scale is kept.
+    if (this.savedScale === null && t.scale > 0) this.savedScale = t.scale
     const h = sharedGameHours(Date.now(), m.epochMs, m.startHours, m.realMsPerGameHour)
     t.scale = 0
     t.day = TIME.startDay + Math.floor(h / 24)

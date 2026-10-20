@@ -1,4 +1,4 @@
-import { Client, type Room } from '@colyseus/sdk'
+import { Client, CloseCode, type Room } from '@colyseus/sdk'
 import type { DistrictId, NetStatus } from '../core/types'
 import {
   PROTOCOL_VERSION, ROOM,
@@ -77,8 +77,9 @@ export class Session {
     }
     const prev = this.quartier
     this.quartier = next
-    this.wire(next, () => {
-      if (this.quartier !== next) return
+    this.wire(next, (code) => {
+      // A shutdown closes every room: the monde's loss decides, rejoining a dying server would only fail.
+      if (this.quartier !== next || code === CloseCode.SERVER_SHUTDOWN) return
       this.quartier = null
       const d = this.district
       this.district = null
@@ -112,14 +113,14 @@ export class Session {
     room.leave(true).catch(() => undefined)
   }
 
-  private wire(room: MondeRoom | QuartierRoom, onLost: () => void): void {
+  private wire(room: MondeRoom | QuartierRoom, onLost: (code: number) => void): void {
     for (const type of SERVER_MESSAGES) {
       room.onMessage(type, (payload: ServerMessages[typeof type]) => this.sink.message(type, payload))
     }
     room.onDrop(() => this.setStatus('reconnecting'))
     room.onReconnect(() => this.setStatus('online'))
-    room.onLeave(() => {
-      if (!this.leaving.has(room)) onLost()
+    room.onLeave((code) => {
+      if (!this.leaving.has(room)) onLost(code)
     })
   }
 

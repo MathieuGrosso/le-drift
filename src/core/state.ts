@@ -78,5 +78,7 @@ export function migrateState(raw: unknown, quality: QualityLevel): GameState | n
   const state = deepMerge(fresh, raw)
   // A save can land mid-cutscene or mid-sleep; the controller rebuilds the pose from position and medium.
   state.hero.mode = fresh.hero.mode
+  // The title screen and an online session hold the clock at 0 while saving: the rate is never progress.
+  state.time.scale = fresh.time.scale
   return state
 }
