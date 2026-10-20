@@ -49,6 +49,9 @@ interface LiveLamp { local: THREE.Vector3; world: THREE.Vector3; color: THREE.Co
 type HeroTube = { tube?(toLocal: Vec3, yaw: number): Promise<void> }
 type LooseBus = { emit(k: string, p: unknown): void; on(k: string, fn: (p: never) => void): () => void }
 
+// Garlands and house windows by day: an unlit warm glass, not a light.
+const NIGHT_LIT_DAY = 0.42
+
 const BASE: Record<DistrictId, number> = {
   nef: 0x8a7258, marche: 0x8a6a52, serres: 0x6f7c56, ateliers: 0x6f6a62, scellees: 0x4e5a60,
   machines: 0x7a5440, proue: 0x857868, ecluse: 0x857262, hauts: 0x6f8080,
@@ -227,6 +230,7 @@ export class City {
   private slow = 0
   private visible: ReadonlySet<DistrictId> | null = null
   readonly insideHullMat: THREE.Material
+  private readonly nightMat = new THREE.MeshBasicMaterial({ vertexColors: true })
   readonly homes: Homes
 
   constructor(private readonly ctx: GameContext, mats: Mats, parent: THREE.Object3D, pose: { position: Vec3; heading: number }) {
@@ -237,6 +241,7 @@ export class City {
     const glow2 = glowMaterial(mats, { side: THREE.DoubleSide, rim: 0.2 })
     this.insideHullMat = glowMaterial(mats, { rim: 0.6, patch: holePatch })
     const emissive = mats.water(new THREE.MeshBasicMaterial({ vertexColors: true }))
+    const nightLit = mats.water(this.nightMat)
     const skinMat = mats.cel({ color: 0xffffff, vertexColors: true, caustics: true, rim: 0.9, onShader: surfacePatch })
     const hallDistricts = new Set<GroupKey>(this.build.halls.map((h) => h.district))
     const lineMat = new THREE.LineBasicMaterial({ color: PAL.corde, transparent: true, opacity: 0.85 })
@@ -273,6 +278,7 @@ export class City {
       if (k.props.length > 0) propSets.push({ g, specs: k.props, light: { near: grid.near, base, sky } })
       add(k.cloth, glow2, 'tissus', true)
       add(k.e, emissive, 'lumieres', false)
+      add(k.nightLit, nightLit, 'lumieres-nuit', false)
       const shell = [add(k.shell, glow, 'enveloppe', true), add(k.skin, skinMat, 'peau', false), add(k.shellE, emissive, 'enveloppe-lum', false)]
       if (k.glass.vertexCount > 0) {
         const gm = new THREE.ShaderMaterial({
@@ -834,6 +840,7 @@ export class City {
     const day = h < 5 || h > 20.5 ? 0 : h < 7 ? (h - 5) / 2 : h > 18 ? (20.5 - h) / 2.5 : 1
     CITY_UNIFORMS.uCitySky.value = 0.15 + 0.85 * day
     CITY_UNIFORMS.uCityLamp.value = 1 + (1 - day) * 0.12
+    this.nightMat.color.setScalar(NIGHT_LIT_DAY + (1 - NIGHT_LIT_DAY) * (1 - day))
     for (const m of this.mats) m.uniforms.uTime!.value = this.time
     for (const m of this.kelpMats) {
       m.uniforms.uTime!.value = this.time

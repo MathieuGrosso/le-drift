@@ -105,6 +105,7 @@ export class Kit {
   readonly shellE = new GeoBuilder()
   readonly skin = new GeoBuilder()
   readonly glass = new GeoBuilder()
+  readonly nightLit = new GeoBuilder()
   readonly lines: number[] = []
   readonly cols: ColSpec[] = []
   readonly lamps: LampSpec[] = []
@@ -139,6 +140,7 @@ export class Kit {
     this.cloth.pat = SURF.fabric
     this.e.jitter = 0
     this.glass.jitter = 0
+    this.nightLit.jitter = 0
     this.shell.jitter = 0.02
     this.shellE.jitter = 0
     this.skin.jitter = 0.03
@@ -441,14 +443,23 @@ export class Kit {
     this.lamps.push({ x, y, z, color, radius: opts.radius ?? 9, live: opts.live ?? true, bake: opts.bake ?? 1 })
   }
 
-  bulbString(a: Vec3, b: Vec3, sag: number, color: number = PAL.lampe, every = 1.6, bakeEvery = 4): void {
+  // A few large bulbs on a drawn wire; they dim by day through their own material.
+  bulbString(a: Vec3, b: Vec3, sag: number, color: number = PAL.lampe, every = 3, bakeEvery = 3): void {
     const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z)
     const n = Math.max(2, Math.round(len / every))
+    const wire = Math.max(8, n * 3)
+    const prev = new THREE.Vector3(a.x, a.y, a.z)
+    this.sag(a, b, sag, wire, (p, i) => {
+      const { x, y, z } = p
+      if (i > 0) this.beam(prev.x, prev.y, prev.z, x, y, z, 0.035, C(PAL.corde, 0.55), this.b, true)
+      prev.set(x, y, z)
+    }, false)
     this.sag(a, b, sag, n, (p, i) => {
       if (i === 0 || i === n) return
-      this.e.sphere(p.x, p.y - 0.12, p.z, 0.07, 0.09, 0.07, C(color, 1.6))
-      if (i % bakeEvery === 0) this.lamps.push({ x: p.x, y: p.y - 0.2, z: p.z, color, radius: 5, live: false, bake: 0.45 })
-    })
+      this.b.cyl(p.x, p.y - 0.06, p.z, 0.035, 0.08, C(PAL.laiton, 0.8))
+      this.nightLit.sphere(p.x, p.y - 0.2, p.z, 0.11, 0.14, 0.11, C(color, 1.5))
+      if (i % bakeEvery === 0) this.lamps.push({ x: p.x, y: p.y - 0.25, z: p.z, color, radius: 6, live: false, bake: 0.55 })
+    }, false)
   }
 
   bunting(a: Vec3, b: Vec3, sag: number, colors: readonly number[]): void {

@@ -184,7 +184,7 @@ void main() {
 }`
 const CARD_FRAG = /* glsl */ `
 uniform float uTime;
-uniform float uGlow;
+uniform float uNight;
 uniform vec3 uWarm;
 uniform vec3 uCoat;
 varying vec2 vUv;
@@ -195,10 +195,10 @@ void main() {
   vec2 c = vUv - 0.5;
   float r = length(c) * 2.0;
   if (r > 1.0) discard;
-  float lit = step(0.24, fract(vSeed * 7.31));
+  float lit = step(1.0 - mix(0.14, 0.5, uNight), fract(vSeed * 7.31));
   float flick = 0.88 + 0.12 * sin(uTime * 0.7 + vSeed * 40.0);
   vec3 room = mix(uWarm * 1.25, uWarm * vec3(0.78, 0.55, 0.42), smoothstep(-0.5, 0.45, -c.y + 0.15 * c.x));
-  vec3 col = room * flick;
+  vec3 col = room * flick * mix(0.8, 1.6, uNight);
   float sil = 0.0;
   float px = fract(vSeed * 3.7 + uTime * 0.004) - 0.5;
   vec2 head = vec2(px * 0.7, -0.08);
@@ -210,9 +210,10 @@ void main() {
   float n = dFbm(c * 7.0 + vSeed * 11.0);
   float coat = smoothstep(0.62, 0.8, r * 0.55 + n * 0.55 - c.y * 0.35 + fract(vSeed * 3.3) * 0.18);
   col = mix(col, uCoat * (0.55 + 0.45 * n), coat * 0.85);
-  col *= uGlow;
-  float rim = smoothstep(0.76, 0.8, r);
-  vec3 brass = vec3(0.62, 0.48, 0.32) * (0.7 + 0.5 * smoothstep(0.2, -0.6, c.y));
+  col += vec3(0.5, 0.62, 0.62) * (1.0 - lit) * (1.0 - uNight) * 0.35 * smoothstep(0.35, 0.0, length(c - vec2(-0.16, 0.18)));
+  col *= 1.0 - 0.35 * smoothstep(0.5, 0.72, r);
+  float rim = smoothstep(0.7, 0.74, r);
+  vec3 brass = vec3(0.4, 0.31, 0.22) * (0.6 + 0.6 * smoothstep(0.2, -0.6, c.y)) * mix(1.0, 0.6, uNight);
   col = mix(col, brass, rim);
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
@@ -260,7 +261,7 @@ export class Hulls {
     this.cardMat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uGlow: { value: 1 },
+        uNight: { value: 0 },
         uWarm: { value: new THREE.Color(PAL.vitre) },
         uCoat: { value: new THREE.Color(PAL.revetement) },
       },
@@ -431,7 +432,7 @@ export class Hulls {
     this.cardMat.uniforms.uTime!.value = this.time
     const h = this.ctx.state.time.hours
     const night = h >= 19.5 || h < 5.5 ? 1 : h >= 17 ? (h - 17) / 2.5 : h < 7 ? (7 - h) / 1.5 : 0
-    this.cardMat.uniforms.uGlow!.value = 1.25 + 0.45 * night
+    this.cardMat.uniforms.uNight!.value = night
     const q = new THREE.Quaternion().setFromAxisAngle(UP, -pose.heading)
     for (const dm of this.districts.values()) {
       const body = dm.body

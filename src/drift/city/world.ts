@@ -662,7 +662,7 @@ function marche(k: Kit): void {
     k.bunting(V(-97.2, 11.5, z), V(-78.8, 11.5, z + 3.5), 1.6, flags)
     k.bunting(V(-97.2, 17.8, z + 2), V(-78.8, 17.8, z - 1.5), 1.2, flags)
   }
-  for (let z = 6; z < 70; z += 11) k.bulbString(V(-97, 5.4, z), V(-79, 5.4, z + 5), 1.0, PAL.lampe, 1.4, 3)
+  for (let z = 6; z < 70; z += 11) k.bulbString(V(-97, 5.4, z), V(-79, 5.4, z + 5), 1.0, PAL.lampe, 2.2, 2)
   for (let z = 4; z < 70; z += 16) k.lamp(-86.4, 9.5, z, { style: 'globe', radius: 14, bake: 1.2, hang: 9.6 })
   for (const [x, z] of [[-88, 20], [-88, 54]] as const) k.shafts.push({ x, z, top: 26, bottom: 0, r: 2.8, tint: 0x9fd6d0 })
   k.sign(NOMS.marche, -88, 9.2, -5.4, Math.PI, 6, 1.0, PANNEAUX.marcheSous)

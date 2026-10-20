@@ -480,11 +480,11 @@ function facade(k: Kit, h: HallDef, s: Side, u: number, len: number, ty: number,
     const off = face(wy) + 0.02
     for (let wu = u + 1.4; wu < u + len - 1.2; wu += 2.6 + ri * 0.4) {
       const p = wallPoint(h, s, wu, wy, off)
-      const on = k.rand() < 0.62
+      const on = k.rand() < 0.4
       const rr = keel ? 0.3 : 0.26
       const m = new THREE.Matrix4().compose(p, new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(along ? 0 : INWARD[s].x, 0, along ? INWARD[s].z : 0)), new THREE.Vector3(rr, rr, 1))
-      if (on) k.e.add(DISC_SMALL, m, C(k.pick(lit), 0.95 + k.rand() * 0.2))
-      else k.b.add(DISC_SMALL, m, C(0x5a5466))
+      if (on) k.nightLit.add(DISC_SMALL, m, C(k.pick(lit), 0.95 + k.rand() * 0.2))
+      else k.b.add(DISC_SMALL, m, C(0x2e3c44))
       k.b.add(RING_SMALL, m, C(PAL.laiton, 1.0))
       if (ri === 0 && k.rand() < 0.18) {
         const bp = wallPoint(h, s, wu, wy - 0.42, off + 0.15)
