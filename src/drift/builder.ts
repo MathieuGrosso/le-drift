@@ -124,6 +124,7 @@ export class GeoBuilder {
     return this.add(UNIT.sphere, m, color)
   }
 
+  // One-shot: frees the accumulators so builders kept by long-lived kits do not pin their vertices.
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3))
@@ -134,6 +135,12 @@ export class GeoBuilder {
     g.setIndex(this.idx)
     g.computeBoundingSphere()
     g.computeBoundingBox()
+    this.pos = []
+    this.nor = []
+    this.col = []
+    this.uv = []
+    this.idx = []
+    this.pt = []
     return g
   }
 }

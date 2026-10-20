@@ -517,19 +517,26 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       ctx.services.audio?.unlock().catch(() => undefined)
     })
 
-    window.addEventListener('beforeunload', () => {
-      unloading = true
+    const teardown = (e: PageTransitionEvent) => {
       save.write()
+      if (e.persisted) return
+      unloading = true
+      window.removeEventListener('pagehide', teardown)
+      window.removeEventListener('resize', resize)
       modes.dispose()
       for (const s of [...systems].reverse()) {
         try {
           s.dispose()
-        } catch {
-          /* page is going away */
+        } catch (err) {
+          console.error(`[core] dispose ${s.id}`, err)
         }
       }
       inputRt.dispose()
-    })
+      physicsRt.dispose()
+      renderer.dispose()
+      renderer.forceContextLoss()
+    }
+    window.addEventListener('pagehide', teardown)
   } catch (err) {
     ui.error(err)
     throw err

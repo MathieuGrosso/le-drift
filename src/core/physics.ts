@@ -11,6 +11,7 @@ export function interactionGroups(membership: number, filter: number): number {
 export interface PhysicsRuntime {
   physics: PhysicsWorld
   step(dt: number): number
+  dispose(): void
 }
 
 export async function createPhysics(): Promise<PhysicsRuntime> {
@@ -82,6 +83,10 @@ export async function createPhysics(): Promise<PhysicsRuntime> {
       }
       if (steps === PHYSICS.maxSubsteps) accumulator = Math.min(accumulator, PHYSICS.step)
       return steps
+    },
+    dispose() {
+      tags.clear()
+      world.free()
     },
   }
 }
