@@ -16,7 +16,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-06 | major | (global) | Tas JS à 1,2 Go trois minutes après un rechargement (0,43 Go au premier chargement) |
 | QA-07 | major | `src/gameplay/quests.ts` | La tâche « Lire le tableau des prévisions » se saute en passant l'écluse — CORRIGÉ (commit bf5b7d4) |
 | QA-08 | major | `src/gameplay`, `src/camille` | Sortie : on part face au large, aucun repère vers la grande vitre — CORRIGÉ (commit bf5b7d4) |
-| QA-09 | major | `src/net`, `src/gameplay/ui` | Le panneau « Seul à bord » cache le compteur « Tournée · 0/2 vitres » |
+| QA-09 | major | `src/net`, `src/gameplay/ui` | Le panneau « Seul à bord » cache le compteur « Tournée · 0/2 vitres » — CORRIGÉ (commit 144ce2d) |
 | QA-10 | major | `src/hero` (caméra) | Caméra enfoncée dans la coque après quelques pas sur la passerelle de la Nef |
 | QA-11 | major | `src/gameplay/indoor.ts` | « Rentrer » demande un appui long que l'invite n'annonce pas — CORRIGÉ (commit bf5b7d4) |
 | QA-12 | major | `src/gameplay/ui` | « Partie sauvegardée. » affiché avec `?nosave`, rien n'est écrit — CORRIGÉ (commit bf5b7d4) |
@@ -33,7 +33,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-23 | minor | `src/drift/city` | Câble de tyrolienne qui traverse la passerelle de la Nef — CORRIGÉ (commit 3917921 : poissons en papier pendus à leur corde ; câble non reproduit, aucun collider touché, il passe 5 m sous la passerelle) |
 | QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef — CORRIGÉ (commits 79efd1c linge, 3f27b4e portes de maisons) |
 | QA-25 | minor | `src/render`, `src/drift/interiors` | Cabine au réveil presque noire, moiré sur les cercles au sol |
-| QA-26 | minor | `src/net` | Avertissement Colyseus « Network offline » en solo |
+| QA-26 | minor | `src/net` | Avertissement Colyseus « Network offline » en solo — CORRIGÉ (commit bcc7d7f) |
 | QA-27 | minor | `vite.config.ts` | Un seul bundle de 4,1 Mo (avertissement de taille de chunk) — CORRIGÉ (commit bf5b7d4) |
 
 ---
