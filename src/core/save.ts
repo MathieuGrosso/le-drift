@@ -6,13 +6,25 @@ export const LEGACY_SAVE_KEYS = ['le-drift:save:v1'] as const
 
 export function createSaveStore(getState: () => GameState, bus: EventBus, enabled: boolean): SaveStore {
   let writeKey = SAVE_KEY
-  return {
+  let held = false
+  let pending = false
+  const store: SaveStore = {
     enabled,
     useSlot(slot) {
       writeKey = slot ? `${SAVE_KEY}:${slot}` : SAVE_KEY
     },
+    hold(h) {
+      held = h
+      if (h || !pending) return
+      pending = false
+      store.write()
+    },
     write() {
       if (!enabled) return false
+      if (held) {
+        pending = true
+        return false
+      }
       try {
         localStorage.setItem(writeKey, JSON.stringify(getState()))
         bus.emit('save:written', {})
@@ -40,6 +52,7 @@ export function createSaveStore(getState: () => GameState, bus: EventBus, enable
       }
     },
   }
+  return store
 }
 
 /** A new game's progress and cabin spawn point, written into `state` in place; settings, clock, drift and the shared window coat stay. */

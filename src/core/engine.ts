@@ -509,6 +509,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     if (title) {
       const hero = structuredClone(state.hero)
       const time = { ...state.time }
+      save.hold(true)
       state.time.scale = 0
       applyPose(title)
       bus.emit('debug:pose', { name: 'vista' })
@@ -517,15 +518,17 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         state.time.scale = time.scale
         state.debug.cameraLocked = false
         lockedPose = null
-        if (hero.medium === 'air' && hero.room) {
+        // A sortie is not resumed: the hero comes back in through the sas, as when reeled in.
+        if (hero.medium !== 'air' || hero.sortie) api.enterRoom('sas')
+        else if (hero.room) {
           api.enterRoom(hero.room)
           const drift = ctx.services.drift
           if (drift && hero.localPosition && ctx.services.hero) {
             state.hero.localPosition = hero.localPosition
             ctx.services.hero.teleport(drift.toWorld(hero.localPosition), hero.yaw)
           }
-        } else if (hero.medium === 'air') api.enterRoom('cabine')
-        else api.teleport(hero.position.x, hero.position.y, hero.position.z)
+        } else api.enterRoom('cabine')
+        save.hold(false)
       }
     }
 
