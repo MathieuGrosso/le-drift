@@ -173,6 +173,11 @@ void main() {
     seaFloor *= dayG * (1.0 + 0.2 * rdSunI);
     vec3 tinted = behind * mix(vec3(1.0), tint / max(max(tint.r, tint.g), tint.b), 0.18);
     col = rgLive > 0.5 ? tinted * 1.05 + seaFloor * 0.08 : seaFloor * 0.7 + tinted * 0.32;
+    if (rgDome < 0.5) {
+      float ray = rd_noise(vec2(q.x * 0.55 + q.y * 0.22 + rdTime * 0.05, rdTime * 0.04 + vSeed));
+      col *= mix(0.68, 1.12, vy);
+      col += vec3(0.72, 0.96, 0.88) * smoothstep(0.55, 0.85, ray) * vy * 0.16 * rdDay * rdSunI;
+    }
     col *= 1.0 - 0.12 * smoothstep(0.86, 1.0, edgeDist) * (1.0 - rgRound * 0.5) * (1.0 - rgDome);
     vec3 edgeC = vec3(0.80, 1.0, 0.92);
     col += edgeC * (fres * 0.35 + smoothstep(0.9, 0.99, edgeDist) * 0.18 * (1.0 - rgDome)) * dayG;

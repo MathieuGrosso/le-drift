@@ -99,7 +99,9 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   canopy *= smoothstep(0.1, 0.5, N.y) * 0.26 + smoothstep(0.6, 0.85, N.y) * 0.14;
   vec3 patchL;
   vec3 sea = rd_glassLight(W, N, length(fwidth(W)), patchL);
-  vec3 col = albedo * (amb + key + canopy + sea * 1.5 + patchL);
+  float coolK = clamp(dot(sea * 2.0 + patchL, vec3(0.33)) * 3.0, 0.0, 1.0);
+  vec3 albCool = mix(albedo, vec3(dot(albedo, vec3(0.33))), 0.5);
+  vec3 col = albedo * ((amb + key) * (1.0 - 0.6 * coolK) + canopy) + albCool * (sea * 2.0 + patchL * 1.3);
   float rimI = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * rdCelRim;
   float rimEdge = smoothstep(0.25, 0.45, rimI);
   float rimK = smoothstep(0.62, 0.7, rdCelRim);

@@ -236,15 +236,19 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
     float front = dot(rel, B.xyz);
     if (front < -0.02) continue;
     float area = 4.0 * A.w * B.w;
-    float d2 = dot(rel, rel) + 0.05;
-    vec3 L = -rel * inversesqrt(d2);
+    vec3 Tg = rd_glassT(B.xyz);
+    vec3 Ug = cross(B.xyz, Tg);
+    vec3 nearRel = rel - Tg * clamp(dot(rel, Tg), -A.w, A.w) - Ug * clamp(dot(rel, Ug), -B.w, B.w);
+    float d2 = dot(nearRel, nearRel) + 0.05;
+    vec3 L = -nearRel * inversesqrt(d2);
     float ndl = clamp(dot(N, L) * 0.65 + 0.35, 0.0, 1.0);
     float facing = smoothstep(0.15, 0.75, front * inversesqrt(d2));
-    float reach = 2.2 + 0.5 * max(A.w, B.w);
+    float big = smoothstep(0.8, 3.0, min(A.w, B.w));
+    float reach = 2.2 + 0.5 * max(A.w, B.w) * (1.0 - big) + 6.0 * big;
     float k = 1.0 - sqrt(d2) / reach;
     float cone = (smoothstep(0.0, 0.1, k) * 0.35 + smoothstep(0.4, 0.5, k) * 0.65) * (1.0 - C.w);
-    float floorK = mix(1.0, 0.3, smoothstep(0.55, 0.9, N.y));
-    fill += mix(rdVitreMer, vec3(dot(rdVitreMer, vec3(0.33))), 0.35) * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone * floorK / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay);
+    float floorK = mix(1.0, mix(0.3, 0.8, big), smoothstep(0.55, 0.9, N.y));
+    fill += mix(rdVitreMer, vec3(dot(rdVitreMer, vec3(0.33))), 0.35) * (0.3 + 0.7 * C.x) * C.z * area * facing * ndl * cone * floorK / (area + d2 * 1.4) * (0.25 + 0.75 * rdDay) * (1.0 + 0.6 * big);
 
     vec3 Lb = rd_beamDir(B.xyz);
     float denom = min(dot(Lb, B.xyz), -0.05);
@@ -266,7 +270,7 @@ vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
       float e2 = 1.0 - smoothstep(0.0, 0.16, rd_cellEdge(cu * 1.37 + 4.1, rdTime * 0.7 + 1.3));
       pattern = mix(0.85, clamp(0.7 + 0.3 * e1 + 0.15 * e2, 0.7, 1.15), aa);
     }
-    vec3 landed = mix(beam, vec3(dot(beam, vec3(0.33))) * vec3(1.08, 1.0, 0.86), 0.65);
+    vec3 landed = mix(beam, vec3(dot(beam, vec3(0.33))) * vec3(0.9, 1.02, 1.0), 0.35);
     patchLight += landed * lit * pattern;
   }
   return fill;
