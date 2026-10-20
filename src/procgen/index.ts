@@ -131,6 +131,10 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     const b = slot.built
     if (!b) return
     slot.built = null
+    // Instance buffers belong to the mesh, not its geometry: only InstancedMesh.dispose frees them on the GPU.
+    b.group.traverse((o) => {
+      if (o instanceof THREE.InstancedMesh) o.dispose()
+    })
     b.crowd?.dispose()
     for (const p of b.parts) p.dispose()
     b.layout.dispose()
