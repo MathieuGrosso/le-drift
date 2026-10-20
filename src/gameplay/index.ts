@@ -113,12 +113,17 @@ function createRuntime(ctx: GameContext): Runtime {
         if (target <= from) s.time.day += 1
         s.time.hours = target
         gp.endurance.refill()
+        let saved = false
+        const offSaved = ctx.bus.on('save:written', () => {
+          saved = true
+        })
         ctx.bus.emit('sleep:done', { fromHour: from, toHour: target, day: s.time.day })
+        offSaved()
         if (target === 6) gp.weather.morning()
         await gp.cine.wait(1.2)
         gp.heroMode('idle')
         await gp.cine.fade(null, 1.6)
-        gp.toast(UI.sommeil.sauve)
+        if (saved) gp.toast(UI.sommeil.sauve)
       } finally {
         gp.lock.count--
       }
@@ -278,7 +283,7 @@ function createRuntime(ctx: GameContext): Runtime {
         gp.hud.prompt({ key: input.keyLabel('scrub'), label: PROMPTS.frotter })
         if (!gp.scrub.scrubbing()) gp.hud.progress(1 - outsideScrub.coat)
       } else if (best) {
-        gp.hud.prompt({ key: input.keyLabel('interact'), label: best.label })
+        gp.hud.prompt({ key: input.keyLabel('interact'), label: best.label, hold: !!best.hold })
         if (!best.hold) gp.hud.progress(null)
       } else {
         gp.hud.prompt(null)

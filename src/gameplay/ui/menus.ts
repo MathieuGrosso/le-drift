@@ -17,6 +17,11 @@ const TRADES: readonly Trade[] = [
   { give: { 'sel-de-machine': 1 }, get: { moule: 2 } },
 ]
 
+type NavDir = 'up' | 'down' | 'left' | 'right'
+const FOCUSABLE = 'button:not(:disabled), input, .gp-card.pick, .gp-slot.full'
+const NAV_DELAY_MS = 380
+const NAV_REPEAT_MS = 130
+
 const stallIndex = (id: string) => {
   let h = 0
   for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0
@@ -27,6 +32,9 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
   const ctx = gp.ctx
   let current: { el: HTMLElement; onClose?: () => void; closeKeys: ButtonAction[] } | null = null
   let tab: ItemCategory = 'outils'
+  let focusIndex = -1
+  let navHeld: NavDir | null = null
+  let navNext = 0
 
   const open = (kind: 'pause' | 'inventaire', closeKeys: ButtonAction[], onClose?: () => void) => {
     api.close()
@@ -34,6 +42,15 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     el.addEventListener('click', (e) => {
       if (e.target === el) api.close()
     })
+    // Space is the confirm action: the browser's own Space click on the focused button would fire it twice.
+    const noSpace = (e: KeyboardEvent) => {
+      if (e.code === 'Space') e.preventDefault()
+    }
+    el.addEventListener('keydown', noSpace)
+    el.addEventListener('keyup', noSpace)
+    focusIndex = -1
+    navHeld = null
+    ctx.input.consume('interact', 'up')
     const panel = h('div', 'gp-panel', undefined, el)
     current = { el, closeKeys, ...(onClose ? { onClose } : {}) }
     ctx.bus.emit('ui:menu', { open: kind })
@@ -201,6 +218,7 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
         for (let i = 0; i < 5; i++) {
           const id = pot[i]
           const slot = h('div', `gp-slot${id ? ' full' : ''}`, id ? itemName(id) : '', potEl)
+          if (id) slot.tabIndex = 0
           if (id) slot.addEventListener('click', () => {
             pot.splice(i, 1)
             render()
@@ -213,6 +231,7 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
           if (gp.inv.count(id) <= 0) continue
           any = true
           const card = h('div', 'gp-card pick', undefined, grid)
+          card.tabIndex = 0
           const n = h('div', 'n', undefined, card)
           h('span', '', itemName(id), n)
           h('span', 'c', `×${left}`, n)
@@ -244,7 +263,7 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
   }
 
   const board = () => {
-    const panel = open('pause', ['pause', 'interact'])
+    const panel = open('pause', ['pause'])
     title(panel, UI.tableau.titre, UI.tableau.sous)
     const b = h('div', 'gp-board', undefined, panel)
     for (const part of gp.weather.forecastText().split(' · ')) h('div', '', part, b)
@@ -301,7 +320,7 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
   }
 
   const choose = (t: string, options: { label: string; run: () => void }[], sub?: string) => {
-    const panel = open('pause', ['pause', 'interact'])
+    const panel = open('pause', ['pause'])
     title(panel, t, sub)
     const stack = h('div', 'gp-stack', undefined, panel)
     options.forEach((o, i) => button(o.label, () => {
@@ -309,6 +328,82 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
       o.run()
     }, stack, i === 0 ? 'gp-btn primary' : 'gp-btn'))
     button(UI.sommeil.annuler, () => api.close(), stack)
+  }
+
+  const focusables = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>(FOCUSABLE)]
+
+  const keepFocus = (el: HTMLElement) => {
+    const items = focusables(el)
+    const active = document.activeElement
+    if (active instanceof HTMLElement && el.contains(active) && items.includes(active)) {
+      focusIndex = items.indexOf(active)
+      return
+    }
+    if (items.length === 0) return
+    const fallback = focusIndex < 0 ? el.querySelector<HTMLElement>('.gp-btn.primary:not(:disabled)') ?? items[0]! : items[Math.min(focusIndex, items.length - 1)]!
+    fallback.focus({ preventScroll: true })
+    focusIndex = items.indexOf(fallback)
+  }
+
+  const nudgeRange = (input: HTMLInputElement, dir: NavDir) => {
+    if (dir === 'right') input.stepUp()
+    else input.stepDown()
+    input.dispatchEvent(new Event('input'))
+  }
+
+  const moveFocus = (el: HTMLElement, dir: NavDir) => {
+    const cur = document.activeElement
+    if (!(cur instanceof HTMLElement)) return
+    if (cur instanceof HTMLInputElement && cur.type === 'range' && (dir === 'left' || dir === 'right')) return nudgeRange(cur, dir)
+    const items = focusables(el)
+    const r0 = cur.getBoundingClientRect()
+    const x0 = r0.left + r0.width / 2
+    const y0 = r0.top + r0.height / 2
+    let best: HTMLElement | null = null
+    let bestScore = Infinity
+    for (const it of items) {
+      if (it === cur) continue
+      const r = it.getBoundingClientRect()
+      const dx = r.left + r.width / 2 - x0
+      const dy = r.top + r.height / 2 - y0
+      const along = dir === 'up' ? -dy : dir === 'down' ? dy : dir === 'left' ? -dx : dx
+      const across = dir === 'up' || dir === 'down' ? dx : dy
+      if (along <= 4) continue
+      const score = along + 2 * Math.abs(across)
+      if (score < bestScore) {
+        bestScore = score
+        best = it
+      }
+    }
+    if (!best && (dir === 'up' || dir === 'down') && items.length > 1) best = dir === 'down' ? items[0]! : items[items.length - 1]!
+    if (!best) return
+    best.focus({ preventScroll: true })
+    best.scrollIntoView({ block: 'nearest' })
+    focusIndex = items.indexOf(best)
+  }
+
+  const navDir = (): NavDir | null => {
+    const { x, y } = ctx.input.move
+    if (Math.abs(y) >= Math.abs(x)) return y > 0.5 ? 'up' : y < -0.5 ? 'down' : null
+    return x > 0.5 ? 'right' : x < -0.5 ? 'left' : null
+  }
+
+  const navigate = (el: HTMLElement) => {
+    keepFocus(el)
+    const dir = navDir()
+    const now = performance.now()
+    if (dir && (dir !== navHeld || now >= navNext)) {
+      navNext = now + (dir !== navHeld ? NAV_DELAY_MS : NAV_REPEAT_MS)
+      moveFocus(el, dir)
+    }
+    navHeld = dir
+    if (ctx.input.pressed('interact') || ctx.input.pressed('up')) {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && el.contains(active)) {
+        ctx.input.consume('interact', 'up')
+        active.click()
+      }
+    }
   }
 
   const api: Menus = {
@@ -331,12 +426,13 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     },
     update() {
       if (!current) return
-      for (const k of current.closeKeys) {
+      for (const k of [...current.closeKeys, 'down'] as const) {
         if (ctx.input.pressed(k)) {
           api.close()
           return
         }
       }
+      navigate(current.el)
     },
   }
   return api

@@ -74,5 +74,9 @@ function deepMerge<T>(base: T, patch: unknown): T {
 export function migrateState(raw: unknown, quality: QualityLevel): GameState | null {
   if (!isObject(raw) || typeof raw.version !== 'number') return null
   if (raw.version !== 2) return null
-  return deepMerge(createInitialState(quality), raw)
+  const fresh = createInitialState(quality)
+  const state = deepMerge(fresh, raw)
+  // A save can land mid-cutscene or mid-sleep; the controller rebuilds the pose from position and medium.
+  state.hero.mode = fresh.hero.mode
+  return state
 }

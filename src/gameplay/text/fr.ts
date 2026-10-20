@@ -171,6 +171,8 @@ export const UI = {
   nouvelleTache: 'Nouvelle tâche',
   tacheFinie: 'Tâche accomplie',
   obtenu: 'Obtenu',
+  maintenir: 'Maintenir',
+  grandeVitre: 'La grande vitre',
   sacPlein: 'Ton sac est plein.',
   vis: (v: number) => (v >= 999 ? 'Vis. beaucoup' : `Vis. ${v} m`),
   gite: (deg: number) => `Gîte ${deg.toFixed(1)}°`,

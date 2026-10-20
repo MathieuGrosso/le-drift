@@ -30,6 +30,22 @@ const REGION_LABELS: Record<Exclude<RegionId, 'bleu' | 'blanc'>, string> = {
 export const toChart = (x: number, z: number) => ({ x: (x + WORLD_HALF) / 2, y: (z + WORLD_HALF) / 2 })
 const toPlan = (x: number, z: number) => ({ x: (x + 130) * PPM, y: (z + 80) * PPM })
 
+type District = (typeof DISTRICTS)[number]
+interface Box { x0: number; y0: number; x1: number; y1: number }
+const PLAN_ORDER: readonly DistrictId[] = ['machines', 'marche', 'serres', 'ateliers', 'scellees', 'nef', 'proue', 'ecluse']
+// An unsurveyed district mostly under later ones (the machine well under the Nef) gets no frame of its own.
+const HIDDEN_SHARE = 0.6
+const LABEL_STEP = 6
+
+const planBox = (d: District): Box => {
+  const a = toPlan(d.x0, d.z0)
+  const b = toPlan(d.x1, d.z1)
+  return { x0: a.x, y0: a.y, x1: b.x, y1: b.y }
+}
+const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0))
+const hits = (a: Box, b: Box) => overlap(a, b) > 0
+const drawnAfter = (id: DistrictId) => PLAN_ORDER.slice(PLAN_ORDER.indexOf(id) + 1).map((k) => planBox(DISTRICT_BY_ID[k]))
+
 function gauss(dx: number, dz: number, r: number) {
   return Math.exp(-(dx * dx + dz * dz) / (2 * r * r))
 }
@@ -347,24 +363,65 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
     return domes.some((id) => DOME_DISTRICT[id] === d)
   }
 
-  const drawDistrict = (d: (typeof DISTRICTS)[number], k: number) => {
+  const planMarks: Box[] = []
+
+  const labelSpot = (own: Box, above: readonly Box[], w: number, hgt: number) => {
+    const cx = (own.x0 + own.x1) / 2
+    const cy = (own.y0 + own.y1) / 2
+    let best: { x: number; y: number } | null = null
+    let bestD = Infinity
+    for (let y = own.y0 + hgt; y <= own.y1 - hgt; y += LABEL_STEP * PPM) {
+      for (let x = own.x0 + w / 2 + 6; x <= own.x1 - w / 2 - 6; x += LABEL_STEP * PPM) {
+        const box = { x0: x - w / 2, y0: y - hgt / 2, x1: x + w / 2, y1: y + hgt / 2 }
+        if (above.some((o) => hits(o, box)) || planMarks.some((o) => hits(o, box))) continue
+        const d = Math.hypot(x - cx, y - cy)
+        if (d < bestD) {
+          bestD = d
+          best = { x, y }
+        }
+      }
+    }
+    return best
+  }
+
+  const drawUnsurveyed = (d: District) => {
+    const own = planBox(d)
+    const above = drawnAfter(d.id)
+    const area = (own.x1 - own.x0) * (own.y1 - own.y0)
+    if (above.reduce((s, o) => s + overlap(own, o), 0) > HIDDEN_SHARE * area) return
+    lg.save()
+    for (const o of above) {
+      if (!hits(own, o)) continue
+      lg.beginPath()
+      lg.rect(0, 0, PW, PH)
+      lg.rect(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)
+      lg.clip('evenodd')
+    }
+    lg.setLineDash([6, 8])
+    lg.strokeStyle = 'rgba(74,59,44,0.25)'
+    lg.lineWidth = 1.5
+    lg.strokeRect(own.x0 + 3, own.y0 + 3, own.x1 - own.x0 - 6, own.y1 - own.y0 - 6)
+    lg.restore()
+    lg.save()
+    lg.font = `italic 15px ${HAND}`
+    const w = lg.measureText(UI.carte.vierge).width + 8
+    const at = labelSpot(own, above, w, 20)
+    if (at) {
+      planMarks.push({ x0: at.x - w / 2, y0: at.y - 10, x1: at.x + w / 2, y1: at.y + 10 })
+      lg.fillStyle = 'rgba(74,59,44,0.35)'
+      lg.textAlign = 'center'
+      lg.textBaseline = 'middle'
+      lg.fillText(UI.carte.vierge, at.x, at.y)
+    }
+    lg.restore()
+  }
+
+  const drawDistrict = (d: District, k: number) => {
+    if (k <= 0) return drawUnsurveyed(d)
     const a = toPlan(d.x0, d.z0)
     const b = toPlan(d.x1, d.z1)
     const accent = `#${d.accent.toString(16).padStart(6, '0')}`
     lg.save()
-    if (k <= 0) {
-      lg.setLineDash([6, 8])
-      lg.strokeStyle = 'rgba(74,59,44,0.25)'
-      lg.lineWidth = 1.5
-      lg.strokeRect(a.x + 3, a.y + 3, b.x - a.x - 6, b.y - a.y - 6)
-      lg.setLineDash([])
-      lg.font = `italic 15px ${HAND}`
-      lg.fillStyle = 'rgba(74,59,44,0.35)'
-      lg.textAlign = 'center'
-      lg.fillText(UI.carte.vierge, (a.x + b.x) / 2, (a.y + b.y) / 2 + 30)
-      lg.restore()
-      return
-    }
     lg.globalAlpha = Math.min(1, k)
     const cx = (a.x + b.x) / 2
     const cy = (a.y + b.y) / 2
@@ -449,16 +506,22 @@ export function createChart(gp: Gp, root: HTMLElement): Chart {
 
   const composePlan = () => {
     lg.drawImage(planPaper, 0, 0)
-    const order: DistrictId[] = ['hauts', 'machines', 'marche', 'serres', 'ateliers', 'scellees', 'nef', 'proue', 'ecluse']
-    for (const id of order) {
-      if (id === 'hauts') continue
-      const d = DISTRICT_BY_ID[id]
-      const anim = reveal.get(id)
-      drawDistrict(d, anim !== undefined ? anim : revealed(id) ? 1 : 0)
-    }
-    lg.font = `italic 14px ${HAND}`
     const site = gp.sites.get()
     const spot = (id: string, list: { id: string; at: { x: number; z: number } }[]) => list.find((x) => x.id === id)?.at ?? PLAN_FALLBACK[id] ?? null
+    planMarks.length = 0
+    const mark = (at: { x: number; z: number } | null, named: boolean) => {
+      if (!at) return
+      const p = toPlan(at.x, at.z)
+      planMarks.push({ x0: p.x - (named ? 60 : 14), y0: p.y - 14, x1: p.x + (named ? 60 : 14), y1: p.y + (named ? 28 : 12) })
+    }
+    for (const id of MAP_DOMES) mark(spot(id, site.domes), true)
+    for (const id of SCELLEES) mark(spot(id, site.scellees), true)
+    for (const t of gp.travel.stations()) if (t.open) mark(t.at, false)
+    for (const id of PLAN_ORDER) {
+      const anim = reveal.get(id)
+      drawDistrict(DISTRICT_BY_ID[id], anim !== undefined ? anim : revealed(id) ? 1 : 0)
+    }
+    lg.font = `italic 14px ${HAND}`
     for (const id of MAP_DOMES) {
       const at = spot(id, site.domes)
       if (!at) continue

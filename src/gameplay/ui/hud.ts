@@ -1,10 +1,12 @@
 import * as THREE from 'three'
 import { SOUFFLE } from '../../core/tuning'
+import type { Vec3 } from '../../core/types'
 import type { Gp, Hud } from '../context'
 import { UI } from '../text/fr'
 import { h, svg } from './dom'
 
 const WHEEL_R = [22, 28.5, 35] as const
+const WP_EDGE = 0.86
 
 export function createHud(gp: Gp, root: HTMLElement): Hud {
   const ctx = gp.ctx
@@ -22,9 +24,11 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
   const prompt = h('div', 'gp-prompt', undefined, hud)
   const ring = svg('svg', { viewBox: '-20 -20 40 40' })
   const ringCircle = svg('circle', { r: 17, fill: 'none', stroke: '#9ee6c9', 'stroke-width': 3, transform: 'rotate(-90)', 'stroke-dasharray': '0 200' }, ring)
-  const promptKey = h('span', 'gp-key', 'E', prompt)
+  const promptHold = h('span', 'gp-hold', UI.maintenir, prompt)
+  const keyWrap = h('span', 'gp-keywrap', undefined, prompt)
+  const promptKey = h('span', 'gp-key', 'E', keyWrap)
+  keyWrap.appendChild(ring)
   const promptLabel = h('span', '', '', prompt)
-  prompt.appendChild(ring)
 
   const toastEl = h('div', 'gp-toast', undefined, hud)
   const toastK = h('div', 'k', '', toastEl)
@@ -33,6 +37,31 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
   let toastTimer = 0
 
   const tipEl = h('div', 'gp-tip', '', hud)
+
+  const wp = h('div', 'gp-waypoint', undefined, hud)
+  h('div', 'mark', undefined, wp)
+  const wpLabel = h('div', 'l', '', wp)
+  let wpTarget: { at: Vec3; label: string } | null = null
+  const wpV = new THREE.Vector3()
+  const placeWaypoint = () => {
+    if (!wpTarget) return
+    const cam = ctx.camera
+    wpV.set(wpTarget.at.x, wpTarget.at.y, wpTarget.at.z).project(cam)
+    const behind = wpV.z > 1
+    let nx = behind ? -wpV.x : wpV.x
+    let ny = behind ? -wpV.y : wpV.y
+    const edge = Math.max(Math.abs(nx) / WP_EDGE, Math.abs(ny) / WP_EDGE)
+    if (behind || edge > 1) {
+      const k = 1 / Math.max(edge, 1e-3)
+      nx *= k
+      ny *= k
+    }
+    const p = gp.heroPos()
+    const d = Math.hypot(wpTarget.at.x - p.x, wpTarget.at.y - p.y, wpTarget.at.z - p.z)
+    wpLabel.textContent = `${wpTarget.label} · ${Math.round(d)} m`
+    wp.style.left = `${(nx * 0.5 + 0.5) * 100}%`
+    wp.style.top = `${(-ny * 0.5 + 0.5) * 100}%`
+  }
   let tipTimer = 0
 
   const place = h('div', 'gp-place', undefined, hud)
@@ -153,8 +182,11 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       } else if (toastQueue.length > 0 && !toastEl.classList.contains('show')) {
         showToast(toastQueue.shift()!)
       }
+      placeWaypoint()
       if (tipTimer > 0) {
-        tipTimer -= dt
+        const talking = gp.dialogue.active()
+        tipEl.classList.toggle('show', !talking)
+        if (!talking) tipTimer -= dt
         if (tipTimer <= 0) tipEl.classList.remove('show')
       }
       if (placeTimer > 0) {
@@ -217,6 +249,8 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       }
       promptKey.textContent = c.key
       promptLabel.textContent = c.label
+      promptHold.hidden = !c.hold
+      prompt.classList.toggle('hold', !!c.hold)
       prompt.classList.add('show')
     },
     progress(p) {
@@ -226,9 +260,18 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       if (toastTimer > 0) toastQueue.push(text)
       else showToast(text)
     },
+    waypoint(target) {
+      wpTarget = target
+      wp.classList.toggle('show', target !== null)
+      placeWaypoint()
+    },
     tip(text, seconds = 6) {
-      tipEl.textContent = text
-      tipEl.classList.add('show')
+      tipEl.textContent = ''
+      text.split(/\[([^\]]+)\]/).forEach((part, i) => {
+        if (i % 2 === 1) h('span', 'gp-key', part, tipEl)
+        else if (part) tipEl.appendChild(document.createTextNode(part))
+      })
+      tipEl.classList.toggle('show', !gp.dialogue.active())
       tipTimer = seconds
     },
     placeName(title, sub) {

@@ -19,7 +19,7 @@ export interface Candidate {
 
 export interface Hud {
   update(dt: number): void
-  prompt(c: { key: string; label: string } | null): void
+  prompt(c: { key: string; label: string; hold?: boolean } | null): void
   progress(v: number | null): void
   toast(text: string): void
   tip(text: string, seconds?: number): void
@@ -28,6 +28,7 @@ export interface Hud {
   showHud(v: boolean): void
   flashNacre(): void
   counter(owner: string, text: string | null): void
+  waypoint(target: { at: Vec3; label: string } | null): void
   card(title: string, sub: string, seconds?: number): void
 }
 
