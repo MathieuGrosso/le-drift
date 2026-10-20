@@ -25,7 +25,7 @@ export interface CameraFrame {
 }
 
 const EXCLUDE: readonly ColliderKind[] = ['trigger', 'fauna', 'kelp', 'net', 'seat']
-const { atrium: ATRIUM, ride: ZIP, sortie: SORTIE, collision: COLL, swing: SWING } = CAMERA
+const { atrium: ATRIUM, ride: ZIP, sortie: SORTIE, collision: COLL, swing: SWING, shaft: SHAFT } = CAMERA
 const PROBES: readonly [number, number, number][] = [
   [0, 1, 0], [1, 0.25, 0], [-1, 0.25, 0], [0, 0.35, 1], [0.7, 0.5, 0.7], [-0.7, 0.5, 0.7], [0, 0.2, -1],
 ]
@@ -50,6 +50,7 @@ export class HeroCamera {
   private corridorK = 0
   private tightK = 0
   private smallK = 0
+  private shaftK = 0
   private assist = 0
   private snapped = true
   private side = 0
@@ -146,7 +147,7 @@ export class HeroCamera {
         this.pitch = lerp(this.pitch, 14 * D2R, Math.min(1, dt * 1.5))
       } else if (this.styleK.climb > 0.5) {
         this.yaw += angleDiff(this.yaw, f.heroYaw) * Math.min(1, dt * 0.9)
-        this.pitch = lerp(this.pitch, -4 * D2R, Math.min(1, dt * 1.6))
+        this.pitch = lerp(this.pitch, lerp(-4, SHAFT.pitchDeg, this.shaftK) * D2R, Math.min(1, dt * 1.6))
       } else if (f.moving > 0.2 && this.lookIdle > o.recenterHoldSeconds * 0.6) {
         const d = angleDiff(this.yaw, travelYaw)
         const ahead = THREE.MathUtils.clamp((1.25 - Math.abs(d)) / 0.6, 0, 1)
@@ -154,7 +155,7 @@ export class HeroCamera {
         this.pitch = lerp(this.pitch, (f.indoor ? 14 + this.tightK * 20 : 12) * D2R, Math.min(1, dt * (0.5 + this.tightK) * f.moving))
       }
     }
-    const pMin = lerp(o.pitchMinDeg, i.pitchMinDeg, k) * D2R
+    const pMin = Math.min(lerp(o.pitchMinDeg, i.pitchMinDeg, k), lerp(0, SHAFT.pitchDeg, this.shaftK)) * D2R
     const pMax = lerp(o.pitchMaxDeg, i.pitchMaxDeg, k) * D2R
     this.pitch = THREE.MathUtils.clamp(this.pitch, pMin, pMax)
     if (k > 0.5 && !this.pose && !f.freeze) this.swing(dt)
@@ -165,6 +166,7 @@ export class HeroCamera {
     this.pivot.set(this.smoothFocus.x + this.lead.x, this.smoothFocus.y + pivotH, this.smoothFocus.z + this.lead.z)
 
     this.probeOpenness(dt, f.indoor)
+    this.probeShaft(dt, f.style === 'ladder' && f.indoor)
     this.atriumK += (this.atriumGoal - this.atriumK) * Math.min(1, dt * 0.8)
     const indoorDist = lerp(i.distance, ATRIUM.distance, smooth(this.atriumK)) * (1 - this.corridorK * 0.12)
     let want = lerp(SORTIE.distance, indoorDist, k)
@@ -172,21 +174,22 @@ export class HeroCamera {
     want += this.styleK.climb * 0.6
     if (f.style === 'swim' && !f.indoor) want = SORTIE.distance + (f.fast ? 0.8 : 0)
 
+    const sr = lerp(i.sphereRadius, COLL.hardRadius, this.shaftK)
     let assistGoal = 0
     if (k > 0.5 && !this.pose && this.styleK.zip < 0.5) {
       const cu = Math.cos(this.pitch)
       this.dir.set(-Math.sin(this.yaw) * cu, Math.sin(this.pitch), Math.cos(this.yaw) * cu)
-      const base = this.collide(want, i.sphereRadius)
+      const base = this.collide(want, sr)
       assistGoal = THREE.MathUtils.clamp((1.8 - base) / 1.1, 0, 1) * Math.max(0, pMax - 6 * D2R - this.pitch) * 0.7 * THREE.MathUtils.clamp((this.pitch + 10 * D2R) / (15 * D2R), 0, 1)
     }
     this.assist += (assistGoal - this.assist) * Math.min(1, dt * (assistGoal > this.assist ? 5 : 1.5))
     const pitch = this.pitch + this.assist
     const cp = Math.cos(pitch)
     this.dir.set(-Math.sin(this.yaw) * cp, Math.sin(pitch), Math.cos(this.yaw) * cp)
-    const room = k > 0.5 && !this.pose ? this.collide(want, i.sphereRadius) : want
+    const room = k > 0.5 && !this.pose ? this.collide(want, sr) : want
     const tightGoal = k > 0.5 && !this.pose ? 1 - THREE.MathUtils.clamp((room - 1.4) / 1.6, 0, 1) : 0
     this.tightK += (tightGoal - this.tightK) * Math.min(1, dt * (tightGoal > this.tightK ? 6 : 2))
-    this.pivot.y += this.tightK * 0.22 + this.smallK * 0.12
+    this.pivot.y += (this.tightK * 0.22 + this.smallK * 0.12) * (1 - this.shaftK) - this.shaftK * SHAFT.pivotDrop
     this.right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw))
     const sideGoal = this.sideClear(i.shoulderOffset * Math.max(this.tightK, this.smallK, 0.9 * (1 - this.atriumK) * k) * (1 - this.styleK.zip) * (1 - this.corridorK * 0.75))
     if (sideGoal * this.side < 0) this.side = 0
@@ -199,14 +202,14 @@ export class HeroCamera {
       const len = head.length()
       if (len > 1e-3) {
         head.divideScalar(len)
-        const free = this.cast(this.pivotBase, head, len, i.sphereRadius)
+        const free = this.cast(this.pivotBase, head, len, sr)
         if (free < len) this.pivot.copy(this.pivotBase).addScaledVector(head, Math.max(0, free - 0.02))
       }
     }
     const allowed = this.collide(want, k > 0.5 ? COLL.hardRadius : COLL.outsideRadius)
-    const roomy = k > 0.5 ? Math.min(allowed, this.collide(want, i.sphereRadius)) : allowed
-    let soft = k > 0.5 && !this.pose ? Math.min(roomy, Math.max(this.whiskers(want, i.sphereRadius, pitch), Math.min(want, 1.6))) : allowed
-    if (k > 0.5 && !this.pose) soft = Math.min(soft, Math.max(this.ahead(want, i.sphereRadius, pitch, dt), allowed * 0.5))
+    const roomy = k > 0.5 ? Math.min(allowed, this.collide(want, sr)) : allowed
+    let soft = k > 0.5 && !this.pose ? Math.min(roomy, Math.max(this.whiskers(want, sr, pitch), Math.min(want, 1.6))) : allowed
+    if (k > 0.5 && !this.pose) soft = Math.min(soft, Math.max(this.ahead(want, sr, pitch, dt), allowed * 0.5))
     this.prevYaw = this.yaw
     this.holdT = Math.max(0, this.holdT - dt)
     if (this.snapped) {
@@ -421,6 +424,20 @@ export class HeroCamera {
     this.corridorK += (corridor - this.corridorK) * 0.5
     const small = THREE.MathUtils.clamp((5 - open) / 2.2, 0, 1) * (1 - probe)
     this.smallK += (small - this.smallK) * (this.snapped ? 1 : 0.4)
+  }
+
+  // Up a ladder in a shaft there is no room behind Ilo: the camera drops below him and looks up.
+  private probeShaft(dt: number, ladder: boolean): void {
+    let goal = 0
+    if (ladder) {
+      this.right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw))
+      this.probeDir.set(-Math.sin(this.yaw), 0, Math.cos(this.yaw))
+      const back = this.cast(this.pivot, this.probeDir, SHAFT.sideRoom + 0.5, 0.2)
+      const r = this.cast(this.pivot, this.probeDir.copy(this.right), SHAFT.sideRoom, 0.2)
+      const l = this.cast(this.pivot, this.probeDir.copy(this.right).negate(), SHAFT.sideRoom, 0.2)
+      goal = back < SHAFT.sideRoom + 0.5 && Math.max(r, l) < SHAFT.sideRoom ? 1 : 0
+    }
+    this.shaftK += (goal - this.shaftK) * Math.min(1, dt * SHAFT.response)
   }
 
   dispose(): void {

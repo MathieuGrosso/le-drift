@@ -90,6 +90,7 @@ export const CAMERA = {
   atrium: { distance: 5, fov: 62 },
   ride: { distance: 6, fov: 66 },
   sortie: { distance: 6, fov: 55 },
+  shaft: { pitchDeg: -80, pivotDrop: 0.6, sideRoom: 1.3, response: 3 },
   collision: { pullInPerSecond: 9, holdSeconds: 0.35, nearRadius: 0.14, hardRadius: 0.16, outsideRadius: 0.35 },
   swing: { below: 1.4, idleSeconds: 0.25, gain: 0.35, offsets: [0.6, -0.6, 1.2, -1.2, 1.9, -1.9], gainPerRadian: 2.2, maxRate: 2.4, response: 5 },
 } as const

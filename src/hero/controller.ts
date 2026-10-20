@@ -614,7 +614,10 @@ export class HeroController {
     const drift = this.ctx.services.drift
     if (this.lock === 'airlock' || this.recovering) return
     const k = this.activity.kind
-    if (this.medium === 'air' && (k === 'ladder' || k === 'zip' || k === 'slide' || k === 'tube' || this.mantleT >= 0)) return
+    if (this.medium === 'air' && (k === 'ladder' || k === 'zip' || k === 'slide' || k === 'tube' || this.mantleT >= 0)) {
+      if (k === 'ladder' && drift) this.trackRoom(drift.roomAt(this.pos))
+      return
+    }
     const m: Medium = drift ? drift.mediumAt(this.tmp.copy(this.pos).setY(this.pos.y + 1)) : 'water'
     if (m === this.medium) {
       if (m === 'air' && drift) this.trackRoom(drift.roomAt(this.pos))
