@@ -3,7 +3,7 @@ import type RAPIER from '@dimforge/rapier3d-compat'
 import { GeoBuilder, UNIT } from '../builder'
 import { PAL } from '../palette'
 import { partById } from './layout'
-import { wallFrame } from './shell'
+import { HATCH_FRAME_DEPTH, wallFrame } from './shell'
 import type { DoorDef } from './types'
 
 export interface DoorRuntime {
@@ -35,6 +35,10 @@ const wheelGeo = (() => {
   return b.build()
 })()
 
+const disc = new THREE.CylinderGeometry(1, 1, 1, 40)
+// The leaf hangs on the room-side face of the frame, so it swings clear of the brass plate.
+const LEAF_SEAT = HATCH_FRAME_DEPTH / 2 + 0.05
+
 function leafGeometry(kind: 'wall' | 'floor', w: number, h: number): THREE.BufferGeometry {
   const key = `${kind}:${w}:${h}`
   const hit = leafCache.get(key)
@@ -42,8 +46,8 @@ function leafGeometry(kind: 'wall' | 'floor', w: number, h: number): THREE.Buffe
   const b = new GeoBuilder()
   b.jitter = 0
   if (kind === 'wall') {
-    b.add(UNIT.cyl, new THREE.Matrix4().compose(new THREE.Vector3(w / 2, h / 2, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(w / 2 + 0.04, 0.07, h / 2 + 0.04)), PAL.teal)
-    b.add(UNIT.cyl, new THREE.Matrix4().compose(new THREE.Vector3(w / 2, h / 2, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(w / 2 - 0.04, 0.09, h / 2 - 0.04)), PAL.metal)
+    b.add(disc, new THREE.Matrix4().compose(new THREE.Vector3(w / 2, h / 2, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(w / 2 + 0.04, 0.07, h / 2 + 0.04)), PAL.teal)
+    b.add(disc, new THREE.Matrix4().compose(new THREE.Vector3(w / 2, h / 2, 0), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2), new THREE.Vector3(w / 2 - 0.04, 0.09, h / 2 - 0.04)), PAL.metal)
     for (const y of [0.2, h - 0.2]) b.box(0.05, y, 0, 0.1, 0.14, 0.12, PAL.laiton)
     b.sphere(w / 2, h * 0.72, 0, 0.09, 0.09, 0.05, PAL.laiton)
   } else {
@@ -71,7 +75,7 @@ export function createDoor(def: DoorDef, material: THREE.Material, parent: THREE
     axisU = f.axisU
     baseRot = f.axisU === 'x' ? 0 : -Math.PI / 2
     const u = def.at - def.width / 2
-    hinge.copy(f.axisU === 'x' ? new THREE.Vector3(u, def.y, f.plane) : new THREE.Vector3(f.plane, def.y, u))
+    hinge.copy(f.axisU === 'x' ? new THREE.Vector3(u, def.y, f.plane) : new THREE.Vector3(f.plane, def.y, u)).addScaledVector(f.inward, LEAF_SEAT)
     const angle = (100 * Math.PI) / 180
     const free = (a: number) => new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), baseRot + a)
     openAngle = free(angle).dot(f.inward) > 0 ? angle : -angle

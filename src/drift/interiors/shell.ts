@@ -58,6 +58,21 @@ export function wallFrame(p: PartDef, side: Side): WallFrame {
   }
 }
 
+export const HATCH_FRAME_DEPTH = WALL_T + 0.08
+const hatchFrames = new Map<string, THREE.BufferGeometry>()
+// Brass plate filling the rectangular wall hole down to the oval hatch, origin at the sill centre.
+function hatchFrame(w: number, h: number, depth: number): THREE.BufferGeometry {
+  const key = `${w}:${h}:${depth}`
+  const hit = hatchFrames.get(key)
+  if (hit) return hit
+  const fr = 0.1
+  const plate = new THREE.Shape().moveTo(-w / 2 - fr, 0).lineTo(w / 2 + fr, 0).lineTo(w / 2 + fr, h + fr).lineTo(-w / 2 - fr, h + fr).closePath()
+  plate.holes.push(new THREE.Path().absellipse(0, h / 2, w / 2, h / 2, 0, Math.PI * 2, true))
+  const g = new THREE.ExtrudeGeometry(plate, { depth, bevelEnabled: false, curveSegments: 40 }).translate(0, 0, -depth / 2)
+  hatchFrames.set(key, g)
+  return g
+}
+
 export function wallPoint(f: WallFrame, u: number, y: number, depth = 0): THREE.Vector3 {
   const d = f.plane + (f.axisU === 'x' ? f.inward.z : f.inward.x) * depth
   return f.axisU === 'x' ? new THREE.Vector3(u, y, d) : new THREE.Vector3(d, y, u)
@@ -237,15 +252,9 @@ export function buildShell(p: PartDef, b: GeoBuilder, out: ShellOut): void {
         id: l.door, part: p.id, kind: 'wall', side, at: l.at, width: l.width, height: l.height, y: fy, plane: f.plane,
         inward: 1,
       })
-      const fr = 0.1
-      const bar = (u: number, y: number, su: number, sy: number) => {
-        const pc = wallPoint(f, u, y)
-        if (f.axisU === 'x') b.box(pc.x, pc.y, pc.z, su, sy, T + 0.08, PAL.laiton)
-        else b.box(pc.x, pc.y, pc.z, T + 0.08, sy, su, PAL.laiton)
-      }
-      bar(l.at - l.width / 2 - fr / 2, fy + l.height / 2, fr, l.height)
-      bar(l.at + l.width / 2 + fr / 2, fy + l.height / 2, fr, l.height)
-      bar(l.at, fy + l.height + fr / 2, l.width + fr * 2, fr)
+      const along = f.axisU === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1)
+      const basis = new THREE.Matrix4().makeBasis(along, new THREE.Vector3(0, 1, 0), new THREE.Vector3().crossVectors(along, new THREE.Vector3(0, 1, 0)))
+      b.add(hatchFrame(l.width, l.height, HATCH_FRAME_DEPTH), basis.setPosition(wallPoint(f, l.at, fy)), PAL.laiton)
     }
     b.patFn = null
     buildTrims(p, f, holes, b, metal)
