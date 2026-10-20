@@ -3,7 +3,7 @@ import { SOUFFLE } from '../../core/tuning'
 import type { Vec3 } from '../../core/types'
 import type { Gp, Hud } from '../context'
 import { UI } from '../text/fr'
-import { h, svg } from './dom'
+import { h, keyHint, svg } from './dom'
 
 const WHEEL_R = [22, 28.5, 35] as const
 const WP_EDGE = 0.86
@@ -266,11 +266,7 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
       placeWaypoint()
     },
     tip(text, seconds = 6) {
-      tipEl.textContent = ''
-      text.split(/\[([^\]]+)\]/).forEach((part, i) => {
-        if (i % 2 === 1) h('span', 'gp-key', part, tipEl)
-        else if (part) tipEl.appendChild(document.createTextNode(part))
-      })
+      keyHint(tipEl, text)
       tipEl.classList.toggle('show', !gp.dialogue.active())
       tipTimer = seconds
     },

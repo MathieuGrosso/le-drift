@@ -184,6 +184,7 @@ export const UI = {
     reglages: 'Réglages',
     commandes: 'Commandes',
     retour: 'Retour',
+    aide: (ok: string, back: string) => `[${ok}] choisir · [${back}] fermer`,
     objectif: 'En ce moment',
     aucun: 'Rien de pressé. Le Drift avance de toute façon.',
     progres: (d: number, s: number, t: number) => `${d}/7 dômes · ${s}/12 coques scellées · ${t}/60 trouvailles`,

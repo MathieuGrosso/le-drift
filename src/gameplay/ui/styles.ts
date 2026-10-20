@@ -101,6 +101,8 @@ export const GAMEPLAY_CSS = `
 .gp-btn.primary { background: var(--gp-accent); color: #fff8ee; border-color: transparent; text-align: center; }
 .gp-btn.primary:hover { background: #d95a3e; transform: none; }
 .gp-btn:disabled { opacity: .4; cursor: default; transform: none; }
+.gp-menu-aide { position: absolute; left: 0; right: 0; bottom: 4vh; text-align: center; font-size: 14px; letter-spacing: .06em; color: var(--gp-texte); opacity: .85; pointer-events: none; }
+.gp-menu-aide .gp-key { min-width: 24px; height: 24px; margin: 0 4px; font-size: 13px; vertical-align: middle; }
 .gp-menu :is(.gp-btn, .gp-tab, .gp-card.pick, .gp-slot.full, input):focus { outline: 3px solid var(--gp-abysse); outline-offset: 3px; }
 .gp-stack { display: flex; flex-direction: column; gap: 10px; }
 .gp-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }

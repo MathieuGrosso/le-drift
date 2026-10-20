@@ -33,3 +33,12 @@ export function svg<K extends keyof SVGElementTagNameMap>(
   if (parent) parent.appendChild(el)
   return el
 }
+
+/** Writes `text` into `el`, turning each `[key]` into a key pill. */
+export function keyHint(el: HTMLElement, text: string): void {
+  el.textContent = ''
+  text.split(/\[([^\]]+)\]/).forEach((part, i) => {
+    if (i % 2 === 1) h('span', 'gp-key', part, el)
+    else if (part) el.appendChild(document.createTextNode(part))
+  })
+}

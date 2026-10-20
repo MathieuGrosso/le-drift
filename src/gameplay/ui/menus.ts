@@ -3,7 +3,7 @@ import { cookDish, eatDish } from '../cooking'
 import type { Gp, Menus } from '../context'
 import { categoryOf, DISHES, INGREDIENTS, isKeyItem, itemName, type ItemCategory } from '../inventory'
 import { ITEMS, MARKET_GOSSIP, STALLS, UI, trouvailleText } from '../text/fr'
-import { button, h } from './dom'
+import { button, h, keyHint } from './dom'
 
 interface Trade { give: Record<string, number>; get: Record<string, number> }
 const TRADES: readonly Trade[] = [
@@ -52,6 +52,7 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     navHeld = null
     ctx.input.consume('interact', 'up')
     const panel = h('div', 'gp-panel', undefined, el)
+    keyHint(h('div', 'gp-menu-aide', undefined, el), UI.pause.aide(ctx.input.keyLabel('interact'), ctx.input.keyLabel('pause')))
     current = { el, closeKeys, ...(onClose ? { onClose } : {}) }
     ctx.bus.emit('ui:menu', { open: kind })
     ctx.bus.emit('game:paused', { paused: true })
