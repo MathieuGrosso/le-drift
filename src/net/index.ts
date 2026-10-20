@@ -10,7 +10,7 @@ import { loadIdentity, loadProfile, storeProfile } from './identity'
 import { Overlay } from './overlay'
 import { Presence } from './presence'
 import { adoptWelcome, RemoteSave, spawnInCabin } from './save'
-import { Session, type Dispatch } from './session'
+import type { Dispatch, Session } from './session'
 import { netRoot } from './style'
 import { EMOTE_BUBBLE, TEXT } from './text'
 import { askProfile } from './welcome'
@@ -156,6 +156,17 @@ export function createNetSystem(): System {
         }
         profile = storeProfile(picked)
       }
+      // Loaded only once a server answered: the SDK's module-level offline listener would otherwise warn in solo.
+      const loaded = await import('./session').catch((err: unknown) => {
+        console.warn('[net] module réseau introuvable, on reste en solo', err)
+        return null
+      })
+      if (!loaded) {
+        canRejoin = true
+        return
+      }
+      if (!ctx || !ui) return
+      const { Session } = loaded
       const c = ctx
       const s: Session = new Session(endpoint, loadIdentity(), profile, {
         status: (st) => {
