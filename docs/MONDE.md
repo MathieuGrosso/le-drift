@@ -144,9 +144,15 @@ fills the streets). `planShip()` derives from it: bounds, seeds, the **ports** o
 boundary (position, deck, kind) so two neighbours agree on their connection without loading each other,
 and the spine links (Grand-Rue, Rail de Quille, Hauts tube, Passerelle de la Baie, links to the core).
 
-Four gates join the core, on deck principal (y 0): ateliers x −130 z −45 (corderie), marché x −130
-z 60 (bazar), scellées x 130 z −45 (laminaires), serres x 130 z 60 (potagers). Drift owns the door on
-the core wall; procgen owns the far side. Every arrondissement reaches a gate (checked).
+Two gates join the core on foot, on deck principal (y 0): ateliers x −130 z −30 (corderie) and
+scellées x 130 z −30 (laminaires). They open in the end wall of each hall (drift's `HallDef.openings`)
+and a glazed passage (`src/procgen/liaisons`) crosses the 6 m gap to the arrondissement's port. The
+marché and serres outer walls are hull rows (shrines and homes behind every opening), so the bazar and
+the potagers are reached through their wing, not from the core. Gate z sits on a layout cell centre.
+
+Tubes complete the network: four booths in the Nef hub (`tube-nef-quais`, `-forges`, `-viviers`,
+`-fumoir`) ride to the far districts, and every arrondissement has a return booth beside its main
+entrance (`tube-<district>-nef`). The destination is built before the ride and held until arrival.
 
 ### 3.2 Layout engine (`src/procgen/layout`)
 
@@ -249,13 +255,15 @@ procgen?.dispose()                                             // dispose
 
 `mountProcgen` lazy-loads `src/procgen` (own chunk, skipped with `?noprocgen`) and **decorates the
 drift service**: `cellAt`, `roomAt`, `cellSpawn`, `ceilingAt`, `roomCeilingAt`, `anchorsNear`,
-`mediumAt`, `districtAt`, `cameraEnv`, `glassPortalsVisible` fall through to procgen where the core
+`mediumAt`, `districtAt`, `cameraEnv`, `glassPortalsVisible`, `openDoor` (procgen tube rides) fall through to procgen where the core
 answers nothing, and `procgen()` exposes the `ProcgenWorld`. So hero, camera, gameplay, audio and
 render need no change to walk, climb, film and light the arrondissements.
 
 `ProcgenHost` (what drift lends): `ctx`, the Drift-local `root`, `mats`, `pose()`, `bakeNav(bodies, links)`,
 and the physics collision groups. `ProcgenWorld` (what procgen gives): `update`, `cellAt`, `spawn`,
-`anchorsNear`, `glassVisible`, `chart`, `dispose`. Both are typed in the hook file.
+`anchorsNear`, `glassVisible`, `nav`, `ride`, `chart`, `dispose`. Both are typed in the hook file.
+`chart()` returns the entries revealed so far (`toujours` once built, `visite` once walked in); gameplay's
+plan canvas only covers the core (x ±130, z ±80) and does not draw them yet.
 
 ### 4.2 What procgen registers
 
@@ -350,3 +358,74 @@ worker, colliders per district. Logged by `?procgen`, recorded in the PR body, n
 ## 9. Change log of the shared files
 
 - v1: types, ship table (27 arrondissements, 4 core gates, 7 spines), archetypes (19), hook. Architect.
+- Integration: core gates down to two (ateliers, scellées, z −30) with matching end-wall openings in
+  `drift/city/world.ts`; hook adds `ride`, `chart` and the `openDoor` decoration; drift loads no core
+  neighbours while the hero is in an arrondissement; content keeps its track off stair-port landings.
+
+## 10. Integration measurements (2026-10-20)
+
+Production build (`vite preview`), headless Chrome launched by agent-browser on the owner's Mac,
+`?debug&procgen&act=2`, quality `high` unless stated. Keys are real CDP key events (`code: KeyW/KeyE`);
+teleports only place Ilo and the camera before a walk.
+
+**Reachability, walked with W held**
+
+| Walk | Result |
+|---|---|
+| Ateliers hall (−110, 0, −30) → passage → corderie, and corderie → ateliers | through, `medium` stays `air`, cell `corderie/passage` in between |
+| Corderie → bazar (port z 40), bazar → fourneaux (z 160), corderie → vigies-babord (z −80), bazar → séchoirs (x −230) | through, 5-6 m past each port in 6 s |
+| Nef booth `tube-nef-quais`, E | arrives at the quais (−196, 0, 400.7), the far bâbord stern, 700 m from the Nef |
+| Quais return booth `tube-quaisbabord-nef`, E | back in the Nef hub (0, −6, −21.6); the quais are released |
+
+The gameplay prompt reads « Tube : quais » (gameplay shows the raw token for non-core stations) and
+« Tube : La Grande Nef » on the way back. Captures: `shots/monde-integration-1..4.png`.
+
+**Walkability audit** (`__procgen.audit(id, step)` / `auditBox`, the WALKABILITY method: hero KCC
+settings, 1 m grid over the district box padded 3 m, layout links, ladders and zips followed)
+
+| Area | Floor nodes | Linked to the entrance | Ports reached | Points missed | Stuck (40 m patch) |
+|---|---|---|---|---|---|
+| Corderie | 32 059 | 26 879 (84 %) | 5/5 deck-0 | 6/7 trouvailles, 1 merveille | 5 / 1 510 |
+| Bazar | 15 373 | 12 568 (82 %) | 2/3 deck-0 on the grid, 3/3 walked | 5/5 trouvailles, 1 merveille | 7 / 1 518 |
+| Fourneaux | 15 118 | 12 433 (82 %) | 3/3 deck-0 | 3/6 trouvailles, 1 quête, 1 vista | 7 / 1 357 |
+| Gate ateliers ↔ corderie (0.6 m) | 2 128 | 1 897 | far side reached | | 4 |
+| Gate scellées ↔ laminaires (0.6 m) | 2 171 | 2 099 | far side reached | | 10 (a row along a wall at z −27.4) |
+
+The bazar → séchoirs port fails on the 1 m grid (two crates in its mouth) but Ilo walks through it
+with W held at z 95.5. The unlinked nodes are roofs, stall tops and lot interiors with no stair, as in the core. Trouvailles
+are micro-challenges (in a pipe, at the end of a beam, behind a hatch), so off the floor grid by
+design. The missed ports are the `escalier` ports into the keel layer, checked from below. Before the
+fix, a stair port's landing pulled content points into the stairwell (`quete-fourneaux-1` at y −5.7
+over a 9 m drop, `fourneaux/pnj-4` 21 m above the cale); content's main track now stops before it.
+
+**Streaming over 5 minutes** (scripted traversal: Ilo stepped 2 m every 0.25 s, 8 m/s, from the ateliers
+hall along the Grand-Rue de Bâbord to the quais and back, twice; samples every 10 s)
+
+| Measure | Low | High |
+|---|---|---|
+| Built at once | 2-3 | 3-5 (4 + the keel district under a stair port) |
+| Draw calls | 96-398 | 155-480 (480 at the stern: 5 districts) |
+| Triangles | 1.1-2.5 M | 2.4-4.3 M |
+| fps (this Mac) | 59-60 | 60 |
+| Worst frame per 10 s | 19-175 ms | 22-42 ms after the nav dwell (96-197 ms before) |
+| JS heap | 478-600 MB, no trend | 575-1 042 MB, GC back to 575-630 each loop, no trend |
+| `renderer.info.memory.geometries` | +18-35 per round trip | same |
+
+Build per district: 170-470 ms wall over sliced frames, 24-33 draws, 175-503 k triangles,
+460-2 860 colliders. A crowd navmesh bake is 93-182 ms on the main thread, so it waits until Ilo has
+stayed 20 s in a district (`STREAM.navDwell`); the crowd follows its street graph until then.
+
+Geometry leak check: a scene trace over Nef → forges → Nef found no procgen geometry left undisposed
+(only the dressing's shared pool and porthole assets, kept on purpose). The geometry creep above is not
+isolated: the Nef ↔ proue control without any arrondissement grows +3 per cycle, so the core's own
+streaming accounts for part of it. Heap readings after `agent-browser open` on the same tab include the
+previous page (1.7 GB seen once); fresh tabs read 581 MB without procgen, 677 MB with it at boot.
+
+**Left open**
+
+- Gameplay's plan canvas covers only the core: `ProcgenWorld.chart()` returns the revealed entries
+  (3 per visited district) but nothing draws them.
+- The Nef booths have no painted sign, and their prompt shows the raw token.
+- The bazar and the potagers have no door from the core (marché and serres walls are hull rows).
+- The crowd's figures read dark in the arrondissements: they get no `uLamps` there.
+- The navmesh bake should move to a worker; it is the last main-thread hitch of the streamer.
