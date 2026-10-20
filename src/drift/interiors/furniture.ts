@@ -77,7 +77,7 @@ function col(c: Ctx, kind: ColliderKind, x: number, y: number, z: number, hx: nu
 }
 
 // A hanging lamp keeps its pivot on the raised ceiling and lets down half of the rise as extra cord.
-function lamp(c: Ctx, x: number, y: number, z: number, cord: number, color: number = PAL.lampe, radius = 6.5, airlock?: 'sas' | 'echelle-toit', flags: { hidden?: boolean; night?: boolean } = {}): void {
+function lamp(c: Ctx, x: number, y: number, z: number, cord: number, color: number = PAL.lampe, radius = 6.5, airlock?: 'sas' | 'echelle-toit', flags: { hidden?: boolean } = {}): void {
   const pivot = at(c, x, y + cord, z)
   const len = cord > 0 ? cord + (pivot.y - y - cord) * 0.5 : 0
   const r = cord > 0 ? radius * 1.35 : radius
@@ -215,6 +215,9 @@ function bunk(c: Ctx, x: number, z: number, sx: number, sz: number, blanket: num
   })
 }
 
+const RUG_BAND = 0.075
+const RUG_THICK = 0.016
+
 function rug(c: Ctx, lx: number, lz: number, lsx: number, lsz: number, color: number, stripe: number): void {
   const a = at(c, lx - lsx / 2, 0, lz - lsz / 2)
   const b = at(c, lx + lsx / 2, 0, lz + lsz / 2)
@@ -225,34 +228,34 @@ function rug(c: Ctx, lx: number, lz: number, lsx: number, lsz: number, color: nu
   placed(c, () => weave(c, x, z, sx, sz, color, stripe))
 }
 
+// Flat bands, not tubes: faceted sub-centimetre tubes shimmer into moiré under the cel shading.
 function weave(c: Ctx, x: number, z: number, sx: number, sz: number, color: number, stripe: number): void {
   const tones = [soft(color, 0.5, 0.78), soft(stripe, 0.5, 0.8), soft(PAL.toile, 0.5, 0.78), soft(color, 0.5, 0.64), soft(0xb08a5a, 0.5, 0.8)]
   const half = Math.min(sx, sz) / 2
-  const rings = Math.min(9, Math.floor((half - 0.05) / 0.055))
-  const tube = 0.03
-  for (let k = 0; k < rings; k++) {
-    const inset = 0.035 + k * 0.055
+  const bands = Math.min(5, Math.floor((half - 0.05) / RUG_BAND))
+  const outline = (inset: number): THREE.Vector2[] => {
     const hx = sx / 2 - inset
     const hz = sz / 2 - inset
-    const per = 2 * (hx + hz) * 2
-    const n = Math.min(180, Math.max(24, Math.ceil(per / 0.09)))
-    const pts: THREE.Vector3[] = []
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2
+    const pts: THREE.Vector2[] = []
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2
       const cx = Math.cos(a)
       const cz = Math.sin(a)
-      const px = Math.sign(cx) * Math.pow(Math.abs(cx), 0.4) * hx
-      const pz = Math.sign(cz) * Math.pow(Math.abs(cz), 0.4) * hz
-      pts.push(new THREE.Vector3(px, 0, pz))
+      pts.push(new THREE.Vector2(Math.sign(cx) * Math.pow(Math.abs(cx), 0.4) * hx, -Math.sign(cz) * Math.pow(Math.abs(cz), 0.4) * hz))
     }
-    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true, 'centripetal'), n, tube, 4, true)
-    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, 0.014, z), new THREE.Quaternion(), new THREE.Vector3(1, 0.42, 1))
-    c.b.with(SURF.fabric, () => c.b.add(g, m, tones[(k + (k > 2 ? 1 : 0)) % tones.length]!))
+    return pts
   }
-  const inner = 0.035 + rings * 0.055
-  if (sx / 2 - inner > 0.05 && sz / 2 - inner > 0.05) {
-    c.b.with(SURF.fabric, () => c.b.rbox(x, 0.012, z, (sx - inner * 2) * 0.9 + 0.04, 0.018, (sz - inner * 2) * 0.9 + 0.04, tones[0]!, 0.008))
-  }
+  const flat = new THREE.Matrix4().makeRotationX(-Math.PI / 2)
+  const top = new THREE.Matrix4().makeTranslation(x, RUG_THICK, z).multiply(flat)
+  c.b.with(SURF.fabric, () => {
+    const body = new THREE.ExtrudeGeometry(new THREE.Shape(outline(0)), { depth: RUG_THICK - 0.004, bevelEnabled: false, curveSegments: 1 })
+    c.b.add(body, new THREE.Matrix4().makeTranslation(x, 0, z).multiply(flat), tones[3]!)
+    for (let k = 0; k <= bands; k++) {
+      const shape = new THREE.Shape(outline(0.02 + k * RUG_BAND))
+      if (k < bands) shape.holes.push(new THREE.Path(outline(0.02 + (k + 1) * RUG_BAND)))
+      c.b.add(new THREE.ShapeGeometry(shape, 1), top, k === bands ? tones[0]! : tones[(k + (k > 2 ? 1 : 0)) % tones.length]!)
+    }
+  })
 }
 
 function tallPlant(c: Ctx, x: number, z: number, s: number): void {
@@ -759,7 +762,7 @@ function cabine(c: Ctx): void {
     c.b.cyl(-8.7, 1.71, 65.1, 0.05, 0.14, PAL.clair)
     for (let i = 0; i < 5; i++) c.b.sphere(-8.7 + (i % 2) * 0.02, 1.66 + i * 0.02, 65.1, 0.02, 0.015, 0.02, [PAL.clair, PAL.vertDoux, PAL.blanc][i % 3]!)
   })
-  lamp(c, -7, 2.55, 65.4, 0.3, PAL.lampe, 4.5, undefined, { night: true })
+  lamp(c, -7, 2.55, 65.4, 0.3, PAL.lampe, 4.5)
   c.b.cyl(-5.3, 1.75, 66.9, 0.03, 0.12, PAL.laiton, 'x')
   c.b.add(new THREE.ConeGeometry(0.11, 0.12, 12, 1, true), new THREE.Matrix4().makeTranslation(-5.42, 1.98, 66.9), soft(PAL.tissu2, 0.6, 0.9))
   lamp(c, -5.45, 1.9, 66.9, 0.0, PAL.lampeChaude, 2.6, undefined, { hidden: true })

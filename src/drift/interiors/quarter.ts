@@ -78,7 +78,6 @@ interface LampRt {
   world: THREE.Vector3
   local: THREE.Vector3
   hidden: boolean
-  night: boolean
 }
 
 interface PendRt { part: string; pivot: THREE.Vector3; cord: number; drop: number; scale: number; phase: number }
@@ -377,7 +376,7 @@ export class Quarter {
         color: new THREE.Color(l.color), baseColor: new THREE.Color(l.color), radius: l.radius,
         ...(l.airlock ? { airlock: l.airlock } : {}),
         phase: Math.random() * 6.28, world: new THREE.Vector3(), local: rest.clone(),
-        hidden: !!l.hidden, night: !!l.night,
+        hidden: !!l.hidden,
       })
     }
     const n = this.lamps.length
@@ -757,12 +756,11 @@ export class Quarter {
   private updateLamps(): void {
     const n = this.lamps.length
     const hours = this.ctx.state.time.hours
-    const dim = hours >= 21 || hours < 5.5 ? 0.55 : hours >= 19 ? 0.8 : 1
-    const night = hours >= 19 || hours < 5.5
+    const L = INDOOR.lamps
+    const dim = hours >= L.dimFrom || hours < L.dimUntil ? L.dim : hours >= L.eveningFrom ? L.evening : 1
     for (let i = 0; i < n; i++) {
       const l = this.lamps[i]!
       const part = this.parts.get(l.part)!
-      const off = l.night && !night
       if (l.airlock) {
         const a = this.airlocks.get(l.airlock)!
         const idx = this.lamps.filter((o) => o.airlock === l.airlock).indexOf(l)
@@ -786,7 +784,7 @@ export class Quarter {
       _m2.multiplyMatrices(part.sway, _m)
       if (!part.detailVisible || l.cord < 0.05) _m2.makeScale(0, 0, 0)
       this.cords.setMatrixAt(i, _m2)
-      this.bulbs.setColorAt(i, off ? _c.set(0x6a5a50) : _c.copy(l.color).multiplyScalar(0.6 + 0.4 * dim))
+      this.bulbs.setColorAt(i, _c.copy(l.color).multiplyScalar(0.6 + 0.4 * dim))
       l.world.copy(l.local).applyMatrix4(part.sway).applyMatrix4(this.root.matrixWorld)
     }
     this.bulbs.instanceMatrix.needsUpdate = true
@@ -819,7 +817,7 @@ export class Quarter {
     this.lampOrder.length = 0
     for (let i = 0; i < n; i++) {
       const l = this.lamps[i]!
-      if (this.parts.get(l.part)!.visible && !(l.night && !night)) this.lampOrder.push(i)
+      if (this.parts.get(l.part)!.visible) this.lampOrder.push(i)
     }
     this.lampOrder.sort((a, b) => dist2(this.lamps[a]!.world, ref) - dist2(this.lamps[b]!.world, ref))
     for (let i = 0; i < slots.length; i++) {

@@ -20,7 +20,6 @@ export interface LampDef {
   radius: number
   airlock?: 'sas' | 'echelle-toit'
   hidden?: boolean
-  night?: boolean
 }
 
 export interface PendulumDef { part: string; x: number; y: number; z: number; cord: number; scale: number; drop?: number }
