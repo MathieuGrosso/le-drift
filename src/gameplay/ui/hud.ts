@@ -7,6 +7,7 @@ import { h, keyHint, svg } from './dom'
 
 const WHEEL_R = [22, 28.5, 35] as const
 const WP_EDGE = 0.86
+const WP_PROMPT_GAP = 10
 
 export function createHud(gp: Gp, root: HTMLElement): Hud {
   const ctx = gp.ctx
@@ -61,6 +62,15 @@ export function createHud(gp: Gp, root: HTMLElement): Hud {
     wpLabel.textContent = `${wpTarget.label} · ${Math.round(d)} m`
     wp.style.left = `${(nx * 0.5 + 0.5) * 100}%`
     wp.style.top = `${(-ny * 0.5 + 0.5) * 100}%`
+    if (prompt.classList.contains('show')) liftAbovePrompt()
+  }
+  const liftAbovePrompt = () => {
+    const pr = prompt.getBoundingClientRect()
+    const wr = wp.getBoundingClientRect()
+    const overlaps = wr.left < pr.right + WP_PROMPT_GAP && wr.right > pr.left - WP_PROMPT_GAP && wr.bottom > pr.top - WP_PROMPT_GAP && wr.top < pr.bottom + WP_PROMPT_GAP
+    if (!overlaps) return
+    const hr = hud.getBoundingClientRect()
+    wp.style.top = `${pr.top - hr.top - WP_PROMPT_GAP - wr.height / 2}px`
   }
   let tipTimer = 0
 
