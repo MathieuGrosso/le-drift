@@ -159,19 +159,20 @@ export function buildHero(mats: HeroMaterials): HeroModel {
 
   const crown = new THREE.Vector3(0, HEADGEAR.crownY, HEADGEAR.crownZ)
   const gear: THREE.BufferGeometry[] = []
-  const band = new THREE.TorusGeometry(1, HEADGEAR.band, 6, 32)
-  band.rotateX(Math.PI / 2 - HEADGEAR.tilt)
-  band.scale(HEADGEAR.rx, 1, HEADGEAR.rz)
+  const band = new THREE.TorusGeometry(HEADGEAR.rx, HEADGEAR.band, 6, 32)
+  band.rotateX(Math.PI / 2)
+  band.scale(1, 1, HEADGEAR.rz / HEADGEAR.rx)
+  band.rotateX(HEADGEAR.tilt)
   band.translate(0, HEADGEAR.bandY, HEADGEAR.bandZ)
   gear.push(paint(band, PALETTE.bandeau))
   for (const sx of [-1, 1]) {
-    const lens = new THREE.CylinderGeometry(0.026, 0.028, 0.02, 14)
+    const lens = new THREE.CylinderGeometry(HEADGEAR.lens, HEADGEAR.lens * 1.08, 0.016, 14)
     lens.rotateX(Math.PI / 2 + 0.5)
-    lens.translate(sx * 0.034, HEADGEAR.bandY + 0.035, HEADGEAR.bandZ - HEADGEAR.rz + 0.012)
+    lens.translate(sx * HEADGEAR.lensX, HEADGEAR.bandY + 0.03, HEADGEAR.bandZ - HEADGEAR.rz + 0.012)
     gear.push(paint(lens, PALETTE.laiton))
-    const glass = new THREE.CircleGeometry(0.02, 12)
+    const glass = new THREE.CircleGeometry(HEADGEAR.lens * 0.78, 12)
     glass.rotateX(-0.5)
-    glass.translate(sx * 0.034, HEADGEAR.bandY + 0.04, HEADGEAR.bandZ - HEADGEAR.rz - 0.0)
+    glass.translate(sx * HEADGEAR.lensX, HEADGEAR.bandY + 0.034, HEADGEAR.bandZ - HEADGEAR.rz + 0.001)
     gear.push(paint(glass, PALETTE.lunettes))
   }
   const knot = new THREE.SphereGeometry(HEADGEAR.knot, 12, 8)
@@ -207,7 +208,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
 }
 
 // Head socket frame: origin at the Head joint, +y up, -z towards the face.
-const HEADGEAR = { crownY: 0.17, crownZ: 0.07, knot: 0.035, tail: 0.1, band: 0.011, rx: 0.098, rz: 0.112, bandY: 0.115, bandZ: 0.005, tilt: 0.25 } as const
+const HEADGEAR = { crownY: 0.17, crownZ: 0.07, knot: 0.035, tail: 0.1, band: 0.009, rx: 0.081, rz: 0.09, bandY: 0.122, bandZ: -0.006, tilt: 0.15, lens: 0.02, lensX: 0.03 } as const
 
 function rigid(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const g = mergeGeometries(parts, false)

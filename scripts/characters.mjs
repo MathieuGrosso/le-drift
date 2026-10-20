@@ -73,12 +73,12 @@ for (const [file, spec] of Object.entries(BODIES)) {
     mergeDocuments(doc, other)
   }
   const scene = root.listScenes()[0]
-  for (const s of root.listScenes().slice(1)) {
+  for (const [i, s] of root.listScenes().slice(1).entries()) {
     for (const n of s.listChildren()) {
       for (const node of collect(n)) {
         if (node.getMesh() && node.getSkin() && node.getSkin() !== skin) {
           node.setSkin(skin)
-          node.setName(node.getMesh().getName())
+          node.setName(spec.extra[i])
           scene.addChild(node)
         }
       }
