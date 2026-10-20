@@ -46,7 +46,6 @@ export function createNetSystem(): System {
   let me: PlayerId | null = null
   let npcs: NpcExecutor | null = null
   let brains = false
-  let seatAsked: string | null = null
   let canRejoin = false
   let takenOverHere = false
   let placement: Placement | null = null
@@ -73,9 +72,9 @@ export function createNetSystem(): System {
     chat: (text) => session?.send('chat', { text }),
     emote: (emote) => session?.send('emote', { emote }),
     talk(npcId, text) {
-      if (status() !== 'online' || !session) return false
+      if (status() !== 'online' || !session?.mondeState?.npcs.has(npcId)) return false
       session.send('talk', { npcId, text })
-      return true
+      return brains
     },
     seatTaken(seatId) {
       for (const a of session?.quartierState?.avatars.values() ?? []) if (a.id !== me && a.seatId === seatId) return true
@@ -115,9 +114,12 @@ export function createNetSystem(): System {
         ctx.bus.emit('net:emote', e)
         break
       }
-      case 'npc:say':
-        npcs?.say(payload as ServerMessages['npc:say'], me)
+      case 'npc:say': {
+        const say = payload as ServerMessages['npc:say']
+        // Scripted servers answer with a written line the local dialogue box already played.
+        if (brains || say.to !== me) npcs?.say(say, me)
         break
+      }
       case 'npc:give':
         npcs?.give(payload as ServerMessages['npc:give'])
         break
@@ -126,6 +128,7 @@ export function createNetSystem(): System {
         break
       case 'refused': {
         const r = payload as ServerMessages['refused']
+        console.warn('[net] refusé :', r.detail)
         ui.chat.line(null, TEXT.refused[r.reason])
         break
       }
@@ -135,7 +138,6 @@ export function createNetSystem(): System {
   const goSolo = () => {
     npcs?.reset()
     brains = false
-    seatAsked = null
     avatars?.clear()
     ui?.overlay.clear()
     world?.release()
@@ -269,16 +271,11 @@ export function createNetSystem(): System {
         c.bus.on('district:entered', ({ district }) => {
           session?.enter(district).catch(() => undefined)
         }),
-        c.bus.on('interact', ({ targetId, kind }) => {
-          if (status() !== 'online') return
-          seatAsked = kind === 'seat' ? targetId : null
-          if (kind === 'npc' && brains && session?.mondeState?.npcs.has(targetId)) service.talk(targetId, null)
+        c.bus.on('hero:seat', ({ seatId }) => {
+          if (status() === 'online') session?.send('sit', { seatId })
         }),
         c.bus.on('hero:mode', ({ from, to }) => {
-          if (status() !== 'online') return
-          if (to === 'sit' && seatAsked) session?.send('sit', { seatId: seatAsked })
-          else if (from === 'sit') session?.send('sit', { seatId: null })
-          if (to !== 'sit') seatAsked = null
+          if (status() === 'online' && from === 'sit' && to !== 'sit') session?.send('sit', { seatId: null })
         }),
         c.bus.on('quest:step', () => {
           if (status() !== 'online') return

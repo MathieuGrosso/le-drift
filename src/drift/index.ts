@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { DISTRICT_BY_ID, DISTRICT_NEIGHBOURS, DRIFT_BOUNDS, DRIFT_Y, PLACES, districtAt, inDistrict } from '../core/layout'
 import type { CameraEnv, CellId, DistrictId, DriftService, GameContext, LockId, Medium, RoomId, System, Vec3 } from '../core/types'
-import { NET } from '../core/tuning'
+import { INDOOR, NET } from '../core/tuning'
 import { ForecastBoard } from './board'
 import { ChartTable } from './chart'
 import { Chatter } from './chatter'
@@ -364,10 +364,18 @@ export function createDriftSystem(): System {
       return [...q, ...c].map((l) => ({ id: l.id, bottom: toWorld(pose, l.bottom), top: toWorld(pose, l.top), normal: dirToWorld(pose, l.normal) }))
     },
     seat: (raw) => {
-      const id = SEAT_ALIAS[raw] ?? raw
-      const s = quarter?.furniture.seats.find((q) => q.id === id) ?? city?.seat(id)
+      const [base = raw, slot] = raw.split(':')
+      const id = SEAT_ALIAS[base] ?? base
+      const q = quarter?.furniture.seats.find((f) => f.id === id)
+      const c = q ? null : city?.seat(id)
+      const s = q ?? c
       if (!s) return null
-      return { position: toWorld(pose, s), yaw: yawToWorld(pose, s.yaw) }
+      const span = c?.span
+      const slots = span ? Math.max(1, Math.floor(span.len / INDOOR.seatWidth)) : 1
+      const k = Math.min(slots - 1, Math.max(0, Number(slot ?? 0) || 0))
+      const u = span ? (k + 0.5 - slots / 2) * (span.len / slots) : 0
+      const at = { x: s.x + (span?.alongX ? u : 0), y: s.y, z: s.z + (span && !span.alongX ? u : 0) }
+      return { position: toWorld(pose, at), yaw: yawToWorld(pose, s.yaw), slots }
     },
     openDoor: (id, open) => {
       if (city?.hasDoor(id)) {

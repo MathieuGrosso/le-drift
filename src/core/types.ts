@@ -128,6 +128,7 @@ export interface GameEvents {
   'quest:step': { questId: string; step: string }
   'quest:completed': { questId: string }
   'hero:mode': { from: HeroMode; to: HeroMode }
+  'hero:seat': { seatId: string }
   'hero:landed': { speed: number; kind: ColliderKind }
   'hero:kick': {}
   'hero:breathEmpty': {}
@@ -292,7 +293,8 @@ export interface DriftService {
   toWorld(p: Vec3): Vec3
   roomSpawn(room: RoomId): { position: Vec3; yaw: number }
   ladders(room: RoomId): { id: string; bottom: Vec3; top: Vec3; normal: Vec3 }[]
-  seat(id: string): { position: Vec3; yaw: number } | null
+  /** `id` or `id:k`: a bench seats one player per `INDOOR.seatWidth`, `slots` of them. */
+  seat(id: string): { position: Vec3; yaw: number; slots: number } | null
   openDoor(doorId: string, open: boolean): void
   cycleAirlock(lockId: 'sas' | 'echelle-toit', dir: 'in' | 'out'): Promise<void>
   roomCeilingAt(p: Vec3): number | null
@@ -345,6 +347,7 @@ export interface NetService {
   players(): readonly PlayerCardView[]
   chat(text: string): void
   emote(emote: EmoteId): void
+  /** Tells the server's NPC; true when its reply is the answer, so the local line must not play too. */
   talk(npcId: string, text: string | null): boolean
   seatTaken(seatId: string): boolean
 }

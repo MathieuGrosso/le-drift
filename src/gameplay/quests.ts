@@ -201,9 +201,12 @@ export function createQuests(gp: Gp): Quests {
     return pool[n % pool.length]!
   }
 
+  const chatter = (npc: string, lines: readonly Line[]) =>
+    ctx.services.net?.talk(npc, null) ? Promise.resolve() : scene(async () => say(lines, npc))
+
   const requestTalk = (npc: string, id: string, ask: readonly Line[], has: () => boolean, pay: () => void, thanks: readonly Line[], reward: () => void, fallback: readonly (readonly Line[])[]) => {
     const req = gp.progress().requests
-    if (req[id] === 'done') return void scene(async () => say(greet(fallback, `g-${npc}`), npc))
+    if (req[id] === 'done') return void chatter(npc, greet(fallback, `g-${npc}`))
     if (!req[id]) {
       req[id] = 'ask'
       return void scene(async () => {
@@ -359,20 +362,20 @@ export function createQuests(gp: Gp): Quests {
               gp.hud.tip(TIPS.sas(ctx.input.keyLabel('interact')), 6)
             })
           } else if (step('a1-poulie') === 'rouille') void poulieScene()
-          else void scene(async () => say(greet(DIALOGUES.rouille, 'g-rouille'), 'mme-rouille')).then(() => gp.menus.board())
+          else void chatter('mme-rouille', greet(DIALOGUES.rouille, 'g-rouille')).then(() => gp.menus.board())
           return
         case 'cuistot': {
           const s = step('a1-petit-dejeuner')
           if (s === 'cuisine' || s === 'rentrer') void breakfastTutorial()
           else if (s === 'cuisiner') void gp.menus.cook({ tutorial: true })
-          else void scene(async () => say(DIALOGUES.cuistot[st().act], 'cuistot')).then(() => gp.menus.cook())
+          else void chatter('cuistot', DIALOGUES.cuistot[st().act]).then(() => gp.menus.cook())
           return
         }
         case 'mila':
         case 'tao':
         case 'pepin':
           if (step('a1-rebord') === 'rebord') void playRebord()
-          else void scene(async () => say(greet([...DIALOGUES.enfants, DIALOGUES.musee(st().trouvailles.length)], 'g-enfants'), npcId))
+          else void chatter(npcId, greet([...DIALOGUES.enfants, DIALOGUES.musee(st().trouvailles.length)], 'g-enfants'))
           return
         case 'grand-pere':
           if (step('a1-poulie') === 'carte' || step('a3-pluie') === 'salle') chartTable()
@@ -387,11 +390,11 @@ export function createQuests(gp: Gp): Quests {
         case 'maitre-noeud':
           return requestTalk('maitre-noeud', 'req-noeud', DIALOGUES.reqNoeudDemande, () => st().trouvailles.length > 0, () => undefined, DIALOGUES.reqNoeudFini, () => gp.inv.give('toile'), DIALOGUES.noeud)
         case 'mme-cassis':
-          return void scene(async () => say(greet(DIALOGUES.cassis, 'g-cassis'), 'mme-cassis')).then(() => gp.menus.market())
+          return void chatter('mme-cassis', greet(DIALOGUES.cassis, 'g-cassis')).then(() => gp.menus.market())
         case 'veilleuse-ida':
-          return void scene(async () => say(greet(DIALOGUES.ida, 'g-ida'), 'veilleuse-ida'))
+          return void chatter('veilleuse-ida', greet(DIALOGUES.ida, 'g-ida'))
         case 'gardien-proue':
-          return void scene(async () => say(greet(DIALOGUES.gardien, 'g-gardien'), 'gardien-proue'))
+          return void chatter('gardien-proue', greet(DIALOGUES.gardien, 'g-gardien'))
       }
     },
     chartTable,

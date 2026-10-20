@@ -35,7 +35,7 @@ export interface CellDef {
 export interface LockRule { act?: number; item?: string; flag?: string }
 
 export interface LadderSpec { id: string; cells: string[]; bottom: Vec3; top: Vec3; normal: Vec3 }
-export interface SeatSpec { id: string; x: number; y: number; z: number; yaw: number; bed: boolean }
+export interface SeatSpec { id: string; x: number; y: number; z: number; yaw: number; bed: boolean; span?: { len: number; alongX: boolean } }
 export interface DoorSpec {
   id: string
   x: number; y: number; z: number
@@ -607,7 +607,7 @@ export class Kit {
     this.b.box(x, y + 0.14, z, alongX ? len - 0.3 : 0.04, 0.05, alongX ? 0.04 : len - 0.3, C(PAL.boisOmbre))
     this.cols.push({ kind: id ? 'seat' : 'prop', climbable: true, x, y: y + 0.23, z, hx: sx / 2, hy: 0.23, hz: sz / 2, ...(id ? { ownerId: id } : {}) })
     if (id) {
-      this.seats.push({ id, x, y: y + 0.46, z, yaw, bed: false })
+      this.seats.push({ id, x, y: y + 0.46, z, yaw, bed: false, span: { len, alongX } })
       this.anchors.push({ kind: 'seat', id, at: { x, y: y + 0.46, z }, yaw })
     }
   }

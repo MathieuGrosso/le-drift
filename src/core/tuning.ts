@@ -58,6 +58,7 @@ export const INDOOR = {
   airlockSeconds: 6,
   airlockFastMul: 4,
   stuckSnapSeconds: 3,
+  seatWidth: 0.8,
   lamps: { eveningFrom: 19, dimFrom: 21, dimUntil: 5.5, evening: 0.8, dim: 0.55 },
 } as const
 

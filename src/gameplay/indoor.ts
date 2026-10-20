@@ -137,7 +137,25 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     return { label: PROMPTS.tube(dest), kind: 'tube', reach: 2.4, run: () => ctx.services.drift?.openDoor(id, true) }
   })
   uses.on(BED, () => ({ label: PROMPTS.dormir, kind: 'bed', run: () => gp.menus.sleep() }))
-  uses.on(SEAT, (id) => ctx.services.net?.seatTaken(id) ? null : { label: PROMPTS.asseoir, kind: 'seat', reach: 1.5, run: () => ctx.services.hero?.sit(id) })
+  const freeSeat = (id: string): string | null => {
+    const drift = ctx.services.drift
+    const slots = drift?.seat(id)?.slots ?? 0
+    const at = ctx.state.hero.position
+    let best: string | null = null
+    let bestD = Infinity
+    for (let k = 0; k < slots; k++) {
+      const slot = slots > 1 ? `${id}:${k}` : id
+      const p = drift?.seat(slot)?.position
+      if (!p || ctx.services.net?.seatTaken(slot)) continue
+      const d = Math.hypot(p.x - at.x, p.z - at.z)
+      if (d < bestD) [best, bestD] = [slot, d]
+    }
+    return best
+  }
+  uses.on(SEAT, (id) => {
+    const slot = freeSeat(id)
+    return slot ? { label: PROMPTS.asseoir, kind: 'seat', reach: 1.5, run: () => ctx.services.hero?.sit(slot) } : null
+  })
   uses.on(CHART, () => ({ label: PROMPTS.carte, kind: 'chart-table', reach: 2.4, run: () => gp.quests.chartTable() }))
   uses.on(STALL, (id) => ({ label: PROMPTS.etal, kind: 'stall', reach: 2.2, run: () => gp.menus.market(id) }))
   uses.on(BOARD, () => ({ label: PROMPTS.tableau, kind: 'npc', run: () => gp.quests.talk('mme-rouille') }))

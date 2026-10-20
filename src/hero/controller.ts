@@ -1929,6 +1929,7 @@ export class HeroController {
         a.stage = 'down'
         a.t = 0
         this.publish('sit')
+        this.ctx.bus.emit('hero:seat', { seatId: a.seatId })
         this.syncLocal()
       } else {
         this.wish.copy(to).normalize()
