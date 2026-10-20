@@ -27,6 +27,7 @@ export interface SortieState { lockId: LockId; ring: string; round: string[]; st
 export interface CameraEnv {
   indoor: number
   glassDist: number
+  seaInView?: boolean
   airHaze: number
   district: DistrictId | null
   cell: CellId | null

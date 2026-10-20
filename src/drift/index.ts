@@ -7,7 +7,7 @@ import { Chatter } from './chatter'
 import { City, type Anchor, type CellDef } from './city'
 import { dirToWorld, toLocal, toWorld, yawToWorld, type DriftPose } from './frame'
 import { Hulls } from './hulls'
-import { LOCK_OUTSIDE, PORTHOLES, RECT_WINDOWS, partById } from './interiors/layout'
+import { LOCK_OUTSIDE, PORTHOLES, PORTHOLE_D, RECT_WINDOWS, partById } from './interiors/layout'
 import { Quarter } from './interiors/quarter'
 import { createMats, type Mats } from './materials'
 import type { DriftNavmesh } from './nav/navmesh'
@@ -98,11 +98,15 @@ const LOCK_ANCHORS: Record<'sas' | 'echelle-toit', Vec3> = {
   'echelle-toit': quarterPoint({ x: -2.3, y: 6.6, z: 64.6 }),
 }
 const NEF_VIEW: ReadonlySet<RoomId> = new Set<RoomId>(['passerelle-nef' as RoomId, 'cabines-voisins', 'coursive-sud', 'cabine'])
+const NEF_VIEW_DOOR: Partial<Record<RoomId, string>> = { cabine: 'porte-cabine' }
+const DOOR_SIGHT_T = 0.45
+const SEALED_GLASS_DIST = 30
+interface GlassPoint { p: Vec3; r: number }
 const ATRIUM_AIR: Partial<Record<string, number>> = { refectoire: 0.15, marche: 0.2 }
 const SEAT_ALIAS: Record<string, string> = { 'lit-cabine': 'couchette-cabine' }
 
-function glassPoints(): Map<string, Vec3[]> {
-  const out = new Map<string, Vec3[]>()
+function glassPoints(): Map<string, GlassPoint[]> {
+  const out = new Map<string, GlassPoint[]>()
   const at = (partId: string, side: string, a: number, y: number): Vec3 => {
     const p = partById(partId)
     if (side === 'n') return { x: a, y: p.floorY + y, z: p.z0 }
@@ -110,15 +114,15 @@ function glassPoints(): Map<string, Vec3[]> {
     if (side === 'w') return { x: p.x0, y: p.floorY + y, z: a }
     return { x: p.x1, y: p.floorY + y, z: a }
   }
-  const push = (partId: string, v: Vec3) => {
+  const push = (partId: string, p: Vec3, r: number) => {
     const room = partById(partId).room
     const list = out.get(room) ?? []
-    list.push(v)
+    list.push({ p, r })
     out.set(room, list)
   }
-  for (const h of PORTHOLES) push(h.part, at(h.part, h.side, h.at, h.y))
+  for (const h of PORTHOLES) push(h.part, at(h.part, h.side, h.at, h.y), PORTHOLE_D / 2)
   for (const w of RECT_WINDOWS) {
-    for (const k of [-0.4, 0, 0.4]) push(w.part, at(w.part, w.side, w.at + k * w.w, w.y0 + w.h / 2))
+    for (const k of [-0.4, 0, 0.4]) push(w.part, at(w.part, w.side, w.at + k * w.w, w.y0 + w.h / 2), Math.hypot(w.w * 0.2, w.h / 2))
   }
   return out
 }
@@ -173,7 +177,7 @@ export function createDriftSystem(): System {
   const loaded = new Set<DistrictId>()
   const visibleDistricts = new Set<DistrictId>()
   const glass = glassPoints()
-  const camEnv: CameraEnv = { indoor: 1, glassDist: 4, airHaze: 0, district: 'ecluse', cell: 'cabine' }
+  const camEnv: CameraEnv = { indoor: 1, glassDist: 4, airHaze: 0, district: 'ecluse', cell: 'cabine', seaInView: true }
   let visible: CellId[] = []
   let glassVisible = 1
   let lastProgress = 0
@@ -188,6 +192,9 @@ export function createDriftSystem(): System {
   const camLocal: Vec3 = { x: 0, y: -1000, z: 0 }
   const tmp: Vec3 = { x: 0, y: 0, z: 0 }
   const tmpV = new THREE.Vector3()
+  const frustum = new THREE.Frustum()
+  const frustumM = new THREE.Matrix4()
+  const sphere = new THREE.Sphere()
 
   const syncPose = (ctx: GameContext) => {
     const st = ctx.state
@@ -411,7 +418,33 @@ export function createDriftSystem(): System {
     riding: () => false,
   }
 
-  const updateCameraEnv = (st: GameContext['state']) => {
+  const glassInView = (ctx: GameContext, room: RoomId): { dist: number; inView: boolean } => {
+    const cam = ctx.camera
+    cam.updateMatrixWorld()
+    frustum.setFromProjectionMatrix(frustumM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
+    let dist = SEALED_GLASS_DIST
+    let inView = false
+    for (const g of glass.get(room) ?? []) {
+      dist = Math.min(dist, near3(g.p, camLocal))
+      if (inView) continue
+      toWorld(pose, g.p, tmp)
+      sphere.center.set(tmp.x, tmp.y, tmp.z)
+      sphere.radius = g.r
+      inView = frustum.intersectsSphere(sphere)
+    }
+    return { dist, inView }
+  }
+
+  const nefInSight = (room: RoomId): boolean => {
+    if (!NEF_VIEW.has(room)) return false
+    const doorId = NEF_VIEW_DOOR[room]
+    if (!doorId) return true
+    const d = quarter?.doors.get(doorId)
+    return !d || d.t > DOOR_SIGHT_T
+  }
+
+  const updateCameraEnv = (ctx: GameContext) => {
+    const st = ctx.state
     const room = quarter?.roomAt(camLocal) ?? null
     const cc = room ? null : cityCell(camLocal)
     camEnv.district = cc?.district ?? districtAt(camLocal)
@@ -419,18 +452,20 @@ export function createDriftSystem(): System {
     if (room && quarter?.mediumAt(camLocal) === 'air') {
       camEnv.indoor = 1
       camEnv.airHaze = ATRIUM_AIR[room] ?? 0
-      let best = 30
-      for (const g of glass.get(room) ?? []) best = Math.min(best, near3(g, camLocal))
-      camEnv.glassDist = Math.max(0.5, best)
+      const g = glassInView(ctx, room)
+      camEnv.glassDist = Math.max(0.5, g.dist)
+      camEnv.seaInView = g.inView || nefInSight(room)
     } else if (cc) {
       camEnv.indoor = 1
       camEnv.airHaze = cc.air
       camEnv.glassDist = Math.max(1.5, cc.roof - camLocal.y)
+      camEnv.seaInView = true
     } else {
       const heroInside = st.mode === 'inside' && st.hero.medium === 'air' && !st.debug.cameraLocked
       camEnv.indoor = heroInside ? 1 : 0
       camEnv.airHaze = 0
       camEnv.glassDist = heroInside ? 4 : 0
+      camEnv.seaInView = true
     }
   }
 
@@ -478,12 +513,12 @@ export function createDriftSystem(): System {
     let outside = false
     let sealed = false
     if (room) {
-      const nefView = NEF_VIEW.has(room)
+      const nefView = nefInSight(room)
       sealed = !nefView
       visibleDistricts.add('ecluse')
       if (nefView) visibleDistricts.add('nef')
       visible = [room]
-      glassVisible = glass.has(room) ? 1 : 0
+      glassVisible = camEnv.seaInView ? 1 : 0
     } else if (cc) {
       city!.visibleFrom(cc, camLocal, visibleDistricts)
       showQuarter = visibleDistricts.has('ecluse')
@@ -635,7 +670,7 @@ export function createDriftSystem(): System {
       const cp = ctx.camera.position
       toLocal(pose, { x: cp.x, y: cp.y, z: cp.z }, camLocal)
 
-      updateCameraEnv(st)
+      updateCameraEnv(ctx)
       updateStreaming(ctx)
       updateCulling(ctx)
       hulls?.update(dt, pose, jumped)

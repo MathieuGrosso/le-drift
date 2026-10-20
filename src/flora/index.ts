@@ -76,6 +76,8 @@ export function createFloraSystem(): System {
   let seaOn = true
   let frame = 0
   let stripsHidden = false
+  let serresStreamed = false
+  let nefStreamed = false
   let ctxRef: GameContext | null = null
   const current = new THREE.Vector3(0, 0, -0.4)
   const heroLocal: Vec3 = { x: 0, y: -1000, z: 0 }
@@ -128,6 +130,7 @@ export function createFloraSystem(): System {
     if (fromRender) return fromRender()
     const env = ctx.services.drift?.cameraEnv()
     if (!env || ctx.state.mode === 'sortie' || env.indoor < 0.5) return true
+    if (env.seaInView === false) return false
     if (env.glassDist < 18) return true
     if (typeof env.cell === 'string' && env.cell.startsWith('nef')) return true
     return env.district === 'hauts' || env.district === 'serres' || env.district === 'proue'
@@ -382,12 +385,14 @@ export function createFloraSystem(): System {
       if (drift && frame % 20 === 0) {
         const loaded = drift.loadedDistricts()
         const camDistrict = drift.cameraEnv().district
-        const serresOn = loaded.includes('serres') || camDistrict === 'serres'
-        for (const m of serreMeshes) m.visible = serresOn
-        if (serresOn && (!stripsHidden || frame % 120 === 0)) ctx.scene.traverse(hideDriftStrips)
-        stripsHidden = serresOn
-        if (nefMesh) nefMesh.visible = loaded.includes('nef') || camDistrict === 'nef'
+        serresStreamed = loaded.includes('serres') || camDistrict === 'serres'
+        if (serresStreamed && (!stripsHidden || frame % 120 === 0)) ctx.scene.traverse(hideDriftStrips)
+        stripsHidden = serresStreamed
+        nefStreamed = loaded.includes('nef') || camDistrict === 'nef'
       }
+      const sealed = drift?.cameraEnv().seaInView === false
+      for (const m of serreMeshes) m.visible = serresStreamed && !sealed
+      if (nefMesh) nefMesh.visible = nefStreamed && !sealed
       scanStep(ctx)
     },
 

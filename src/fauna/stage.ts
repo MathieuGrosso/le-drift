@@ -129,6 +129,7 @@ export class Stage {
     const env = ctx.services.drift?.cameraEnv()
     if (!env) return true
     if (env.indoor < 0.5) return true
+    if (env.seaInView === false) return false
     if (this.kind === 'window') return true
     return env.glassDist < 29 || env.airHaze >= 0.5
   }
