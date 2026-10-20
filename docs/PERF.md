@@ -44,8 +44,10 @@ préchargement de Vite y avait atterri).
   Les requêtes de minuterie GPU ont été essayées puis écartées : sur ANGLE Metal elles incluent l'attente vsync.
 - Auto-qualité : 4 s d'échauffement et images > 250 ms ignorées.
 - Shader cel intérieur : lampes hors de portée et coup de brosse mural sautés là où ils valaient zéro.
-- `renderer.compileAsync` avant la première image : essayé, aucun gain mesuré (les à-coups viennent de
-  l'envoi des 377 géométries au GPU), retiré.
+- `src/render` précompile tous les matériaux cachés (sortie, faune) à l'image 3 puis à la fermeture de
+  l'écluse, sans et avec le brouillard linéaire de `world/seavolume` (sa bascule dehors changeait le programme
+  de tout matériau brouillé), dans la cible de rendu de la scène. Première sortie : 70 programmes et une image
+  de 470 ms avant, 9 programmes et 95 ms après. N8AO ne redessine plus la scène deux fois pour la transparence.
 
 ## Coûts restants (pistes)
 
