@@ -4,6 +4,8 @@ Build propre du dernier commit dans un worktree (`/tmp/drift-qa`), `vite preview
 sur GPU réel (ANGLE Metal, Apple M5 Pro), 1280×720. Entrées réelles CDP (`Input.dispatchKeyEvent` avec
 `code`, `Input.dispatchMouseEvent`), partie neuve `?nosave` sauf mention. `lp` = `state.hero.localPosition`.
 `goto()` de debug utilisé seulement pour rejoindre un lieu ; tout ce qui est rapporté est joué au clavier/souris.
+Banc isolé par agent : `scripts/qa-browser.sh start <id> 'nosave&debug'` (build, preview, Chrome et namespace
+agent-browser propres à `<id>`), puis `scripts/qa-browser.sh stop <id>` ; ne jamais réutiliser une session nommée à la main.
 Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, casse un système), **minor**.
 
 | id | sév. | dossier | titre |
