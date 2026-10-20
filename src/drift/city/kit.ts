@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import type { ColliderKind, DeckId, DistrictId, DomeId, Vec3 } from '../../core/types'
 import { PROPS } from '../../core/tuning'
-import { GeoBuilder, UNIT } from '../builder'
+import { GeoBuilder, HANGING_CLOTH, UNIT } from '../builder'
 import { PAL } from '../palette'
 import { PANNEAUX } from '../text'
 import { SURF } from '../surface'
@@ -475,25 +475,26 @@ export class Kit {
     this.sag(a, b, sag, n, (p, i) => {
       if (i === 0 || i === n || this.rand() < 0.25) return
       const main = C(this.pick(cloth))
-      const trim = C(this.pick(cloth)).lerp(C(PAL.boisOmbre), 0.25)
       const put = (u: number, dy: number, w: number, h: number, c: THREE.Color, t = 0.02) => this.cloth.box(p.x + ux * u, p.y - 0.03 - dy, p.z + uz * u, w, h, t, c, rot)
+      const hang = (u: number, dy: number, w: number, h: number, c: THREE.Color) => {
+        const top = new THREE.Vector3(p.x + ux * u, p.y - 0.03 - dy + h / 2, p.z + uz * u)
+        const m = new THREE.Matrix4().compose(top, new THREE.Quaternion().setFromAxisAngle(UP, rot), new THREE.Vector3(w, h, 1))
+        this.cloth.add(HANGING_CLOTH[Math.floor(Math.abs(top.x * 7 + top.z * 13)) % HANGING_CLOTH.length]!, m, c)
+      }
       const kind = this.rand()
       let half: number
       if (kind < 0.4) {
         const w = 0.42 + this.rand() * 0.12
-        put(0, 0.3, w, 0.6, main)
-        for (const sd of [-1, 1]) put(sd * (w / 2 + 0.1), 0.12, 0.22, 0.2, main)
-        put(0, 0.04, 0.16, 0.06, trim, 0.03)
+        hang(0, 0.3, w, 0.6, main)
+        for (const sd of [-1, 1]) hang(sd * (w / 2 + 0.1), 0.12, 0.22, 0.2, main)
         half = w / 2
       } else if (kind < 0.65) {
-        for (const sd of [-1, 1]) put(sd * 0.11, 0.42, 0.19, 0.74, main)
-        put(0, 0.05, 0.42, 0.09, trim, 0.03)
+        for (const sd of [-1, 1]) hang(sd * 0.11, 0.42, 0.19, 0.74, main)
         half = 0.21
       } else {
         const h = 0.55 + this.rand() * 0.5
         const w = 0.45 + this.rand() * 0.3
-        put(0, h / 2, w, h, main)
-        for (const f of [0.78, 0.86]) put(0, h * f, w, 0.035, trim, 0.03)
+        hang(0, h / 2, w, h, main)
         half = w / 2
       }
       for (const sd of [-1, 1]) put(sd * (half - 0.05), -0.01, 0.025, 0.08, C(PAL.boisClair), 0.035)

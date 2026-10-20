@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 export type ColorFn = (p: THREE.Vector3, n: THREE.Vector3) => THREE.Color
 export type ColorSpec = THREE.ColorRepresentation | ColorFn
@@ -158,3 +159,29 @@ export function basis(across: THREE.Vector3, up: THREE.Vector3): THREE.Matrix4 {
   const third = new THREE.Vector3().crossVectors(across, up)
   return new THREE.Matrix4().makeBasis(across, up, third)
 }
+
+function clothPanel(billow: number, skew: number): THREE.BufferGeometry {
+  const front = new THREE.PlaneGeometry(1, 1, 6, 4)
+  front.translate(0, -0.5, 0)
+  const p = front.getAttribute('position') as THREE.BufferAttribute
+  for (let i = 0; i < p.count; i++) {
+    const u = p.getX(i) + 0.5
+    const v = -p.getY(i)
+    p.setZ(i, billow * Math.sin(Math.PI * u) * (0.4 + 0.6 * v) + skew * v * v + 0.012 * Math.sin(u * 19 + v * 3))
+  }
+  front.computeVertexNormals()
+  const back = front.clone()
+  const idx = back.getIndex()!
+  for (let i = 0; i < idx.count; i += 3) {
+    const a = idx.getX(i)
+    idx.setX(i, idx.getX(i + 2))
+    idx.setX(i + 2, a)
+  }
+  const n = back.getAttribute('normal') as THREE.BufferAttribute
+  for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i))
+  const g = mergeGeometries([front, back])
+  g.deleteAttribute('uv')
+  return g
+}
+
+export const HANGING_CLOTH: readonly THREE.BufferGeometry[] = [clothPanel(0.05, 0.03), clothPanel(0.08, -0.04), clothPanel(0.035, 0.06)]

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import type { ColliderKind } from '../../core/types'
-import { GeoBuilder } from '../builder'
+import { GeoBuilder, HANGING_CLOTH } from '../builder'
 import { softColor } from '../figure'
 import { PAL } from '../palette'
 import { SURF, patForColor } from '../surface'
@@ -497,8 +497,9 @@ function laundryRun(c: Ctx, x0: number, x1: number, y: number, z: number, alongZ
     const w = 0.35 + c.rand() * 0.4
     const h = 0.3 + c.rand() * 0.45
     const color = colors[Math.floor(c.rand() * colors.length)]!
-    if (alongZ) c.fade.box(z, y - h / 2, t, 0.02, h, w, color)
-    else c.fade.box(t, y - h / 2, z, w, h, 0.02, color)
+    const top = alongZ ? new THREE.Vector3(z, y, t) : new THREE.Vector3(t, y, z)
+    const m = new THREE.Matrix4().compose(top, new THREE.Quaternion().setFromAxisAngle(UPV, alongZ ? Math.PI / 2 : 0), new THREE.Vector3(w, h, 1))
+    c.fade.add(HANGING_CLOTH[Math.floor(Math.abs(t * 7 + z * 13)) % HANGING_CLOTH.length]!, m, color)
     t += w + 0.25 + c.rand() * 0.6
   }
 }
