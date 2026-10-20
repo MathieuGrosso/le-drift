@@ -35,6 +35,12 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-25 | minor | `src/render`, `src/drift/interiors` | Cabine au réveil presque noire, moiré sur les cercles au sol — CORRIGÉ (commit 9eab880) |
 | QA-26 | minor | `src/net` | Avertissement Colyseus « Network offline » en solo — CORRIGÉ (commit bcc7d7f) |
 | QA-27 | minor | `vite.config.ts` | Un seul bundle de 4,1 Mo (avertissement de taille de chunk) — CORRIGÉ (commit bf5b7d4) |
+| QA-28 | major | `src/net` | Un joueur qui revient, accueilli pendant l'écran titre, repart de sa cabine au lieu de là où il s'était arrêté — CORRIGÉ (commit f3ba9f6) |
+| QA-29 | major | `src/net` | Le formulaire « Comment tu t'appelles ? » est sous l'écran titre : un clic sur le champ, une couleur ou « Monter à bord » lance la partie — CORRIGÉ (commit cf27421) |
+| QA-30 | major | `src/core/state.ts`, `src/net` | Après un rechargement pendant l'écran titre ou une session en ligne, l'horloge solo reste figée (`time.scale` 0 sauvegardé) — CORRIGÉ (commit bcc8785) |
+| QA-31 | minor | `src/net`, `server/src/rooms` | Serveur arrêté : avertissement SDK « Room connection was closed unexpectedly » (le quartier rejoignait le serveur mourant) et « Error: disposing » côté serveur — CORRIGÉ (commits f3ba9f6, bcc8785) |
+| QA-32 | minor | `src/net/avatars.ts` | Un avatar distant immobile part d'un bond au premier pas ; une téléportation glisse à travers les murs — CORRIGÉ (commit 668d16a) |
+| QA-33 | minor | `src/core/engine.ts` | Menu pause en ligne : le panneau « À bord », les avatars distants et l'horloge partagée se figent (le système `net` ne tourne pas en pause) — OUVERT |
 
 ---
 
