@@ -17,6 +17,6 @@ CC0 only. One line per asset: path, source URL, license.
 
 ## Characters
 
-- `assets/characters/ilo.glb` (Superhero_Male_FullBody + Hair_SimpleParted), `assets/characters/ondine.glb` (Superhero_Female_FullBody + Hair_Long): Quaternius Universal Base Characters [Standard], https://quaternius.com/packs/universalbasecharacters.html, CC0 (License_Standard.txt). Textures dropped, repainted with vertex colours at load.
+- `assets/characters/ilo.glb` (Superhero_Male_FullBody + Hair_SimpleParted): Quaternius Universal Base Characters [Standard], https://quaternius.com/packs/universalbasecharacters.html, CC0 (License_Standard.txt). Textures dropped, repainted with vertex colours at load; scaled to a boy (1.5 m, head ×1.2) and dressed at load with a skinned tunic skirt and a folded hood.
 - `assets/characters/clips.glb`: 26 clips from Quaternius Universal Animation Library 1 and 2 [Standard], https://quaternius.com/packs/universalanimationlibrary.html and https://quaternius.com/packs/universalanimationlibrary2.html, CC0 (License.txt). Mannequin mesh, finger, scale and root-translation tracks dropped.
 - The CC0 packs were fetched from the mirror https://github.com/NafisRayan/Animate-Rigged-Humanoid-No-Blender (itch.io download is behind a captcha).

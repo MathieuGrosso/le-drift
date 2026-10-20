@@ -4,18 +4,18 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import type { BoneName } from './model'
 
-export type BodyId = 'ilo' | 'ondine'
+export type BodyId = 'ilo'
 
 const URLS: Record<BodyId | 'clips', string> = {
   ilo: new URL('../../assets/characters/ilo.glb', import.meta.url).href,
-  ondine: new URL('../../assets/characters/ondine.glb', import.meta.url).href,
   clips: new URL('../../assets/characters/clips.glb', import.meta.url).href,
 }
 
+// The glTF bodies are 1.81 m adults: `height` scales the source, `arm` shortens the arms so Ilo reads as a boy.
+const SOURCE_HEIGHT = 1.81
 export const BODY = {
-  ilo: { height: 1.65, slim: 0.9 },
-  ondine: { height: 1.62, slim: 0.94 },
-} as const satisfies Record<BodyId, { height: number; slim: number }>
+  ilo: { height: 1.42, slim: 0.86, arm: 0.9 },
+} as const satisfies Record<BodyId, { height: number; slim: number; arm: number }>
 
 export const UAL_BONE: Partial<Record<BoneName, string>> = {
   hips: 'pelvis', spine: 'spine_01', chest: 'spine_03', neck: 'neck_01', head: 'Head',
@@ -43,10 +43,10 @@ export function loadCharacterKit(): Promise<CharacterKit> {
   if (kit) return Promise.resolve(kit)
   pending ??= (async () => {
     const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
-    const [ilo, ondine, clips] = await Promise.all([loader.loadAsync(URLS.ilo), loader.loadAsync(URLS.ondine), loader.loadAsync(URLS.clips)])
+    const [ilo, clips] = await Promise.all([loader.loadAsync(URLS.ilo), loader.loadAsync(URLS.clips)])
     const map = new Map<string, THREE.AnimationClip>()
     for (const c of clips.animations) map.set(c.name, inPlace(c))
-    kit = { bodies: { ilo: ilo.scene, ondine: ondine.scene }, clips: map }
+    kit = { bodies: { ilo: ilo.scene }, clips: map }
     return kit
   })()
   return pending
@@ -126,7 +126,7 @@ export class CharacterRig {
     const template = characterKit().bodies[opts.body]
     const inst = cloneSkinned(template) as THREE.Group
     const spec = BODY[opts.body]
-    this.scale = spec.height / 1.81
+    this.scale = spec.height / SOURCE_HEIGHT
     this.group = new THREE.Group()
     this.group.rotation.y = Math.PI
     this.group.scale.set(this.scale * spec.slim, this.scale, this.scale * spec.slim)
@@ -142,6 +142,7 @@ export class CharacterRig {
     const skel = this.meshes[0]!.skeleton
     this.bones = skel.bones
     for (const b of this.bones) this.byName.set(b.name, b)
+    for (const side of ['l', 'r']) this.byName.get(`upperarm_${side}`)?.scale.setScalar(spec.arm)
     this.parentIdx = this.bones.map((b) => this.bones.indexOf(b.parent as THREE.Bone))
     const mappedBy = new Map(Object.entries(UAL_BONE).map(([k, v]) => [v, k as BoneName]))
     this.mapped = this.bones.map((b) => mappedBy.get(b.name) ?? null)
@@ -253,36 +254,59 @@ export class CharacterRig {
     this.action = next
   }
 
-  /** Re-parents a skinned part as a rigid mesh on `socket`, centred on itself so it can scale in place. */
-  bakeRigid(meshName: string, socket: THREE.Object3D, material: THREE.Material): THREE.Mesh | null {
-    const src = this.meshes.find((m) => m.name === meshName)
-    if (!src) return null
-    this.group.updateMatrixWorld(true)
-    const inv = socket.matrixWorld.clone().invert()
-    const pos = src.geometry.getAttribute('position')
-    const out = new Float32Array(pos.count * 3)
-    const v = new THREE.Vector3()
-    const centre = new THREE.Vector3()
-    for (let i = 0; i < pos.count; i++) {
-      src.getVertexPosition(i, v).applyMatrix4(src.matrixWorld).applyMatrix4(inv)
-      v.toArray(out, i * 3)
-      centre.add(v)
-    }
-    centre.divideScalar(Math.max(pos.count, 1))
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(out, 3))
-    for (const a of ['color', 'aMat'] as const) g.setAttribute(a, src.geometry.getAttribute(a))
-    if (src.geometry.index) g.setIndex(src.geometry.index)
-    g.translate(-centre.x, -centre.y, -centre.z)
-    g.computeVertexNormals()
-    const m = new THREE.Mesh(g, material)
-    m.name = meshName
-    m.position.copy(centre)
-    socket.add(m)
-    src.removeFromParent()
-    src.geometry.dispose()
-    this.meshes.splice(this.meshes.indexOf(src), 1)
+  boneIndex(name: string): number {
+    const i = this.bones.findIndex((b) => b.name === name)
+    if (i < 0) throw new Error(`character rig has no bone ${name}`)
+    return i
+  }
+
+  private mesh(name: string): THREE.SkinnedMesh {
+    const m = this.meshes.find((x) => x.name === name)
+    if (!m) throw new Error(`character rig has no mesh ${name}`)
     return m
+  }
+
+  /** Rest-pose vertices of a body mesh in armature space (glTF units, +y up, +z forward), with their dominant bone. */
+  restPoints(meshName: string): { p: THREE.Vector3; bone: string }[] {
+    const m = this.mesh(meshName)
+    this.group.updateMatrixWorld(true)
+    const out: { p: THREE.Vector3; bone: string }[] = []
+    for (let i = 0; i < m.geometry.getAttribute('position').count; i++) out.push({ p: m.getVertexPosition(i, new THREE.Vector3()), bone: dominantBone(m, i) })
+    return out
+  }
+
+  /** Skins a part authored in `restPoints` space; its skinIndex attribute uses `boneIndex`. */
+  addSkinned(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.SkinnedMesh {
+    const host = this.meshes[0]!
+    const m = new THREE.SkinnedMesh(geometry, material)
+    m.frustumCulled = false
+    host.parent!.add(m)
+    this.group.updateMatrixWorld(true)
+    m.bind(new THREE.Skeleton(this.bones), m.matrixWorld)
+    this.meshes.push(m)
+    return m
+  }
+
+  /** Drops the triangles of `meshName` that lie wholly on `bone`, so a stylised part can replace them. */
+  dropBone(meshName: string, bone: string): void {
+    const m = this.mesh(meshName)
+    const ix = m.geometry.index
+    if (!ix) throw new Error(`${meshName} is not indexed`)
+    const on = new Uint8Array(m.geometry.getAttribute('position').count)
+    for (let i = 0; i < on.length; i++) on[i] = dominantBone(m, i) === bone ? 1 : 0
+    const kept: number[] = []
+    for (let t = 0; t < ix.count; t += 3) {
+      const a = ix.getX(t), b = ix.getX(t + 1), c = ix.getX(t + 2)
+      if (!(on[a] && on[b] && on[c])) kept.push(a, b, c)
+    }
+    m.geometry.setIndex(kept)
+  }
+
+  removeMesh(meshName: string): void {
+    const m = this.mesh(meshName)
+    m.removeFromParent()
+    m.geometry.dispose()
+    this.meshes.splice(this.meshes.indexOf(m), 1)
   }
 
   dispose(): void {
@@ -292,9 +316,18 @@ export class CharacterRig {
   }
 }
 
+function dominantBone(m: THREE.SkinnedMesh, i: number): string {
+  const si = m.geometry.getAttribute('skinIndex')
+  const sw = m.geometry.getAttribute('skinWeight')
+  let best = 0
+  for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k
+  return m.skeleton.bones[si.getComponent(i, best)]?.name ?? ''
+}
+
 export interface VertexInfo {
   mesh: string
   bone: string
+  /** Bind-pose position in glTF body units (1.81 m tall), facing -z, before height and slim. */
   p: THREE.Vector3
   centre: THREE.Vector3
 }
@@ -305,12 +338,10 @@ export function paintRig(rig: CharacterRig, look: Look): void {
   rig.group.updateMatrixWorld(true)
   const c = new THREE.Color()
   const info: VertexInfo = { mesh: '', bone: '', p: new THREE.Vector3(), centre: new THREE.Vector3() }
+  const unit = rig.group.scale.clone()
   for (const m of rig.meshes) {
     const g = m.geometry
-    const pos = g.getAttribute('position')
-    const si = g.getAttribute('skinIndex')
-    const sw = g.getAttribute('skinWeight')
-    const n = pos.count
+    const n = g.getAttribute('position').count
     const col = new Float32Array(n * 3)
     const mat = new Float32Array(n * 4)
     info.mesh = m.name
@@ -320,10 +351,8 @@ export function paintRig(rig: CharacterRig, look: Look): void {
     for (const p of pts) info.centre.add(p)
     info.centre.divideScalar(Math.max(n, 1))
     for (let i = 0; i < n; i++) {
-      let best = 0
-      for (let k = 1; k < 4; k++) if (sw.getComponent(i, k) > sw.getComponent(i, best)) best = k
-      info.bone = m.skeleton.bones[si.getComponent(i, best)]?.name ?? ''
-      info.p.copy(pts[i]!)
+      info.bone = dominantBone(m, i)
+      info.p.copy(pts[i]!).divide(unit)
       const skin = look(info, c)
       col[i * 3] = c.r
       col[i * 3 + 1] = c.g

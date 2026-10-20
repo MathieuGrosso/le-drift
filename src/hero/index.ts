@@ -493,6 +493,7 @@ export function createHeroSystem(): System {
         model.poulie.geometry.dispose()
         model.eyes.geometry.dispose()
         model.tuft.geometry.dispose()
+        model.hood.geometry.dispose()
       }
       longe?.dispose()
       veil?.removeFromParent()
@@ -555,8 +556,8 @@ function registerPortrait(ctx: GameContext): void {
       hour: 8,
       hero: { position: drift.toWorld(PORTRAIT_AT), yaw: PORTRAIT_YAW + heading },
       camera: {
-        position: drift.toWorld({ x: PORTRAIT_AT.x + Math.sin(cy) * 1.5, y: 1.47, z: PORTRAIT_AT.z - Math.cos(cy) * 1.5 }),
-        target: drift.toWorld({ x: PORTRAIT_AT.x + 0.2, y: 1.47, z: PORTRAIT_AT.z }),
+        position: drift.toWorld({ x: PORTRAIT_AT.x + Math.sin(cy) * 1.5, y: 1.36, z: PORTRAIT_AT.z - Math.cos(cy) * 1.5 }),
+        target: drift.toWorld({ x: PORTRAIT_AT.x + 0.2, y: 1.36, z: PORTRAIT_AT.z }),
         fov: 30,
       },
     }

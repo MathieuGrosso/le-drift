@@ -88,7 +88,9 @@ class RemoteAvatar {
     this.color = color
     this.mats = createHeroMaterials(ctx)
     this.model = buildHero(this.mats)
-    tintCloth(this.model.mesh.geometry, color)
+    this.model.root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) tintCloth((o as THREE.Mesh).geometry, color)
+    })
     this.model.bones.chest.add(this.model.scrubber)
     this.model.scrubber.position.set(-0.01, -0.1, 0.2)
     this.model.scrubber.rotation.set(-0.2, 0, Math.PI - 0.62)

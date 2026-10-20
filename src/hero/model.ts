@@ -49,6 +49,7 @@ export interface HeroModel {
   poulie: THREE.Mesh
   eyes: THREE.Mesh
   tuft: THREE.Mesh
+  hood: THREE.Mesh
   hold: THREE.Object3D
   clip: THREE.Object3D
   scarfAnchor: THREE.Object3D
@@ -96,15 +97,13 @@ const ILO_LOOK: Look = (v, c) => {
   if (mesh.startsWith('Hair') || mesh === 'Eyebrows') return !c.setHex(PALETTE.cheveux)
   if (mesh === 'Eyes') return !c.setHex(PALETTE.yeux)
   if (bone === 'Head' || bone === 'neck_01' || /^(hand|index|middle|ring|pinky|thumb)_/.test(bone)) return !!c.setHex(PALETTE.peau)
-  if (bone.startsWith('lowerarm')) return !c.setHex(PALETTE.enroule).multiplyScalar(Math.floor(p.y * 55) % 2 ? 0.86 : 1)
-  if (bone.startsWith('upperarm')) return !c.setHex(PALETTE.combi)
-  if (bone.startsWith('foot') || bone.startsWith('ball') || (bone.startsWith('calf') && p.y < 0.16)) return !c.setHex(PALETTE.bottes)
-  if (bone.startsWith('calf')) return !c.setHex(PALETTE.enroule).multiplyScalar(Math.floor(p.y * 50) % 2 ? 0.86 : 1)
-  if (bone.startsWith('thigh') && p.y < 0.6) return !c.setHex(Math.abs(p.x) > 0.1 && p.y > 0.5 ? PALETTE.combi : PALETTE.pantalon)
-  if (Math.abs(p.y - 0.98) < 0.025) return !c.setHex(PALETTE.ceinture)
-  const front = p.z < 0
-  if (front && p.y > 1.12 && p.y < 1.42 && Math.abs(Math.abs(p.x + (p.y - 1.12) * 0.25) - (p.y - 1.12) * 0.4) < 0.018) return !c.setHex(PALETTE.doublure)
-  return !c.setHex(front ? PALETTE.tunique : PALETTE.tuniqueOmbre)
+  if (bone.startsWith('lowerarm')) return !c.setHex(PALETTE.enroule).multiplyScalar(Math.floor(p.y * 50) % 2 ? 0.86 : 1)
+  if (bone.startsWith('upperarm')) return !c.setHex(PALETTE.tunique)
+  if (bone.startsWith('foot') || bone.startsWith('ball') || (bone.startsWith('calf') && p.y < 0.175)) return !c.setHex(PALETTE.bottes)
+  if (bone.startsWith('calf')) return !c.setHex(PALETTE.enroule).multiplyScalar(Math.floor(p.y * 46) % 2 ? 0.86 : 1)
+  if (bone.startsWith('thigh') && p.y < 0.658) return !c.setHex(Math.abs(p.x) > 0.122 && p.y > 0.548 ? PALETTE.combi : PALETTE.pantalon)
+  if (Math.abs(p.y - TUNIC.belt) < 0.027) return !c.setHex(PALETTE.ceinture)
+  return !c.setHex(p.z < 0 ? PALETTE.tunique : PALETTE.tuniqueOmbre)
 }
 
 export function buildHero(mats: HeroMaterials): HeroModel {
@@ -134,11 +133,12 @@ export function buildHero(mats: HeroMaterials): HeroModel {
     m.material = mats.body
     m.castShadow = true
   }
+  const mesh = rig.meshes.find((m) => m.name.startsWith('SuperHero')) ?? rig.meshes[0]!
+  rig.addSkinned(buildSkirt(rig, mesh.name), mats.cloth).castShadow = true
+  mesh.name = 'hero-body'
   rig.group.position.y = -pivotHeight
   pivot.add(rig.group)
   const bones = rig.sockets
-  const mesh = rig.meshes.find((m) => m.name.startsWith('SuperHero')) ?? rig.meshes[0]!
-  mesh.name = 'hero-body'
 
   const scrubber = buildScrubber(mats)
   const voile = buildVoile(mats)
@@ -154,37 +154,23 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   clip.position.set(0, 0.07, 0.17)
   bones.hips.add(clip)
 
-  const eyes = rig.bakeRigid('Eyes', bones.head, mats.body)
-  if (!eyes) throw new Error('hero body has no Eyes mesh')
+  const hood = buildHood(mats, bones.chest, bones.neck)
+  bones.chest.add(hood)
 
-  const crown = new THREE.Vector3(0, HEADGEAR.crownY, HEADGEAR.crownZ)
-  const gear: THREE.BufferGeometry[] = []
-  const band = new THREE.TorusGeometry(HEADGEAR.rx, HEADGEAR.band, 6, 32)
-  band.rotateX(Math.PI / 2)
-  band.scale(1, 1, HEADGEAR.rz / HEADGEAR.rx)
-  band.rotateX(HEADGEAR.tilt)
-  band.translate(0, HEADGEAR.bandY, HEADGEAR.bandZ)
-  gear.push(paint(band, PALETTE.bandeau))
-  for (const sx of [-1, 1]) {
-    const lens = new THREE.CylinderGeometry(HEADGEAR.lens, HEADGEAR.lens * 1.08, 0.016, 14)
-    lens.rotateX(Math.PI / 2 + 0.5)
-    lens.translate(sx * HEADGEAR.lensX, HEADGEAR.bandY + 0.03, HEADGEAR.bandZ - HEADGEAR.rz + 0.012)
-    gear.push(paint(lens, PALETTE.laiton))
-    const glass = new THREE.CircleGeometry(HEADGEAR.lens * 0.78, 12)
-    glass.rotateX(-0.5)
-    glass.translate(sx * HEADGEAR.lensX, HEADGEAR.bandY + 0.034, HEADGEAR.bandZ - HEADGEAR.rz + 0.001)
-    gear.push(paint(glass, PALETTE.lunettes))
-  }
-  const knot = new THREE.SphereGeometry(HEADGEAR.knot, 12, 8)
-  knot.translate(crown.x, crown.y, crown.z)
-  gear.push(paint(knot, PALETTE.cheveux))
-  const headgear = new THREE.Mesh(rigid(gear), mats.body)
-  headgear.name = 'hero-headgear'
-  headgear.castShadow = true
-  bones.head.add(headgear)
+  for (const m of ['Eyes', 'Eyebrows', 'Hair_SimpleParted']) rig.removeMesh(m)
+  rig.dropBone('hero-body', 'Head')
+  const head = new THREE.Mesh(buildHead(), mats.body)
+  head.name = 'hero-head'
+  head.castShadow = true
+  bones.head.add(head)
+  const eyes = new THREE.Mesh(buildEyes(), mats.body)
+  eyes.name = 'hero-eyes'
+  eyes.position.copy(EYES_AT)
+  bones.head.add(eyes)
+  const crown = new THREE.Vector3(0, HEAD.y + HEAD.r * 0.95, HEAD.z + HEAD.r * 0.4)
 
   const tuftParts: THREE.BufferGeometry[] = []
-  for (const [dx, len, r] of [[-0.012, HEADGEAR.tail * 0.8, 0.018], [0.012, HEADGEAR.tail * 0.75, 0.016], [0, HEADGEAR.tail, 0.022]] as const) {
+  for (const [dx, len, r] of [[-0.012, HEAD.tail * 0.8, 0.018], [0.012, HEAD.tail * 0.75, 0.016], [0, HEAD.tail, 0.022]] as const) {
     const c = new THREE.ConeGeometry(r, len, 7, 3)
     c.scale(1, 1, 0.7)
     c.rotateX(Math.PI)
@@ -193,7 +179,7 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   }
   const tuft = new THREE.Mesh(rigid(tuftParts), mats.body)
   tuft.name = 'hero-tuft'
-  tuft.position.copy(crown).add(new THREE.Vector3(0, 0, HEADGEAR.knot))
+  tuft.position.copy(crown).add(new THREE.Vector3(0, 0, HEAD.knot))
   tuft.castShadow = true
   bones.head.add(tuft)
 
@@ -204,11 +190,165 @@ export function buildHero(mats: HeroMaterials): HeroModel {
   hairAnchor.position.copy(crown)
   bones.head.add(hairAnchor)
 
-  return { root, pivot, rig, mesh, meshes: rig.meshes, pose, bones, rest, scrubber, voile, poulie, eyes, tuft, hold, clip, scarfAnchor, hairAnchor, pivotHeight }
+  return { root, pivot, rig, mesh, meshes: rig.meshes, pose, bones, rest, scrubber, voile, poulie, eyes, tuft, hood, hold, clip, scarfAnchor, hairAnchor, pivotHeight }
 }
 
-// Head socket frame: origin at the Head joint, +y up, -z towards the face.
-const HEADGEAR = { crownY: 0.17, crownZ: 0.07, knot: 0.035, tail: 0.1, band: 0.009, rx: 0.081, rz: 0.09, bandY: 0.122, bandZ: -0.006, tilt: 0.15, lens: 0.02, lensX: 0.03 } as const
+// Head socket frame, metres: origin at the Head joint, +y up, -z towards the face. Drawn like the crowd's round heads.
+const HEAD = { r: 0.13, y: 0.085, z: -0.012, knot: 0.036, tail: 0.11, band: 0.42, lens: 0.026, lensX: 0.044 } as const
+const EYES_AT = new THREE.Vector3(0, HEAD.y - HEAD.r * 0.03, HEAD.z - HEAD.r * 0.9)
+
+function blob(parts: THREE.BufferGeometry[], hex: number, x: number, y: number, z: number, sx: number, sy: number, sz: number, rz = 0): void {
+  const g = new THREE.SphereGeometry(1, 14, 10)
+  g.scale(sx, sy, sz)
+  g.rotateZ(rz)
+  g.translate(x, y, z)
+  parts.push(paint(g, hex))
+}
+
+function buildHead(): THREE.BufferGeometry {
+  const { r } = HEAD
+  const parts: THREE.BufferGeometry[] = []
+  const skull = new THREE.SphereGeometry(1, 28, 20)
+  skull.scale(r, r * 0.98, r * 0.97)
+  parts.push(paint(skull, PALETTE.peau))
+  const fz = -r * 0.9
+  for (const s of [-1, 1]) {
+    blob(parts, PALETTE.peau, s * r * 0.98, -r * 0.06, 0, r * 0.15, r * 0.24, r * 0.14)
+    blob(parts, PALETTE.joues, s * r * 0.55, -r * 0.3, fz + r * 0.13, r * 0.16, r * 0.09, r * 0.05)
+    blob(parts, PALETTE.cheveux, s * r * 0.36, r * 0.27, fz + r * 0.04, r * 0.2, r * 0.045, r * 0.07, s * 0.16)
+    blob(parts, PALETTE.cheveux, s * r * 0.9, -r * 0.02, -r * 0.3, r * 0.09, r * 0.3, r * 0.11, s * 0.1)
+  }
+  blob(parts, NOSE, 0, -r * 0.16, fz - r * 0.06, r * 0.1, r * 0.09, r * 0.11)
+  blob(parts, PALETTE.levres, 0, -r * 0.48, -r * 0.86, r * 0.14, r * 0.028, r * 0.05)
+  const cap = new THREE.SphereGeometry(1, 28, 12, 0, Math.PI * 2, 0, Math.PI * 0.56)
+  cap.scale(r * 1.07, r * 1.07, r * 1.07)
+  cap.rotateX(0.62)
+  parts.push(paint(cap, PALETTE.cheveux))
+  blob(parts, PALETTE.cheveux, 0, -r * 0.05, r * 0.38, r * 0.96, r * 0.8, r * 0.62)
+  const band = new THREE.TorusGeometry(r * 1.0, r * 0.07, 6, 36)
+  band.rotateX(Math.PI / 2 + 0.15)
+  band.translate(0, r * HEAD.band, 0)
+  parts.push(paint(band, PALETTE.bandeau))
+  for (const s of [-1, 1]) {
+    const lens = new THREE.CylinderGeometry(HEAD.lens, HEAD.lens * 1.08, 0.018, 14)
+    lens.rotateX(Math.PI / 2 + 0.55)
+    lens.translate(s * HEAD.lensX, r * 0.66, -r * 0.84)
+    parts.push(paint(lens, PALETTE.laiton))
+    const glass = new THREE.CircleGeometry(HEAD.lens * 0.78, 14)
+    glass.rotateX(-0.55)
+    glass.translate(s * HEAD.lensX, r * 0.66 + 0.006, -r * 0.84 - 0.01)
+    parts.push(paint(glass, PALETTE.lunettes))
+  }
+  blob(parts, PALETTE.cheveux, 0, r * 0.95, r * 0.4, HEAD.knot, HEAD.knot, HEAD.knot)
+  const g = rigid(parts)
+  g.translate(0, HEAD.y, HEAD.z)
+  return g
+}
+
+// Centred on EYES_AT so the blink can squash it in place.
+function buildEyes(): THREE.BufferGeometry {
+  const { r } = HEAD
+  const parts: THREE.BufferGeometry[] = []
+  for (const s of [-1, 1]) {
+    blob(parts, PALETTE.yeux, s * r * 0.34, 0, 0, r * 0.14, r * 0.21, r * 0.09)
+    blob(parts, PALETTE.reflet, s * r * 0.34 + r * 0.05, r * 0.07, -r * 0.085, r * 0.045, r * 0.045, r * 0.03)
+  }
+  return rigid(parts)
+}
+
+// Armature units (glTF, +z forward). The skirt hangs from the belt to mid-thigh and follows the thighs below it.
+const TUNIC = { belt: 1.075, hem: 0.6, hemBand: 0.035, rows: 8, segs: 28, ease: 0.014, flare: 0.075, thighs: 0.7 } as const
+const SKIRT_BONES = new Set(['pelvis', 'spine_01', 'thigh_l', 'thigh_r'])
+
+function buildSkirt(rig: CharacterRig, bodyMesh: string): THREE.BufferGeometry {
+  const pts = rig.restPoints(bodyMesh).filter((v) => SKIRT_BONES.has(v.bone)).map((v) => v.p)
+  const strips: [t0: number, t1: number, rows: number, color: 'cloth' | 'hem'][] = [
+    [0, 1 - TUNIC.hemBand / (TUNIC.belt - TUNIC.hem), TUNIC.rows, 'cloth'],
+    [1 - TUNIC.hemBand / (TUNIC.belt - TUNIC.hem), 1, 1, 'hem'],
+  ]
+  const pelvis = rig.boneIndex('pelvis')
+  const thighL = rig.boneIndex('thigh_l')
+  const thighR = rig.boneIndex('thigh_r')
+  const pos: number[] = []
+  const col: number[] = []
+  const skinI: number[] = []
+  const skinW: number[] = []
+  const idx: number[] = []
+  const front = new THREE.Color(PALETTE.tunique)
+  const back = new THREE.Color(PALETTE.tuniqueOmbre)
+  const hem = new THREE.Color(PALETTE.doublure)
+  const c = new THREE.Color()
+  let rx = 0
+  let z0 = Infinity
+  let z1 = -Infinity
+  const ring = (t: number) => {
+    const y = TUNIC.belt + (TUNIC.hem - TUNIC.belt) * t
+    for (const p of pts) {
+      if (Math.abs(p.y - y) > 0.03) continue
+      rx = Math.max(rx, Math.abs(p.x) + TUNIC.ease)
+      z0 = Math.min(z0, p.z - TUNIC.ease)
+      z1 = Math.max(z1, p.z + TUNIC.ease)
+    }
+    const flare = TUNIC.flare * t * t
+    return { y, rx: rx + flare, rz: (z1 - z0) / 2 + flare * 0.7, cz: (z0 + z1) / 2 }
+  }
+  for (const [t0, t1, rows, kind] of strips) {
+    const base = pos.length / 3
+    for (let r = 0; r <= rows; r++) {
+      const t = t0 + ((t1 - t0) * r) / rows
+      const { y, rx: ex, rz: ez, cz } = ring(t)
+      const w = TUNIC.thighs * THREE.MathUtils.smoothstep(t, 0.15, 1)
+      for (let k = 0; k <= TUNIC.segs; k++) {
+        const a = (k / TUNIC.segs) * Math.PI * 2
+        const sx = Math.sin(a)
+        const cz2 = Math.cos(a)
+        pos.push(ex * sx, y, cz + ez * cz2)
+        if (kind === 'hem') c.copy(hem)
+        else c.copy(back).lerp(front, THREE.MathUtils.smoothstep(cz2, -0.25, 0.25))
+        col.push(c.r, c.g, c.b)
+        skinI.push(pelvis, thighL, thighR, pelvis)
+        skinW.push(1 - w, w * (0.5 + 0.5 * sx), w * (0.5 - 0.5 * sx), 0)
+      }
+    }
+    const stride = TUNIC.segs + 1
+    for (let r = 0; r < rows; r++) {
+      for (let k = 0; k < TUNIC.segs; k++) {
+        const a = base + r * stride + k
+        const b = a + stride
+        idx.push(a, b, a + 1, a + 1, b, b + 1)
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+  g.setAttribute('aMat', new THREE.Float32BufferAttribute(new Float32Array((pos.length / 3) * 4), 4))
+  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinI, 4))
+  g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinW, 4))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+
+// Chest socket frame, metres, -z towards the face: a hood folded down behind the neck, over a soft collar.
+const HOOD = { collar: 0.078, collarTube: 0.03, lump: [0.12, 0.085, 0.055], lumpY: -0.01, lumpZ: 0.085, lumpTilt: -0.5 } as const
+
+function buildHood(mats: HeroMaterials, chest: THREE.Object3D, neck: THREE.Object3D): THREE.Mesh {
+  chest.updateWorldMatrix(true, true)
+  const at = chest.worldToLocal(neck.getWorldPosition(new THREE.Vector3()))
+  const collar = new THREE.TorusGeometry(HOOD.collar, HOOD.collarTube, 8, 24)
+  collar.rotateX(Math.PI / 2 - 0.25)
+  collar.scale(1, 1, 1.12)
+  collar.translate(at.x, at.y - 0.015, at.z + 0.008)
+  const lump = new THREE.SphereGeometry(1, 16, 10)
+  lump.scale(HOOD.lump[0], HOOD.lump[1], HOOD.lump[2])
+  lump.rotateX(HOOD.lumpTilt)
+  lump.translate(at.x, at.y + HOOD.lumpY, at.z + HOOD.lumpZ)
+  const m = new THREE.Mesh(rigid([paint(collar, PALETTE.tunique), paint(lump, PALETTE.tuniqueOmbre)]), mats.body)
+  m.name = 'hero-hood'
+  m.castShadow = true
+  return m
+}
 
 function rigid(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
   const g = mergeGeometries(parts, false)

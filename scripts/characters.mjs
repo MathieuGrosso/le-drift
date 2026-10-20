@@ -14,7 +14,6 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'chara
 
 const BODIES = {
   'ilo.glb': { body: 'Superhero_Male_FullBody', extra: ['Hair_SimpleParted'] },
-  'ondine.glb': { body: 'Superhero_Female_FullBody', extra: ['Hair_Long'] },
 }
 const CLIPS = {
   'UAL1_Standard.glb': [
