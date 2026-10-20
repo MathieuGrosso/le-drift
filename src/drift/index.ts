@@ -12,7 +12,7 @@ import { Quarter } from './interiors/quarter'
 import { createMats, type Mats } from './materials'
 import type { DriftNavmesh } from './nav/navmesh'
 import { CITY_UNIFORMS } from './city/glow'
-import { ladderLink } from './nav/soup'
+import { climbableTops, ladderLink } from './nav/soup'
 import { Npcs } from './npcs'
 import { PAL } from './palette'
 import { registerDriftPoses } from './poses'
@@ -310,7 +310,8 @@ export function createDriftSystem(): System {
     const { DriftNavmesh } = await import('./nav/navmesh')
     const t0 = performance.now()
     const links = [...city.navLinks(), ...quarter.furniture.ladders.map(ladderLink)]
-    const mesh = await DriftNavmesh.bake(ctx.physics, [...city.navBodies(), ...quarter.navBodies()], links)
+    const bodies = [...city.navBodies(), ...quarter.navBodies()]
+    const mesh = await DriftNavmesh.bake(ctx.physics, bodies, links)
     const ms = performance.now() - t0
     if (!city) return mesh.dispose()
     nav = mesh
@@ -319,7 +320,8 @@ export function createDriftSystem(): System {
     const rooms = Object.entries({ ...SPAWNS, ...EXTRA_SPAWNS }).map(([id, at]) => ({ id, at }))
     const sites = buildSites().all.map((s) => ({ id: s.id, at: s.local }))
     const ladders = [...city.anchorsNear({ x: 0, y: 0, z: 0 }, Infinity).flatMap((a) => (a.kind === 'ladder' ? [a] : [])), ...quarter.furniture.ladders]
-    const climbable = (at: Vec3) => ctx.physics.raycast(toWorld(pose, { x: at.x, y: at.y + 0.2, z: at.z }), { x: 0, y: -1, z: 0 }, 1)?.tag?.climbable === true
+    const tops = climbableTops(ctx.physics, bodies)
+    const climbable = (at: Vec3) => tops.some((b) => at.x >= b.min.x && at.x <= b.max.x && at.z >= b.min.z && at.z <= b.max.z && b.max.y <= at.y + 0.2 && b.max.y >= at.y - 0.8)
     const report = mesh.audit(SPAWNS.cabine, [...rooms, ...sites], ladders, climbable)
     console.info(`[drift] navmesh ${mesh.polys} polys in ${ms.toFixed(0)} ms; ${report.unreachable.length} unreachable, ${report.offMesh.length} off-mesh of ${report.checked}`)
     if (report.unreachable.length > 0) console.info('[drift] unreachable from the cabin:', report.unreachable.map((t) => t.id).join(' '))

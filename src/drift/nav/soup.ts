@@ -49,3 +49,24 @@ export function colliderSoup(physics: PhysicsWorld, bodies: readonly RAPIER.Rigi
   }
   return soup
 }
+
+// Climbable box tops in the Drift frame, read from the shapes so streamed-out (disabled) districts still count.
+export function climbableTops(physics: PhysicsWorld, bodies: readonly RAPIER.RigidBody[]): THREE.Box3[] {
+  const R = physics.rapier
+  const out: THREE.Box3[] = []
+  for (const body of bodies) {
+    for (let i = 0; i < body.numColliders(); i++) {
+      const c = body.collider(i)
+      if (c.isSensor() || physics.tagOf(c.handle)?.climbable !== true) continue
+      const shape = c.shape
+      if (shape.type !== R.ShapeType.Cuboid && shape.type !== R.ShapeType.RoundCuboid) continue
+      const h = (shape as RAPIER.Cuboid).halfExtents
+      const t = c.translationWrtParent()
+      const q = c.rotationWrtParent()
+      if (!t || !q) continue
+      _m.compose(_v.set(t.x, t.y, t.z), _q.set(q.x, q.y, q.z, q.w), _one)
+      out.push(new THREE.Box3(new THREE.Vector3(-h.x, -h.y, -h.z), new THREE.Vector3(h.x, h.y, h.z)).applyMatrix4(_m))
+    }
+  }
+  return out
+}
