@@ -25,8 +25,8 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-15 | minor | `src/drift/interiors` | Porte extérieure du sas : coins du cadre ouverts sur la mer — CORRIGÉ (commit d16dfd3) |
 | QA-16 | minor | `src/drift/interiors` | Bassin du sas rendu comme une boîte cyan opaque, caméra dedans — CORRIGÉ (commit 274d999) |
 | QA-17 | minor | `src/gameplay` (carte) | « pas encore relevé » chevauche les icônes de dôme sur la carte — CORRIGÉ (commit bf5b7d4) |
-| QA-18 | minor | `src/camille`, `src/drift/chatter.ts` | Bulles de PNJ superposées, lues à travers une porte fermée |
-| QA-19 | minor | `src/drift/chatter.ts` | Bulle hors champ coupée au bord gauche, réplique hors contexte (« au petit-déj » à 18 h) |
+| QA-18 | minor | `src/camille`, `src/drift/chatter.ts` | Bulles de PNJ superposées, lues à travers une porte fermée — CORRIGÉ (commit 614f466) |
+| QA-19 | minor | `src/drift/chatter.ts` | Bulle hors champ coupée au bord gauche, réplique hors contexte (« au petit-déj » à 18 h) — CORRIGÉ (commit 614f466) |
 | QA-20 | minor | `src/gameplay/indoor.ts` | Invite « Sortir par l'écluse » affichée en haut de l'échelle, 6 m au-dessus de la porte — CORRIGÉ (commit 7046412) |
 | QA-21 | minor | `src/gameplay/text` | Astuce « [E] près de la porte ronde » en crochets bruts, chevauche le sous-titre — CORRIGÉ (commit bf5b7d4, 22cfa1b) |
 | QA-22 | minor | `src/fauna/curious.ts` | Les poissons curieux traversent Ilo et masquent le héros |
