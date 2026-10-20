@@ -66,7 +66,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   vec3 skyB = mix(vec3(1.0), rdCreme / max(rdCreme.r, 1e-3), 0.2) * 0.62;
   vec3 floorB = rdBoisOmbre * 0.4 + rdCreme * 0.12;
   vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(mix(vec3(1.0), plum, 0.3), vec3(1.0), smoothstep(0.0, 0.9, N.y) * 0.6);
-  amb *= dayK * (1.0 + 0.3 * rdAirHaze * rdDay);
+  amb *= dayK;
   float fillL = dot(rdLampFill, vec3(0.33));
   amb += mix(vec3(fillL), rdLampFill, 0.3) * 0.1;
   vec3 key = vec3(0.0);
