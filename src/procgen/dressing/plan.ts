@@ -2,10 +2,15 @@ import { hashString, mulberry32 } from '../../core/rng'
 import type { Vec3 } from '../../core/types'
 import { ARCHETYPES } from '../archetypes'
 import type { ArchetypeDef, Box, CellSpec, Job, Rect, ColliderSpec, DressInput, DressSlot, DistrictShell, LampSpec, Rng } from '../types'
-import { CLUSTERS, facade, murDecor, pipeRun, type Frame } from './clusters'
+import { CLUSTERS, facade, murDecor, pipeRun, streetWall, wainscot, type Frame } from './clusters'
+import { kitAt, runKit } from './kits'
 import { MOODS, type Mood } from './moods'
 import { RECIPES, type ClusterId, type Recipe, type Weighted } from './recipes'
+import { LOOKS, type Look } from './looks'
 import { DRESS } from './tuning'
+import { SURF } from '../../drift/surface'
+
+export const GLINT = 0xf4fbff
 
 export type PropKind =
   | 'caisse' | 'tonneau' | 'sac' | 'panier' | 'bocaux' | 'seau' | 'etagere' | 'table' | 'tabouret' | 'banc'
@@ -15,13 +20,14 @@ export type PropKind =
   | 'fougere' | 'herbes' | 'lierre' | 'laminaire'
 
 export type LampKind = 'suspension' | 'applique' | 'lampadaire' | 'lanterne' | 'verte' | 'globe'
-export type ClothLineKind = 'linge' | 'fanions' | 'ampoules' | 'filet' | 'poissons'
+export type ClothLineKind = 'linge' | 'fanions' | 'ampoules' | 'filet' | 'poissons' | 'cordes' | 'saucisses' | 'algues'
 export type EmitterKind = 'vapeur' | 'poussiere' | 'gouttes' | 'etincelles' | 'bulles' | 'braises'
 
-export interface DressPalette { mur: number; bois: number; boisOmbre: number; metal: number; tissu: readonly number[]; accent: number; lampe: number }
+export interface DressPalette { mur: number; bois: number; boisOmbre: number; metal: number; tissu: readonly number[]; accent: number; lampe: number; look: Look }
 
 export interface PropPlacement { kind: PropKind; x: number; y: number; z: number; rot: number; s: number; tint: number; glass: boolean }
-export interface ClothPiece { x: number; y: number; z: number; w: number; h: number; rot: number; pitch: number; color: number; t?: number }
+// A merged static piece: a box (or an upright cylinder when `cyl`), w across, h up, t deep; pat is its SURF pattern.
+export interface Piece { x: number; y: number; z: number; w: number; h: number; rot: number; pitch: number; color: number; t?: number; pat?: number; roll?: number; cyl?: boolean }
 export interface Pipe { a: Vec3; b: Vec3; r: number; color: number; brackets: number }
 export interface Wire { a: Vec3; b: Vec3; r: number }
 export interface Bulb { x: number; y: number; z: number; color: number; size: number }
@@ -34,7 +40,7 @@ export interface DressPlan {
   palette: DressPalette
   ambient: number
   props: readonly PropPlacement[]
-  cloth: readonly ClothPiece[]
+  pieces: readonly Piece[]
   pipes: readonly Pipe[]
   wires: readonly Wire[]
   bulbs: readonly Bulb[]
@@ -99,9 +105,12 @@ function districtPalette(a: ArchetypeDef, rng: Rng): DressPalette {
   const dh = (rng() * 2 - 1) * DRESS.hueShiftDeg
   const dv = (rng() * 2 - 1) * DRESS.valueShift
   const s = (hex: number) => shiftColor(hex, dh, dv)
+  const v = (hex: number) => shiftColor(hex, 0, dv)
+  const look = LOOKS[a.id]
   return {
-    mur: s(a.palette.mur), bois: s(a.palette.bois), boisOmbre: s(0x5e4a5c), metal: s(a.palette.metal),
-    tissu: a.palette.tissu.map(s), accent: s(a.palette.accent), lampe: a.light.lampe,
+    mur: s(a.palette.mur), bois: s(a.palette.bois), boisOmbre: s(0x5e4a5c), metal: v(look.metal),
+    tissu: a.palette.tissu.map(s), accent: s(a.palette.accent), lampe: look.lamp,
+    look: { ...look, floor: [v(look.floor[0]), v(look.floor[1])], wall: [v(look.wall[0]), v(look.wall[1])], shade: v(look.shade) },
   }
 }
 
@@ -112,7 +121,7 @@ function inside(b: Box, x: number, y: number, z: number, pad = 0): boolean {
 // Collects everything clusters emit, in the drift-local frame, rejecting what falls in content's reserved boxes.
 export class Dresser {
   readonly props: PropPlacement[] = []
-  readonly cloth: ClothPiece[] = []
+  readonly pieces: Piece[] = []
   readonly pipes: Pipe[] = []
   readonly wires: Wire[] = []
   readonly bulbs: Bulb[] = []
@@ -159,8 +168,8 @@ export class Dresser {
     return true
   }
 
-  sheet(p: ClothPiece): void {
-    if (!this.blocked(p.x, p.y, p.z)) this.cloth.push(p)
+  sheet(p: Piece): void {
+    if (this.pieces.length < DRESS.budget.pieces && !this.blocked(p.x, p.y, p.z)) this.pieces.push(p)
   }
 
   lamp(l: Omit<DressLamp, 'live'>): void {
@@ -172,9 +181,15 @@ export class Dresser {
     this.bakeLamps.push({ cell, at, color, radius, live: false })
   }
 
+  private readonly lineCount = new Map<ClothLineKind, number>()
+
+  // A line kind the recipe does not own is capped per district, so the same bunting never strings every quarter.
   line(kind: ClothLineKind, a: Vec3, b: Vec3, sag: number, cell: string): void {
     const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z)
     if (len < 1.2) return
+    const n0 = this.lineCount.get(kind) ?? 0
+    if (!this.recipe.lines.some(([k]) => k === kind) && n0 >= DRESS.cloth.foreignLines) return
+    this.lineCount.set(kind, n0 + 1)
     const rot = Math.atan2(b.x - a.x, b.z - a.z) + Math.PI / 2
     const spacing = kind === 'fanions' ? DRESS.cloth.flagSpacing : kind === 'ampoules' ? DRESS.cloth.bulbSpacing : DRESS.cloth.lineSpacing
     const n = Math.max(2, Math.round(len / spacing))
@@ -195,22 +210,41 @@ export class Dresser {
           if (this.rng() < 0.22) break
           const h = 0.45 + this.rng() * 0.7
           const color = this.rng() < 0.45 ? pickOne(this.rng, [0xf4f1e6, 0xefe3c4, 0xe9dcc2]) : pickOne(this.rng, tissu)
-          this.cloth.push({ x: p.x, y: p.y - h / 2 - 0.02, z: p.z, w: 0.35 + this.rng() * 0.4, h, rot: rot + (this.rng() - 0.5) * 0.15, pitch: (this.rng() - 0.5) * 0.12, color })
+          this.pieces.push({ x: p.x, y: p.y - h / 2 - 0.02, z: p.z, w: 0.35 + this.rng() * 0.4, h, rot: rot + (this.rng() - 0.5) * 0.15, pitch: (this.rng() - 0.5) * 0.12, color })
           break
         }
         case 'fanions':
-          this.cloth.push({ x: p.x, y: p.y - 0.17, z: p.z, w: 0.3, h: 0.32, rot, pitch: 0, color: tissu[k++ % tissu.length]! })
+          this.pieces.push({ x: p.x, y: p.y - 0.17, z: p.z, w: 0.3, h: 0.32, rot, pitch: 0, color: tissu[k++ % tissu.length]! })
           break
         case 'poissons':
           for (let j = 0; j < 2; j++) {
             const off = (j - 0.5) * 0.18
-            this.cloth.push({ x: p.x + Math.cos(rot) * off, y: p.y - 0.2 - this.rng() * 0.1, z: p.z - Math.sin(rot) * off, w: 0.1, h: 0.34, rot, pitch: 0, color: 0x9fb8c8 })
+            const fy = p.y - 0.2 - this.rng() * 0.1
+            this.pieces.push({ x: p.x + Math.cos(rot) * off, y: fy, z: p.z - Math.sin(rot) * off, w: 0.1, h: 0.34, rot, pitch: 0, color: 0x9fb8c8 })
+            this.pieces.push({ x: p.x + Math.cos(rot) * off, y: fy + 0.05, z: p.z - Math.sin(rot) * off, w: 0.03, h: 0.12, t: 0.03, rot, pitch: 0, color: GLINT })
           }
           break
         case 'filet':
           this.wires.push({ a: p, b: { x: p.x, y: p.y - 0.9 - this.rng() * 0.6, z: p.z }, r: 0.008 })
-          if (i % 3 === 0) this.cloth.push({ x: p.x, y: p.y - 0.08, z: p.z, w: 0.16, h: 0.1, rot, pitch: 0, color: 0xe3b95f })
+          if (i % 3 === 0) this.pieces.push({ x: p.x, y: p.y - 0.08, z: p.z, w: 0.16, h: 0.1, rot, pitch: 0, color: 0xe3b95f })
           break
+        case 'cordes':
+          if (i % 2) break
+          for (let j = 0; j < 3; j++) this.pieces.push({ x: p.x, y: p.y - 0.25 - j * 0.04, z: p.z, w: 0.26 - j * 0.05, h: 0.07, t: 0.26 - j * 0.05, rot, pitch: Math.PI / 2, color: j % 2 ? 0xa58660 : 0xd2ad6e, pat: SURF.fabric, cyl: true })
+          this.wires.push({ a: p, b: { x: p.x, y: p.y - 0.22, z: p.z }, r: 0.01 })
+          break
+        case 'saucisses':
+          for (let j = 0; j < 3; j++) {
+            const off = (j - 1) * 0.09
+            const h = 0.28 + this.rng() * 0.18
+            this.pieces.push({ x: p.x + Math.cos(rot) * off, y: p.y - h / 2 - 0.04, z: p.z - Math.sin(rot) * off, w: 0.06, h, t: 0.06, rot, pitch: 0, color: j === 1 ? 0xefe3c4 : 0x9a3a2a, cyl: true })
+          }
+          break
+        case 'algues': {
+          const h = 0.8 + this.rng() * 0.9
+          this.pieces.push({ x: p.x, y: p.y - h / 2, z: p.z, w: 0.16 + this.rng() * 0.08, h, rot: rot + (this.rng() - 0.5) * 0.4, pitch: (this.rng() - 0.5) * 0.1, color: pickOne(this.rng, [0xc79a3b, 0x9aa858, 0xd8b04a]) })
+          break
+        }
         case 'ampoules':
           this.bulbs.push({ x: p.x, y: p.y - 0.1, z: p.z, color: this.pal.lampe, size: 0.08 })
           if (i % DRESS.cloth.bulbBakeEvery === 0) this.bake(cell, { x: p.x, y: p.y - 0.2, z: p.z }, this.pal.lampe, 4.5)
@@ -304,7 +338,7 @@ function dressStreets(d: Dresser, shell: DistrictShell): void {
     const back = (s: DressSlot) => ({ x: s.at.x - Math.sin(s.yaw) * (s.d - 0.2), y: s.at.y + y, z: s.at.z - Math.cos(s.yaw) * (s.d - 0.2) })
     const pa = back(a)
     const pb = back(b)
-    d.line(d.rng() < 0.5 ? 'ampoules' : 'fanions', pa, pb, Math.hypot(pb.x - pa.x, pb.z - pa.z) * 0.06, a.cell)
+    d.line(pick(d.rng, d.recipe.lines), pa, pb, Math.hypot(pb.x - pa.x, pb.z - pa.z) * 0.06, a.cell)
   })
 }
 
@@ -335,7 +369,7 @@ function dressPaths(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string,
       }
       for (let i = 0, n = 1 + Math.floor(d.rng() * count); i < n; i++) {
         const k = size * (0.7 + d.rng() * 0.6)
-        d.sheet({ x: x + (d.rng() - 0.5) * 0.6, y: fy + 0.012 + i * 0.002, z: z + (d.rng() - 0.5) * 0.6, w: k * 0.8, h: k, rot: d.rng() * 6, pitch: Math.PI / 2, color: pickOne(d.rng, colors), t: 0.004 })
+        d.sheet({ x: x + (d.rng() - 0.5) * 0.6, y: fy + DRESS.floor.above + i * 0.002, z: z + (d.rng() - 0.5) * 0.6, w: k * 0.8, h: k, rot: d.rng() * 6, pitch: Math.PI / 2, color: pickOne(d.rng, colors), t: 0.004 })
       }
     }
   }
@@ -356,7 +390,7 @@ function dressMoods(d: Dresser, shell: DistrictShell): void {
     const b = c.boxes[0]
     if (!b) continue
     if (mood.dust) d.emit('poussiere', { x0: b.x0 + 0.5, x1: b.x1 - 0.5, y0: b.y0 + 0.3, y1: Math.min(c.roof, b.y1), z0: b.z0 + 0.5, z1: b.z1 - 0.5 }, DRESS.dustRoom)
-    if (!mood.lines) continue
+    if (!mood.festoons) continue
     const y = Math.min(c.roof, b.y1) - DRESS.cloth.festoonDrop
     if (y - b.y0 < 2.6) continue
     const n = 1 + Math.floor(d.rng() * 3)
@@ -366,7 +400,7 @@ function dressMoods(d: Dresser, shell: DistrictShell): void {
       const alongX = b.x1 - b.x0 > b.z1 - b.z0
       const a = alongX ? { x: b.x0 + 0.3, y, z: b.z0 + (b.z1 - b.z0) * t0 } : { x: b.x0 + (b.x1 - b.x0) * t0, y, z: b.z0 + 0.3 }
       const e = alongX ? { x: b.x1 - 0.3, y: y - d.rng() * 0.4, z: b.z0 + (b.z1 - b.z0) * t1 } : { x: b.x0 + (b.x1 - b.x0) * t1, y: y - d.rng() * 0.4, z: b.z1 - 0.3 }
-      d.line(pick(d.rng, mood.lines), a, e, Math.hypot(e.x - a.x, e.z - a.z) * 0.05, c.id)
+      d.line(pick(d.rng, d.recipe.lines), a, e, Math.hypot(e.x - a.x, e.z - a.z) * 0.05, c.id)
     }
   }
 }
@@ -490,7 +524,7 @@ function centrepiece(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string
   const y = spot.y
   const feature = d.recipe.square ?? d.recipe.work[0]
   if (!feature) return
-  d.sheet({ x: spot.x, y: y + 0.012, z: spot.z, w: 3.2, h: 3.2, rot: d.rng() * 0.5, pitch: Math.PI / 2, color: d.tissu(cell) })
+  d.sheet({ x: spot.x, y: y + DRESS.floor.above, z: spot.z, w: 3.2, h: 3.2, rot: d.rng() * 0.5, pitch: Math.PI / 2, color: d.tissu(cell) })
   d.prop(feature, spot.x, y, spot.z, d.rng() * 6, scale)
   const n = seats[0] + Math.floor(d.rng() * (seats[1] - seats[0] + 1))
   const a0 = d.rng() * Math.PI * 2
@@ -548,7 +582,7 @@ function dressWindows(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<strin
     const px = w.at.x + nx * reach
     const pz = w.at.z + nz * reach
     const fy = floorUnder(shell, cells, w.cell, px, w.at.y, pz)
-    if (fy !== null && w.at.y - fy < DRESS.pool.maxDrop) pools.push({ x: px, y: fy + 0.02, z: pz, r: Math.max(1.2, w.w * 0.8), color: 0x9fd6d0, opacity: DRESS.pool.glassOpacity })
+    if (fy !== null && w.at.y - fy < DRESS.pool.maxDrop) pools.push({ x: px, y: fy + DRESS.floor.above, z: pz, r: Math.max(1.2, w.w * 0.8), color: 0x9fd6d0, opacity: DRESS.pool.glassOpacity })
     if (!d.recipe.curtains || w.kind === 'dome' || w.kind === 'verriere') continue
     const rot = Math.atan2(nx, nz)
     const color = d.tissu(w.cell)
@@ -619,7 +653,113 @@ function settleLamps(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string
   for (const l of d.lamps) {
     const by = l.y - l.drop
     const fy = floorUnder(shell, cells, l.cell, l.x, by, l.z)
-    if (fy !== null && by - fy < DRESS.pool.maxDrop) pools.push({ x: l.x, y: fy + 0.025, z: l.z, r: Math.min(4, 1.2 + (by - fy) * 0.55), color: l.color, opacity: DRESS.pool.opacity })
+    if (fy !== null && by - fy < DRESS.pool.maxDrop) pools.push({ x: l.x, y: fy + DRESS.floor.above + 0.005, z: l.z, r: Math.min(4, 1.2 + (by - fy) * 0.55), color: l.color, opacity: DRESS.pool.opacity })
+  }
+}
+
+// The open street cells (named, or where the doors open); every other cell is a room inside a house.
+function streetCellsOf(shell: DistrictShell): Set<string> {
+  const street = new Set(shell.slots.filter((s) => s.kind === 'seuil').map((s) => s.cell))
+  for (const c of shell.cells) if (c.nom !== null) street.add(c.id)
+  return street
+}
+
+// Street faces of the houses: the outside of every room wall that a walked street runs along, minus doors and ladders.
+function facadeRuns(shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, nearWalk: NearWalk): DressSlot[] {
+  const doors = shell.slots.filter((s) => s.kind === 'seuil')
+  const street = streetCellsOf(shell)
+  const streetCell = [...street][0]
+  if (!streetCell) return []
+  const rooms = shell.cells.filter((c) => !street.has(c.id)).flatMap((c) => c.boxes)
+  const ladders = shell.links.filter((l) => l.kind === 'echelle').map((l) => l.from)
+  const { reach, step, minRun, doorClear } = DRESS.facadeRun
+  const out: DressSlot[] = []
+  for (const b of rooms) {
+    const y = b.y0 + 0.2
+    const sides = [
+      { n: [1, 0], fixed: b.x1, a0: b.z0, a1: b.z1 }, { n: [-1, 0], fixed: b.x0, a0: b.z0, a1: b.z1 },
+      { n: [0, 1], fixed: b.z1, a0: b.x0, a1: b.x1 }, { n: [0, -1], fixed: b.z0, a0: b.x0, a1: b.x1 },
+    ] as const
+    for (const side of sides) {
+      const [nx, nz] = side.n
+      const point = (t: number, off: number) => (nx !== 0 ? { x: side.fixed + nx * off, z: t } : { x: t, z: side.fixed + nz * off })
+      const ok = (t: number) => {
+        const q = point(t, reach)
+        if (rooms.some((r) => r !== b && q.x > r.x0 && q.x < r.x1 && q.z > r.z0 && q.z < r.z1 && y > r.y0 - 0.5 && y < r.y1)) return false
+        const fy = floorUnder(shell, cells, streetCell, q.x, y + 0.5, q.z)
+        if (fy === null || Math.abs(fy - y) > 0.35 || !nearWalk(q.x, y, q.z, DRESS.facadeRun.walk)) return false
+        const f = point(t, 0)
+        if (doors.some((s) => Math.abs(s.at.y - y) < 1 && Math.hypot(s.at.x - f.x, s.at.z - f.z) < doorClear)) return false
+        return !ladders.some((l) => Math.abs(l.y - y) < 1.5 && Math.hypot(l.x - f.x, l.z - f.z) < 1.4)
+      }
+      let start: number | null = null
+      const close = (end: number) => {
+        if (start !== null && end - start >= minRun) {
+          const m = point((start + end) / 2, 0.2)
+          out.push({ kind: 'mur', cell: streetCell, at: { x: m.x, y, z: m.z }, yaw: Math.atan2(nx, nz), w: end - start, d: 0.9, h: 3, weight: 1, onPath: false })
+        }
+        start = null
+      }
+      for (let t = side.a0 + 0.4; t <= side.a1 - 0.4; t += step) {
+        if (ok(t)) start ??= t
+        else close(t - step / 2)
+      }
+      close(side.a1 - 0.4)
+    }
+  }
+  return out
+}
+
+// The walked ground takes the archetype's floor: runners down every street edge, a medallion or a drain at crossings, a rug in every room.
+function dressFloors(d: Dresser, shell: DistrictShell, cells: ReadonlyMap<string, CellSpec>, streetCells: ReadonlySet<string>): void {
+  const { look } = d.pal
+  const { runner, side, lift, crossing, drain, roomRug } = DRESS.floor
+  const at = new Map(shell.walk.nodes.map((n) => [n.id, n] as const))
+  const degree = new Map<string, number>()
+  shell.walk.edges.forEach((e, i) => {
+    if (e.kind !== 'sol') return
+    const a = at.get(e.a)
+    const b = at.get(e.b)
+    if (!a || !b || Math.abs(a.at.y - b.at.y) > 0.3) return
+    degree.set(e.a, (degree.get(e.a) ?? 0) + 1)
+    degree.set(e.b, (degree.get(e.b) ?? 0) + 1)
+    const len = Math.hypot(b.at.x - a.at.x, b.at.z - a.at.z)
+    if (len < 0.5) return
+    const fy = floorUnder(shell, cells, a.cell, (a.at.x + b.at.x) / 2, a.at.y + 0.5, (a.at.z + b.at.z) / 2)
+    if (fy === null || Math.abs(fy - a.at.y) > 0.3) return
+    const rot = Math.atan2(b.at.x - a.at.x, b.at.z - a.at.z)
+    const w = e.main ? runner : runner * 0.7
+    const y = fy + lift + (i % 4) * 0.002
+    const cx = (a.at.x + b.at.x) / 2
+    const cz = (a.at.z + b.at.z) / 2
+    d.sheet({ x: cx, y, z: cz, w, h: 0.02, t: len + w * 0.5, rot, pitch: 0, color: look.floor[0], pat: look.floorPat })
+    for (const s of [-1, 1]) {
+      const o = (w / 2 + side / 2) * s
+      d.sheet({ x: cx + Math.cos(rot) * o, y: y + 0.004, z: cz - Math.sin(rot) * o, w: side, h: 0.02, t: len, rot, pitch: 0, color: look.floor[1], pat: look.floorPat })
+    }
+  })
+  for (const [id, n] of degree) {
+    const node = at.get(id)
+    if (!node || n < 3) continue
+    const fy = floorUnder(shell, cells, node.cell, node.at.x, node.at.y + 0.5, node.at.z)
+    if (fy === null) continue
+    if (d.rng() < drain) {
+      d.sheet({ x: node.at.x + 0.9, y: fy + lift + 0.012, z: node.at.z + 0.9, w: 0.6, h: 0.02, t: 0.6, rot: 0, pitch: 0, color: 0x2e2a2a, pat: SURF.steel })
+      for (let k = 0; k < 4; k++) d.sheet({ x: node.at.x + 0.9, y: fy + lift + 0.024, z: node.at.z + 0.72 + k * 0.12, w: 0.56, h: 0.01, t: 0.04, rot: 0, pitch: 0, color: 0x52576a })
+    } else {
+      d.sheet({ x: node.at.x, y: fy + lift + 0.012, z: node.at.z, w: crossing, h: 0.02, t: crossing, rot: 0, pitch: 0, color: look.floor[1], pat: look.floorPat, cyl: true })
+      d.sheet({ x: node.at.x, y: fy + lift + 0.02, z: node.at.z, w: crossing * 0.6, h: 0.02, t: crossing * 0.6, rot: 0, pitch: 0, color: look.floor[0], pat: look.floorPat, cyl: true })
+    }
+  }
+  for (const c of shell.cells) {
+    if (streetCells.has(c.id)) continue
+    const b = c.boxes[0]
+    if (!b) continue
+    const y = b.y0 + 0.2
+    const w = (b.x1 - b.x0) * roomRug
+    const t = (b.z1 - b.z0) * roomRug
+    d.sheet({ x: (b.x0 + b.x1) / 2, y: y + lift, z: (b.z0 + b.z1) / 2, w, h: 0.02, t, rot: 0, pitch: 0, color: look.floor[0], pat: look.floorPat })
+    d.sheet({ x: (b.x0 + b.x1) / 2, y: y + lift + 0.004, z: (b.z0 + b.z1) / 2, w: w + 0.3, h: 0.02, t: t + 0.3, rot: 0, pitch: 0, color: look.floor[1], pat: look.floorPat })
   }
 }
 
@@ -662,9 +802,16 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
     return (base * recipe.density * slot.weight + (nearVoid(shell, slot.at) ? DRESS.fill.voidBonus : 0)) * d.mood(slot.cell).fill
   }
   yield
-  for (const s of shell.slots) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe && d.pipes.length < DRESS.wall.maxPipes) pipeRun(frameOf(s, d))
+  const nearWalk = walkProbe(shell, false)
+  const facades = facadeRuns(shell, cells, nearWalk)
+  const streetCells = streetCellsOf(shell)
+  dressFloors(d, shell, cells, streetCells)
+  yield
+  for (const s of [...shell.slots, ...facades]) if (s.kind === 'mur' && s.w > DRESS.wall.pipeMin && rng() < DRESS.wall.pipe && d.pipes.length < DRESS.wall.maxPipes) pipeRun(frameOf(s, d))
   const aside = sidestepper(shell, rng)
-  const slots = shell.slots.map(aside).flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
+  const slots = [...shell.slots.map(aside), ...facades].flatMap((s) => bays(s, rng)).filter((s) => recipe.slots[s.kind])
+  const wallKits = recipe.kits.filter((k) => kitAt(k) === 'mur')
+  const floorKits = recipe.kits.filter((k) => kitAt(k) === 'sol')
   const fills = slots.map(fillOf)
   const expected = fills.reduce((a, f) => a + Math.min(1, f), 0)
   const scale = Math.min(1, DRESS.maxClusters / Math.max(1, expected))
@@ -673,14 +820,20 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
     const slot = slots[i]!
     const options = recipe.slots[slot.kind]!
     const mood = d.mood(slot.cell)
+    if (slot.kind === 'mur') wainscot(frameOf(slot, d))
     if (rng() > fills[i]! * (slot.onPath ? Math.sqrt(scale) : scale)) continue
+    const kits = slot.kind === 'mur' ? wallKits : slot.kind === 'sol' && !slot.onPath ? floorKits : []
+    if (kits.length > 0 && rng() < (slot.kind === 'mur' ? DRESS.kit.wall : DRESS.kit.floor)) {
+      runKit(pickOne(rng, kits), frameOf(slot, d))
+      continue
+    }
     const biased: Weighted<ClusterId> = options.map(([c, w]) => [c, w * (mood.bias[c] ?? 1)] as const)
     const roll = () => ((slot.kind === 'sol' || slot.kind === 'coin') && rng() < DRESS.vignetteChance * (mood.bias.vignette ?? 1) ? 'vignette' : pick(rng, biased))
     let cluster = roll()
     if (cluster === last.get(slot.cell) && cluster !== 'vide') cluster = roll()
     last.set(slot.cell, cluster)
     CLUSTERS[cluster](frameOf(slot, d))
-    if (slot.kind === 'mur' && rng() < DRESS.wall.decor * mood.fill) murDecor(frameOf(slot, d))
+    if (slot.kind === 'mur' && rng() < DRESS.wall.decor * mood.fill) (streetCells.has(slot.cell) ? streetWall : murDecor)(frameOf(slot, d))
     if (slot.kind === 'atelier' && recipe.emitters.atelier) {
       const a = slot.at
       d.emit(recipe.emitters.atelier, { x0: a.x - 0.6, x1: a.x + 0.6, y0: a.y + 0.9, y1: a.y + 3.5, z0: a.z - 0.6, z1: a.z + 0.6 }, 1)
@@ -692,7 +845,6 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
   }
   yield
   dressStreets(d, shell)
-  const nearWalk = walkProbe(shell, false)
   dressGroves(d, shell, cells, nearWalk)
   yield
   dressPaths(d, shell, cells)
@@ -702,6 +854,7 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
   const pools: Pool[] = []
   dressWindows(d, shell, cells, pools)
   yield
+  for (const l of shell.lamps) d.bulbs.push({ ...l.at, color: d.pal.lampe, size: DRESS.shellGlobe })
   const portholes = skin(d, shell)
   settleLamps(d, shell, cells, pools)
   for (const l of d.lamps) d.bakeLamps.push({ cell: l.cell, at: { x: l.x, y: l.y - l.drop, z: l.z }, color: l.color, radius: l.radius, live: l.live })
@@ -711,7 +864,7 @@ export function* planDressing(input: DressInput): Job<DressPlan> {
     palette: pal,
     ambient: DRESS.ambient,
     props,
-    cloth: d.cloth,
+    pieces: d.pieces,
     pipes: d.pipes,
     wires: d.wires,
     bulbs: d.bulbs,

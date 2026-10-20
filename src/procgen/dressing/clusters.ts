@@ -1,8 +1,10 @@
 import type { Vec3 } from '../../core/types'
 import type { DressSlot } from '../types'
-import { pickOne, type Dresser, type LampKind, type PropKind } from './plan'
+import { pick, pickOne, type Dresser, type LampKind, type PropKind } from './plan'
 import type { ClusterId } from './recipes'
+import { WALL } from './kits'
 import { DRESS } from './tuning'
+import { SURF } from '../../drift/surface'
 
 // Slot frame: u runs along the wall (w), v into the room (d), y up from the slot's anchor.
 export interface Frame {
@@ -60,7 +62,7 @@ function maybeCat(f: Frame, u: number, v: number, y: number): void {
 }
 
 function rug(f: Frame, u: number, v: number, w: number, h: number): void {
-  const p = f.at(u, v, 0.012)
+  const p = f.at(u, v, DRESS.floor.above)
   f.d.sheet({ ...p, w, h, rot: f.rot(), pitch: Math.PI / 2, color: f.d.tissu(f.slot.cell) })
 }
 
@@ -234,26 +236,30 @@ const seuil = (f: Frame) => {
   if (d.rng() < DRESS.wall.sign) enseigne(f, slot.w / 2 + 0.15, wall)
 }
 
-// A shop sign on an iron arm, perpendicular to the wall so it reads from down the street.
+// A shop sign on a braced iron arm, hung on two chains, perpendicular to the wall so it reads from down the street.
 function enseigne(f: Frame, u: number, wall: number): void {
   const { d } = f
-  const board = d.tissu(f.slot.cell)
-  const arm = f.at(u, wall + 0.45, 2.95)
-  d.pipes.push({ a: f.at(u, wall, 2.95), b: arm, r: 0.025, color: 0x3e3a4a, brackets: 0 })
-  const w = 0.6 + d.rng() * 0.3
-  const h = 0.4 + d.rng() * 0.2
-  const c = f.at(u, wall + 0.5, 2.9 - h / 2)
-  d.sheet({ ...c, w: 0.04, h, rot: f.rot(), pitch: 0, color: 0x5e4a3a, t: w + 0.06 })
+  const look = d.pal.look
+  const reach = 0.95
+  d.pipes.push({ a: f.at(u, wall, 3.0), b: f.at(u, wall + reach, 3.0), r: 0.025, color: IRON, brackets: 0 })
+  d.pipes.push({ a: f.at(u, wall, 2.55), b: f.at(u, wall + reach * 0.6, 3.0), r: 0.016, color: IRON, brackets: 0 })
+  panel(f, u, wall + reach + 0.03, 3.0, 0.07, 0.07, 0.07, look.rail, SURF.brass)
+  const w = 0.7 + d.rng() * 0.3
+  const h = 0.45 + d.rng() * 0.2
+  const top = 2.82
+  const mid = wall + 0.15 + w / 2
+  for (const s of [-1, 1]) d.wires.push({ a: f.at(u, mid + (s * w) / 2.6, 3.0), b: f.at(u, mid + (s * w) / 2.6, top), r: 0.006 })
+  panel(f, u, mid, top - h / 2, 0.07, h, w, 0x4a3628, SURF.planksX)
   for (const side of [-1, 1]) {
-    const p = f.at(u + side * 0.025, wall + 0.5, 2.9 - h / 2)
-    d.sheet({ ...p, w: w - 0.08, h: h - 0.08, rot: f.rot(Math.PI / 2), pitch: 0, color: board, t: 0.01 })
+    panel(f, u + side * 0.038, mid, top - h / 2, 0.006, h - 0.1, w - 0.1, d.tissu(f.slot.cell), SURF.plaster)
+    panel(f, u + side * 0.044, mid, top - h / 2, 0.006, h * 0.45, h * 0.45, look.rail, SURF.brass, true)
   }
 }
 
 // Wall-height dressing above whatever stands on the floor: posters, a frame, ivy, a clock.
 export const murDecor = (f: Frame) => {
   const { d, slot } = f
-  const wall = -0.47
+  const wall = WALL
   const kind = d.rng()
   if (kind < 0.45) {
     const n = 1 + Math.floor(d.rng() * Math.min(3, slot.w / 0.8))
@@ -289,41 +295,84 @@ export const pipeRun = (f: Frame) => {
   for (let i = 0; i < n; i++) {
     const r = 0.05 + d.rng() * 0.05
     const yy = y - i * 0.24
-    d.pipes.push({ a: f.at(-slot.w / 2, -0.38, yy), b: f.at(slot.w / 2, -0.38, yy), r, color, brackets: Math.max(1, Math.floor(slot.w / DRESS.wall.bracketEvery)) })
+    d.pipes.push({ a: f.at(-slot.w / 2, WALL + r + 0.04, yy), b: f.at(slot.w / 2, WALL + r + 0.04, yy), r, color, brackets: Math.max(1, Math.floor(slot.w / DRESS.wall.bracketEvery)) })
   }
 }
 
-// Street face around a door: painted windows with shutters and a sill garden, lit from inside or not.
+// A box centred at (u, v, y): w along the wall, h up, t out of it.
+function panel(f: Frame, u: number, v: number, y: number, w: number, h: number, t: number, color: number, pat: number = SURF.paint, cyl = false, local = 0, pitch = 0): void {
+  f.d.sheet({ ...f.at(u, v, y), w, h, t, rot: f.rot(local), pitch, color, pat, ...(cyl ? { cyl: true, pitch: Math.PI / 2 } : {}) })
+}
+
+// A window with depth: lintel, deep sill, mullions, a half curtain, louvred shutters and a sill garden.
+function window(f: Frame, u: number, wall: number, y: number, w: number, h: number): void {
+  const { d, slot } = f
+  const frame = d.pal.boisOmbre
+  const lit = d.rng() < d.recipe.skinLit
+  panel(f, u, wall + 0.006, y, w, h, 0.012, lit ? WINDOW_LIT : WINDOW_DARK)
+  if (lit) panel(f, u, wall + 0.014, y - h * 0.18, w * 0.94, h * 0.5, 0.008, WINDOW_GLOW)
+  panel(f, u, wall + 0.03, y + h * 0.3, w * 0.96, h * 0.38, 0.01, d.tissu(slot.cell), SURF.fabric)
+  panel(f, u, wall + 0.05, y + h / 2 + 0.07, w + 0.3, 0.14, 0.16, frame, SURF.planksX)
+  panel(f, u, wall + 0.11, y - h / 2 - 0.05, w + 0.36, 0.08, 0.26, d.pal.look.rail, SURF.planksX)
+  for (const s of [-1, 1]) panel(f, u + s * (w / 2 + 0.05), wall + 0.05, y, 0.1, h, 0.14, frame, SURF.planksZ)
+  panel(f, u, wall + 0.04, y, 0.04, h, 0.05, frame)
+  panel(f, u, wall + 0.04, y + h * 0.1, w, 0.04, 0.05, frame)
+  if (lit) d.bake(slot.cell, f.at(u, wall + 0.6, y), d.pal.lampe, DRESS.facade.glow)
+  const shutter = d.tissu(slot.cell)
+  for (const s of [-1, 1]) {
+    const open = 0.3 + d.rng() * 1.1
+    const su = u + s * (w / 2 + 0.1 + Math.cos(open) * 0.21)
+    const sv = wall + 0.08 + Math.sin(open) * 0.21
+    const local = -s * open
+    panel(f, su, sv, y, 0.42, h + 0.06, 0.03, shutter, SURF.planksZ, false, local)
+    for (let i = 0; i < 6; i++) panel(f, su, sv + 0.02, y - h / 2 + 0.12 + (i * (h - 0.2)) / 5, 0.34, 0.03, 0.05, frame, SURF.paint, false, local, 0.5)
+  }
+  for (let i = 0; i < 3; i++) if (d.rng() < 0.75) put(f, pickOne(d.rng, d.recipe.plants.filter((p) => p !== 'laminaire').concat('herbes')), u - w / 2 + 0.15 + i * (w - 0.3) / 2, wall + 0.14, y - h / 2 - 0.01, d.rng() * 6, 0.5)
+}
+
+// Street face around a door: windows either side, lit from inside or not.
 export const facade = (f: Frame) => {
   const { d, slot } = f
-  const wall = -slot.d + 0.03
   for (const side of [-1, 1]) {
     if (d.rng() > DRESS.facade.window) continue
-    const u = side * (slot.w / 2 + 0.8 + d.rng() * 0.7)
-    const w = 0.8 + d.rng() * 0.4
     const h = 1 + d.rng() * 0.3
-    const y = 1.35 + h / 2
-    d.sheet({ ...f.at(u, wall, y), w: w + 0.16, h: h + 0.16, rot: f.rot(), pitch: 0, color: d.pal.boisOmbre, t: 0.05 })
-    const lit = d.rng() < d.recipe.skinLit
-    d.sheet({ ...f.at(u, wall + 0.03, y), w, h, rot: f.rot(), pitch: 0, color: lit ? 0xffc27a : 0x34505e, t: 0.02 })
-    d.sheet({ ...f.at(u, wall + 0.04, y), w: 0.04, h, rot: f.rot(), pitch: 0, color: d.pal.boisOmbre, t: 0.02 })
-    if (lit) d.bake(slot.cell, f.at(u, wall + 0.6, y), d.pal.lampe, DRESS.facade.glow)
-    const shutter = d.tissu(slot.cell)
-    for (const s of [-1, 1]) {
-      const open = d.rng() * 0.9
-      d.sheet({ ...f.at(u + s * (w / 2 + 0.2 + Math.sin(open) * 0.05), wall + 0.05 + Math.sin(open) * 0.2, y), w: 0.4, h: h + 0.1, rot: f.rot(s * open), pitch: 0, color: shutter, t: 0.03 })
-    }
-    d.sheet({ ...f.at(u, wall + 0.12, 1.3), w: w + 0.2, h: 0.2, rot: f.rot(), pitch: 0, color: d.pal.bois, t: 0.22 })
-    for (let i = 0; i < 3; i++) if (d.rng() < 0.75) put(f, pickOne(d.rng, d.recipe.plants.filter((p) => p !== 'laminaire').concat('herbes')), u - w / 2 + 0.15 + i * (w - 0.3) / 2, wall + 0.12, 1.4, d.rng() * 6, 0.55)
+    window(f, side * (slot.w / 2 + 0.8 + d.rng() * 0.7), -slot.d, 1.35 + h / 2, 0.8 + d.rng() * 0.4, h)
   }
 }
+
+// The lower wall in the archetype's own finish, a rail on top, a frieze band high up.
+export const wainscot = (f: Frame) => {
+  const { d, slot } = f
+  const look = d.pal.look
+  const { h, frieze } = DRESS.wainscot
+  const w = slot.w + DRESS.bay.gap - 0.01
+  panel(f, 0, WALL + 0.02, h / 2, w, h, 0.04, look.wall[0], look.wallPat)
+  panel(f, 0, WALL + 0.045, h + 0.035, w, 0.07, 0.07, look.rail, SURF.planksX)
+  panel(f, 0, WALL + 0.03, 0.06, w, 0.12, 0.06, d.pal.boisOmbre)
+  if (d.roof(slot.cell, slot.at.y + 4) - slot.at.y > frieze[0] + frieze[1] + 0.2) panel(f, 0, WALL + 0.012, frieze[0] + frieze[1] / 2, w, frieze[1], 0.02, look.wall[1], SURF.plaster)
+}
+
+// A house wall along a street: a window above the wainscot, sometimes a shop sign or posters beside it.
+export const streetWall = (f: Frame) => {
+  const { d, slot } = f
+  if (slot.w > 1.8 && d.rng() < DRESS.facade.window) {
+    const h = 0.9 + d.rng() * 0.3
+    window(f, (d.rng() - 0.5) * Math.max(0, slot.w - 1.8), WALL, 1.35 + h / 2, 0.75 + d.rng() * 0.3, h)
+  } else murDecor(f)
+  if (d.rng() < DRESS.wall.sign) enseigne(f, (d.rng() < 0.5 ? -1 : 1) * (slot.w / 2 - 0.2), WALL)
+}
+
+const WINDOW_LIT = 0xb8784a
+const WINDOW_GLOW = 0xe8a868
+const WINDOW_DARK = 0x2e3a44
+const IRON = 0x3e3a4a
 
 const PAPER = [0xf1e4c8, 0xefe3c4, 0xe9dcc2, 0xf4f1e6] as const
 
 const rambarde = (f: Frame) => {
   const { d, slot } = f
   for (const u of spread(f, 1 + Math.floor(d.rng() * 3), 0.3)) put(f, pickOne(d.rng, ['herbes', 'herbes', 'rouleau', 'seau'] as const), u, 0.1, 0, d.rng() * 3, 0.6)
-  if (slot.w > 2.5 && d.rng() < 0.6) d.line(d.rng() < 0.5 ? 'fanions' : 'linge', f.at(-slot.w / 2, 0.05, 0.1), f.at(slot.w / 2, 0.05, 0.1), 0.18, slot.cell)
+  if (slot.w > 2.5 && d.rng() < 0.6) d.line(pick(d.rng, d.recipe.lines), f.at(-slot.w / 2, 0.05, 0.1), f.at(slot.w / 2, 0.05, 0.1), 0.18, slot.cell)
   if (d.rng() < 0.4) {
     const p = f.at(slot.w / 2 - 0.1, 0.05, 0.6)
     d.lamp({ kind: 'lanterne', cell: slot.cell, x: p.x, y: p.y, z: p.z, rot: f.rot(), color: d.pal.lampe, radius: 4.5, drop: 0 })

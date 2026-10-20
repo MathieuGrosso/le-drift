@@ -91,6 +91,7 @@ const SHEET = (() => {
   return g
 })()
 const PIPE = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true)
+const CYL = new THREE.CylinderGeometry(0.5, 0.5, 1, 10)
 
 function bakeLamp(l: LampSpec): BakeLamp {
   return { x: l.at.x, y: l.at.y, z: l.at.z, color: new THREE.Color(l.color), radius: l.radius * DRESS.lampBake.radius, power: DRESS.lampBake.power }
@@ -131,17 +132,18 @@ function thinToBudget(byKind: ReadonlyMap<PropKind, PropPlacement[]>, geos: Read
   return new Map([...byKind].map(([k, list]) => [k, thin(list, isSolid(k) ? keepSolid : keepDecor)] as const))
 }
 
-function clothGeometry(plan: DressPlan): THREE.BufferGeometry | null {
-  if (plan.cloth.length === 0 && plan.wires.length === 0) return null
+function pieceGeometry(plan: DressPlan): THREE.BufferGeometry | null {
+  if (plan.pieces.length === 0 && plan.wires.length === 0) return null
   const b = new GeoBuilder()
   b.jitter = 0.06
-  b.with(SURF.fabric, () => {
-    for (const c of plan.cloth) {
-      _q.setFromEuler(_e.set(c.pitch, c.rot, 0, 'YXZ'))
-      const t = c.t ?? DRESS.cloth.thickness
-      b.add(t < DRESS.cloth.sheetBelow ? SHEET : UNIT.box, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, t < DRESS.cloth.sheetBelow ? 1 : t)), c.color)
-    }
-  })
+  for (const c of plan.pieces) {
+    _q.setFromEuler(_e.set(c.pitch, c.rot, c.roll ?? 0, 'YXZ'))
+    const t = c.t ?? DRESS.cloth.thickness
+    const geo = c.cyl ? CYL : t < DRESS.cloth.sheetBelow ? SHEET : UNIT.box
+    b.pat = c.pat ?? SURF.fabric
+    b.add(geo, _m.compose(_p.set(c.x, c.y, c.z), _q, _s.set(c.w, c.h, geo === SHEET ? 1 : t)), c.color)
+  }
+  b.pat = 0
   const dir = new THREE.Vector3()
   for (const w of plan.wires) {
     dir.set(w.b.x - w.a.x, w.b.y - w.a.y, w.b.z - w.a.z)
@@ -231,7 +233,7 @@ export const dress: DressFn = function* (input, host) {
   const group = new THREE.Group()
   group.name = `habillage:${shell.plan.id}`
   const mat = glow(host.mats)
-  const grid = new LampGrid([...shell.lamps, ...plan.bakeLamps].map(bakeLamp))
+  const grid = new LampGrid([...shell.lamps.map((l) => ({ ...l, color: plan.palette.lampe })), ...plan.bakeLamps].map(bakeLamp))
   const base = ambientOf(shell, plan.ambient)
   const glassCells = new Set(shell.cells.filter((c) => c.glass).map((c) => c.id))
   const glassAt = (p: PropPlacement) => (shell.cells.some((c) => glassCells.has(c.id) && c.boxes.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1 && p.y >= b.y0 && p.y <= b.y1)) ? DRESS.skyGlass : 0)
@@ -268,7 +270,7 @@ export const dress: DressFn = function* (input, host) {
     owned.push(geo)
     group.add(mesh)
   }
-  merged(clothGeometry(plan), 'habillage:tissus')
+  merged(pieceGeometry(plan), 'habillage:pieces')
   yield
   const fittings = new GeoBuilder()
   pipeGeometry(fittings, plan.pipes)

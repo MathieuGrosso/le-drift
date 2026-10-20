@@ -6,7 +6,6 @@ import type { Bulb, DressLamp, DressPalette } from './plan'
 
 const IRON = 0x3e3a4a
 const BRASS = 0xd9b48f
-const CREAM = 0xefe3c4
 const GREEN = 0x3f6a4e
 
 // Lamp fittings for one district in one merged geometry; returns the glowing bulbs to instance.
@@ -22,7 +21,7 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
     switch (l.kind) {
       case 'suspension':
         b.box(l.x, l.y - l.drop / 2, l.z, 0.015, l.drop, 0.015, IRON)
-        b.with(SURF.brass, () => b.add(CONE, m.compose(new THREE.Vector3(l.x, by + 0.12, l.z), q.identity(), new THREE.Vector3(0.32, 0.22, 0.32)), pal.metal))
+        b.add(CONE, m.compose(new THREE.Vector3(l.x, by + 0.12, l.z), q.identity(), new THREE.Vector3(0.32, 0.22, 0.32)), pal.look.shade)
         bulbs.push({ x: l.x, y: by + 0.02, z: l.z, color: l.color, size: 0.09 })
         break
       case 'globe':
@@ -49,7 +48,7 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
           b.box(l.x + fx * 0.14, l.y + 0.02, l.z + fz * 0.14, 0.03, 0.03, 0.28, BRASS, l.rot)
         })
         q.setFromAxisAngle(up, l.rot)
-        b.add(CONE, m.compose(new THREE.Vector3(l.x + fx * 0.28, l.y + 0.16, l.z + fz * 0.28), q, new THREE.Vector3(0.16, 0.14, 0.16)), CREAM)
+        b.add(CONE, m.compose(new THREE.Vector3(l.x + fx * 0.28, l.y + 0.16, l.z + fz * 0.28), q, new THREE.Vector3(0.16, 0.14, 0.16)), pal.look.shade)
         bulbs.push({ x: l.x + fx * 0.28, y: l.y + 0.06, z: l.z + fz * 0.28, color: l.color, size: 0.07 })
         break
       }
@@ -59,7 +58,7 @@ export function buildLamps(b: GeoBuilder, lamps: readonly DressLamp[], pal: Dres
           cyl(b, l.x, l.y - 2.58, l.z, 0.2, 0.05, IRON)
           b.box(l.x + fx * 0.25, l.y, l.z + fz * 0.25, 0.03, 0.03, 0.5, IRON, l.rot)
         })
-        b.add(CONE, m.compose(new THREE.Vector3(l.x + fx * 0.5, l.y - 0.02, l.z + fz * 0.5), q.identity(), new THREE.Vector3(0.24, 0.18, 0.24)), pal.metal)
+        b.add(CONE, m.compose(new THREE.Vector3(l.x + fx * 0.5, l.y - 0.02, l.z + fz * 0.5), q.identity(), new THREE.Vector3(0.24, 0.18, 0.24)), pal.look.shade)
         bulbs.push({ x: l.x + fx * 0.5, y: l.y - 0.14, z: l.z + fz * 0.5, color: l.color, size: 0.08 })
         break
       case 'verte':
