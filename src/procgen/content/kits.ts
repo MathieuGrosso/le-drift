@@ -76,10 +76,10 @@ export class Kb {
     return [x + u, y + v, z]
   }
 
-  lamp(x: number, y: number, z: number, color: number, r = 0.35, radius = 9): void {
+  lamp(x: number, y: number, z: number, color: number, r = 0.35, radius = 9, power?: number): void {
     this.ball(x, y, z, r, color, true)
     _v.set(x, y, z).applyMatrix4(this.frame)
-    this.lamps.push({ x: _v.x, y: _v.y, z: _v.z, color, radius })
+    this.lamps.push({ x: _v.x, y: _v.y, z: _v.z, color, radius, ...(power === undefined ? {} : { power }) })
   }
 
   rail(y: number, r: number, c: number, posts = 12): void {

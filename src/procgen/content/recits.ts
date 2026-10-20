@@ -32,6 +32,32 @@ export function vignette(rng: Rng, a: string, b: string): string {
   return fill(VIGNETTES[Math.floor(rng() * VIGNETTES.length)]!, { a, b })
 }
 
+const TRAVAUX: Readonly<Record<ArchetypeId, string>> = {
+  observatoires: '{a} règle la lunette, {b} note les reflets, {c} tient la lanterne',
+  corderie: '{a} et {b} tordent un grelin, {c} chante la cadence',
+  lavoirs: '{a} et {b} essorent un drap, {c} remonte un panier de linge',
+  sechoirs: '{a} et {b} étendent les filets de harengs, {c} chasse les chats',
+  bazar: '{a} marchande une horloge avec {b}, {c} compte les billes',
+  fourneaux: '{a} goûte le bouillon de {b}, {c} attise le feu',
+  forges: '{a} bat une tôle, {b} tient la pince, {c} active le soufflet',
+  dortoirs: '{a} et {b} plient les couvertures, {c} allume les veilleuses',
+  noye: '{a} et {b} écopent un radeau, {c} guette la cloche',
+  quais: '{a} et {b} hissent un filet, {c} trie la pêche',
+  citernes: '{a} serre une vanne, {b} lit le manomètre, {c} éclaire le puits',
+  chapelle: '{a} allume les cierges, {b} et {c} accrochent un ex-voto',
+  laminaires: '{a} et {b} taillent les frondes, {c} porte l’eau',
+  nurserie: '{a} et {b} bercent les petits, {c} raconte une histoire',
+  potagers: '{a} et {b} repiquent des semis, {c} règle les lampes',
+  bibliotheque: '{a} recopie un journal de bord, {b} et {c} le relisent',
+  theatre: '{a} et {b} répètent avec les marionnettes, {c} tient la lampe',
+  viviers: '{a} et {b} nourrissent les bacs, {c} compte les anguilles',
+  cathedrale: '{a} graisse une bielle, {b} lit la pression, {c} tient la burette',
+}
+
+export function travail(archetype: ArchetypeId, a: string, b: string, c: string): string {
+  return fill(TRAVAUX[archetype], { a, b, c })
+}
+
 interface Quete { titre: string; texte: string; objet: string }
 
 const QUETES: Readonly<Record<ArchetypeId, readonly Quete[]>> = {

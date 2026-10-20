@@ -60,3 +60,8 @@ export const SITE = {
 export const BEACON = { minLift: 16, gap: 2.5, under: 2, body: 1.1, color: 0xffb766, satellites: 3, satR: 0.45, satDrop: 2.2, satSpread: 2.4, radius: 20, power: 1.1 } as const
 
 export const ARRIVEE = { top: '14%', fade: 0.9, hold: 4.2, repeatAfter: 90 } as const
+
+export const ACCUEIL = { porche: 5, scene: 9, side: 3.4, largeur: 3.2, hautSign: 3.7, reserve: 2.2 } as const
+
+export const FIGURE = { height: 1.7, reach: 0.75, gap: 0.75, post: 2.7, lamp: 0xffc27a, lampRadius: 6, power: 1 } as const
+export const PORCHE = { h: 4, pennants: 5, signZ: 0.26 } as const

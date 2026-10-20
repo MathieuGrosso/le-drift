@@ -4,16 +4,16 @@ import { GeoBuilder } from '../../drift/builder'
 import { bakeGlow, glowMaterial, type BakeLamp } from '../../drift/city/glow'
 import type { Anchor, Mats } from '../../drift/procgen-hook'
 import { ARCHETYPES } from '../archetypes'
-import type { BuildContentFn, ContentPoint, DistrictPlan, LandmarkPlacement, Rng, Spot } from '../types'
+import type { ArchetypeId, BuildContentFn, ContentPoint, DistrictPlan, LandmarkPlacement, Rng, Spot } from '../types'
 import { Kb, buildFar, buildKit, type KitLamp, type KitPalette } from './kits'
 import { MICRO_DEFIS, type MicroDefi } from './tuning'
 import { placeDefi, type DefiMat, type DefiPlaced } from './defis'
 import { districtContent } from './catalogue'
 import { COQUE_KIT, kitDef, kitScale, vaultY } from './landmarks'
-import { BEACON, KIND_GLOW } from './tuning'
+import { BEACON, FIGURE, KIND_GLOW, PORCHE } from './tuning'
 
 const SHIFT = { hue: 8 / 360, value: 0.06 } as const
-const SIGN = { w: 2.4, h: 0.6, px: 512, row: 96, font: '600 52px Georgia, serif', ink: '#3e3a5a', paper: '#f1e4c8' } as const
+const SIGN = { w: 2.4, h: 0.6, y: 1.7, px: 512, row: 96, font: '600 52px Georgia, serif', ink: '#3e3a5a', paper: '#f1e4c8' } as const
 const TROUVAILLE = { bob: 0.12, speed: 1.6, spin: 0.9, size: 0.22, poll: 0.5, lift: 0.2 } as const
 const NET_MESH = 0.35
 const LAMP_POWER = 0.6
@@ -104,7 +104,111 @@ function drawAnchor(k: Kb, a: Anchor, p: KitPalette): void {
   }
 }
 
-type PointKit = (k: Kb, p: KitPalette, rng: Rng) => void
+type Ouvrage = 'corde' | 'drap' | 'filet' | 'etal' | 'enclume' | 'marmite' | 'lunette' | 'cierges' | 'bac'
+const OUVRAGE: Readonly<Record<ArchetypeId, Ouvrage>> = {
+  observatoires: 'lunette', corderie: 'corde', lavoirs: 'drap', sechoirs: 'filet', bazar: 'etal', fourneaux: 'marmite',
+  forges: 'enclume', dortoirs: 'drap', noye: 'bac', quais: 'corde', citernes: 'enclume', chapelle: 'cierges',
+  laminaires: 'bac', nurserie: 'drap', potagers: 'etal', bibliotheque: 'etal', theatre: 'etal', viviers: 'filet', cathedrale: 'enclume',
+}
+const PEAUX = [0xf1d2b6, 0xe8c4a0, 0xc99a74, 0x8d5a3b] as const
+const CHEVEUX = [0x3a2c28, 0x6b4a32, 0xb8b0a4, 0xc46a4a] as const
+
+// A standing worker at (x, z) whose hands reach toward the work at (tx, ty, tz).
+function figure(k: Kb, x: number, z: number, tx: number, ty: number, tz: number, p: KitPalette, rng: Rng): void {
+  const cloth = p.tissu[Math.floor(rng() * p.tissu.length)] ?? p.accent
+  const skin = PEAUX[Math.floor(rng() * PEAUX.length)]!
+  const tall = FIGURE.height * (0.9 + rng() * 0.15)
+  k.cone(x, 0, z, 0.3, tall * 0.55, cloth)
+  k.cyl(x, tall * 0.68, z, 0.19, tall * 0.28, rng() < 0.5 ? p.accent : cloth)
+  k.ball(x, tall * 0.9, z, 0.15, skin)
+  k.ball(x, tall * 0.95, z, 0.16, CHEVEUX[Math.floor(rng() * CHEVEUX.length)]!, false, 0.09)
+  const dx = tx - x
+  const dz = tz - z
+  const l = Math.hypot(dx, dz) || 1
+  for (const sd of [-1, 1]) {
+    const sx = x - (dz / l) * 0.2 * sd
+    const sz = z + (dx / l) * 0.2 * sd
+    const reach = Math.min(FIGURE.reach, l - 0.1)
+    k.beam([sx, tall * 0.78, sz], [sx + (dx / l) * reach, ty, sz + (dz / l) * reach], 0.08, cloth)
+  }
+}
+
+function ouvrage(k: Kb, kind: Ouvrage, w: number, p: KitPalette, rng: Rng): number {
+  const t = p.tissu[Math.floor(rng() * p.tissu.length)] ?? p.accent
+  switch (kind) {
+    case 'corde':
+      k.beam([-w, 1.05, 0], [w, 1.1, 0.05], 0.07, CORDE)
+      k.beam([-w, 1.1, 0.05], [w, 1.05, 0], 0.07, CORDE)
+      k.ring(0, 0.1, 0.9, 0.45, 0.12, CORDE, 'y', 10)
+      return 1.05
+    case 'drap':
+      k.box(0, 1.0, 0, w * 1.6, 0.8, 0.04, t, 0.08)
+      k.cyl(0.4, 0.25, 0.8, 0.35, 0.5, p.bois)
+      return 1.2
+    case 'filet':
+      for (let i = -3; i <= 3; i++) k.beam([(i * w) / 4, 0.6, 0], [(i * w) / 4, 1.5, 0], 0.03, CORDE)
+      for (const y of [0.8, 1.1, 1.4]) k.beam([-w * 0.8, y, 0], [w * 0.8, y, 0], 0.03, CORDE)
+      for (let i = 0; i < 5; i++) k.box(-w * 0.6 + i * w * 0.3, 1.1, 0.05, 0.08, 0.32, 0.04, 0xd8e4e8)
+      return 1.3
+    case 'etal':
+      k.box(0, 0.45, 0, w * 1.2, 0.9, 0.7, p.bois)
+      for (let i = 0; i < 4; i++) k.ball(-w * 0.45 + i * w * 0.3, 1.0, 0, 0.12, i % 2 ? p.accent : t)
+      return 0.95
+    case 'enclume':
+      k.box(0, 0.3, 0, 0.5, 0.6, 0.4, SOMBRE)
+      k.box(0, 0.7, 0, 0.9, 0.2, 0.35, p.metal)
+      k.box(0.15, 0.85, 0, 0.5, 0.08, 0.12, 0xffa04a, 0, true)
+      return 0.9
+    case 'marmite':
+      k.cyl(0, 0.3, 0, 0.5, 0.6, SOMBRE)
+      k.cyl(0, 0.62, 0, 0.42, 0.06, 0xff8a3a, 'y', true)
+      k.cyl(0, 0.95, 0, 0.55, 0.6, p.metal)
+      return 1.2
+    case 'lunette':
+      for (const a of [0, 2.1, 4.2]) k.beam([0, 1.3, 0], [Math.cos(a) * 0.45, 0, Math.sin(a) * 0.45], 0.05, p.bois)
+      k.beam([0, 1.35, -0.4], [0, 1.6, 0.6], 0.16, p.metal)
+      return 1.4
+    case 'cierges':
+      k.box(0, 0.5, 0, w * 1.1, 1, 0.4, p.bois)
+      for (let i = 0; i < 6; i++) {
+        const x = -w * 0.45 + i * w * 0.18
+        k.cyl(x, 1.1 + (i % 3) * 0.05, 0, 0.04, 0.2 + (i % 3) * 0.1, 0xf6efe0)
+        k.ball(x, 1.25 + (i % 3) * 0.1, 0, 0.05, 0xffc27a, true)
+      }
+      return 1.1
+    case 'bac':
+      k.box(0, 0.35, 0, w * 1.3, 0.7, 0.9, p.bois)
+      k.box(0, 0.68, 0, w * 1.2, 0.04, 0.8, p.glow, 0, true)
+      return 0.8
+  }
+}
+
+// People at work, lit by their own lantern so they read warm, never as silhouettes.
+function atelier(k: Kb, p: KitPalette, rng: Rng, kind: Ouvrage, crew: number): void {
+  const w = FIGURE.gap
+  const y = ouvrage(k, kind, w, p, rng)
+  figure(k, -w - 0.3, 0.1, 0, y, 0, p, rng)
+  figure(k, w + 0.3, -0.1, 0, y, 0, p, rng)
+  if (crew > 2) figure(k, 0.4, 1.4, 0, y, 0, p, rng)
+  k.box(-w - 1.1, FIGURE.post / 2, -0.6, 0.1, FIGURE.post, 0.1, p.bois)
+  k.beam([-w - 1.1, FIGURE.post, -0.6], [-w * 0.3, FIGURE.post, -0.6], 0.06, p.bois)
+  k.lamp(-w * 0.3, FIGURE.post - 0.35, -0.6, FIGURE.lamp, 0.18, FIGURE.lampRadius, FIGURE.power)
+}
+
+function porche(k: Kb, p: KitPalette, rng: Rng, half: number): void {
+  for (const sx of [-1, 1]) {
+    k.box(sx * half, PORCHE.h / 2, 0, 0.4, PORCHE.h, 0.4, p.bois)
+    k.lamp(sx * (half - 0.6), PORCHE.h - 0.9, 0.35, FIGURE.lamp, 0.22, FIGURE.lampRadius, FIGURE.power)
+  }
+  k.box(0, PORCHE.h + 0.2, 0, half * 2 + 1, 0.45, 0.45, p.bois)
+  k.cone(0, PORCHE.h + 0.42, 0, 0.5, 0.6, p.accent)
+  for (let i = 0; i < PORCHE.pennants; i++) {
+    const x = -half + 0.5 + (i * (half * 2 - 1)) / (PORCHE.pennants - 1)
+    k.box(x, PORCHE.h - 0.55, -0.1, 0.32, 0.5, 0.03, p.tissu[Math.floor(rng() * p.tissu.length)] ?? p.accent)
+  }
+}
+
+type PointKit = (k: Kb, p: KitPalette, rng: Rng, pt: ContentPoint, plan: DistrictPlan) => void
 const POINT_KITS: Partial<Record<ContentPoint['kind'], PointKit>> = {
   banc: (k, p) => {
     k.box(0, 0.42, 0, 1.6, 0.08, 0.45, p.bois)
@@ -144,9 +248,12 @@ const POINT_KITS: Partial<Record<ContentPoint['kind'], PointKit>> = {
     k.lamp(0.4, 1.85, 0, p.lampe, 0.12, 5)
     k.box(-0.5, 0.25, 0.2, 0.5, 0.5, 0.5, p.bois, 0.3)
   },
-  panneau: (k, p) => {
-    k.box(0, 1.1, -0.04, 0.1, 2.2, 0.08, p.bois)
+  panneau: (k, p, rng, pt) => {
+    const half = Number(pt.data?.porche ?? 0)
+    if (half > 0) porche(k, p, rng, half)
+    else k.box(0, 1.1, -0.04, 0.1, 2.2, 0.08, p.bois)
   },
+  vignette: (k, p, rng, pt, plan) => atelier(k, p, rng, OUVRAGE[plan.archetype], pt.data?.accueil ? 3 : 2),
   coque: (k, p, rng) => buildKit(COQUE_KIT, k, p, rng),
 }
 
@@ -217,7 +324,7 @@ function signGeometry(points: readonly ContentPoint[]): THREE.BufferGeometry {
     const v1 = 1 - i / n
     const base = pos.length / 3
     for (const [x, y, u, v] of [[-1, 0, 0, v0], [1, 0, 1, v0], [1, 1, 1, v1], [-1, 1, 0, v1]] as const) {
-      const p = new THREE.Vector3((x * SIGN.w) / 2, 1.7 + y * SIGN.h, 0.02).applyMatrix4(m)
+      const p = new THREE.Vector3((x * SIGN.w) / 2, Number(pt.data?.haut ?? SIGN.y) + y * SIGN.h, pt.data?.porche ? PORCHE.signZ : 0.02).applyMatrix4(m)
       pos.push(p.x, p.y, p.z)
       uv.push(u, v)
     }
@@ -269,7 +376,7 @@ export const buildContent: BuildContentFn = function* (content, shell, host) {
     const fn = POINT_KITS[pt.kind]
     if (!fn) continue
     const k = new Kb(o, e, frameOf(pt.at))
-    fn(k, pal, rng)
+    fn(k, pal, rng, pt, plan)
     lamps.push(...k.lamps)
   }
   yield

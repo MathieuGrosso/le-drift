@@ -9,9 +9,9 @@ import type {
 } from '../types'
 import { COQUE_KIT, PHARE_KIT, districtKits, kitAnchors, kitBounds, kitColliders, kitDef, kitScale, landZips, landmarkSites, phareTier } from './landmarks'
 import { deNom, shipNoms, type DistrictNoms, type Personne } from './noms'
-import { quete, vignette } from './recits'
+import { quete, travail, vignette } from './recits'
 import { defiCorners, defiFits, placeDefi, type DefiPlaced } from './defis'
-import { COUNTS, DEFI, MICRO_DEFIS, MOYENS, PACING, PETITS, PHARES, RESERVE, SIGHT, THIRDS_Z } from './tuning'
+import { ACCUEIL, COUNTS, DEFI, MICRO_DEFIS, MOYENS, PACING, PETITS, PHARES, RESERVE, SIGHT, THIRDS_Z } from './tuning'
 
 const FALLBACK = { lanes: 3, steps: 6, sway: 14 } as const
 
@@ -287,6 +287,17 @@ export const populate: PopulateFn = (plan, shell) => {
     }
     return sample(main, main.length)
   }
+
+  const porche = sample(main, Math.min(ACCUEIL.porche, main.length * 0.3))
+  push('panneau', 'petit', porche.cell, { ...porche.at, yaw: Math.atan2(-porche.dir.x, -porche.dir.z) }, plan.nom, { porche: ACCUEIL.largeur, haut: ACCUEIL.hautSign }, `${plan.id}/porche`)
+  const atelier = sample(main, Math.min(ACCUEIL.scene, main.length * 0.5))
+  const awayFromBooth = -atelier.dir.z < 0 ? 1 : -1
+  const scene = side(atelier.at, atelier.dir, awayFromBooth * ACCUEIL.side)
+  const crew = [pools.pnj(), pools.pnj(), pools.pnj()]
+  push('vignette', 'petit', atelier.cell, { ...scene, yaw: Math.atan2(atelier.at.x - scene.x, atelier.at.z - scene.z) }, null, {
+    accueil: true, a: crew[0]!.nom, b: crew[1]!.nom, c: crew[2]!.nom, metier: arch.jobs[0]!, scene: travail(plan.archetype, crew[0]!.nom, crew[1]!.nom, crew[2]!.nom),
+  }, `${plan.id}/accueil`)
+  reserved.push(pointBox(scene, ACCUEIL.reserve))
 
   const cellById = new Map(shell.cells.map((c) => [c.id, c]))
   const inCell = (cell: string, p: Vec3) => {
