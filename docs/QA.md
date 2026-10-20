@@ -21,9 +21,9 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-11 | major | `src/gameplay/indoor.ts` | « Rentrer » demande un appui long que l'invite n'annonce pas — CORRIGÉ (commit bf5b7d4) |
 | QA-12 | major | `src/gameplay/ui` | « Partie sauvegardée. » affiché avec `?nosave`, rien n'est écrit — CORRIGÉ (commit bf5b7d4) |
 | QA-13 | major | `src/hero` | Écharpe : planche rigide à l'horizontale en nage |
-| QA-14 | minor | `src/drift/interiors` | La porte-hublot de la cabine déborde de son encadrement |
-| QA-15 | minor | `src/drift/interiors` | Porte extérieure du sas : coins du cadre ouverts sur la mer |
-| QA-16 | minor | `src/drift/interiors` | Bassin du sas rendu comme une boîte cyan opaque, caméra dedans |
+| QA-14 | minor | `src/drift/interiors` | La porte-hublot de la cabine déborde de son encadrement — CORRIGÉ (commit d16dfd3) |
+| QA-15 | minor | `src/drift/interiors` | Porte extérieure du sas : coins du cadre ouverts sur la mer — CORRIGÉ (commit d16dfd3) |
+| QA-16 | minor | `src/drift/interiors` | Bassin du sas rendu comme une boîte cyan opaque, caméra dedans — CORRIGÉ (commit 274d999) |
 | QA-17 | minor | `src/gameplay` (carte) | « pas encore relevé » chevauche les icônes de dôme sur la carte — CORRIGÉ (commit bf5b7d4) |
 | QA-18 | minor | `src/camille`, `src/drift/chatter.ts` | Bulles de PNJ superposées, lues à travers une porte fermée |
 | QA-19 | minor | `src/drift/chatter.ts` | Bulle hors champ coupée au bord gauche, réplique hors contexte (« au petit-déj » à 18 h) |
