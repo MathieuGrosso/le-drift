@@ -5,6 +5,7 @@ import type { AnimParams, ClipId } from '../hero/anim'
 import { Animator } from '../hero/anim'
 import { buildHero, PALETTE, type HeroModel } from '../hero/model'
 import { Scarf } from '../hero/scarf'
+import { EMOTE_GESTURE, EMOTE_SECONDS } from './emotes'
 import { createHeroMaterials, type HeroMaterials } from '../hero/shading'
 import type { AvatarView, EmoteId, PlayerId } from '../shared/protocol'
 
@@ -14,11 +15,6 @@ const MODE_CLIP: Record<string, ClipId> = {
   idle: 'idle-dry', walk: 'walk-dry', swim: 'swim', climb: 'climb', scrub: 'scrub', ladder: 'ladder',
   sit: 'sit', lean: 'lean', sleep: 'sleep', fall: 'fall', cutscene: 'idle-dry', airlock: 'idle-dry',
 }
-const EMOTE_CLIP: Record<EmoteId, ClipId> = {
-  salut: 'talk', oui: 'talk', non: 'shake-off', rire: 'talk', applaudir: 'pump', montrer: 'hand-on-glass',
-  assis: 'sit', dort: 'sleep', pluie: 'hand-on-ceiling',
-}
-const EMOTE_SECONDS = 3
 const STRIDE_METRES = 0.9
 const RUN_THRESHOLD = (MOVE.walk + MOVE.run) / 2
 const MAX_SAMPLES = 24
@@ -111,7 +107,8 @@ class RemoteAvatar {
   }
 
   play(emote: EmoteId, at: number): void {
-    this.gesture = { clip: EMOTE_CLIP[emote], until: at + EMOTE_SECONDS }
+    const clip = EMOTE_GESTURE[emote]
+    if (clip) this.gesture = { clip, until: at + EMOTE_SECONDS }
   }
 
   headWorld(out: THREE.Vector3): THREE.Vector3 {

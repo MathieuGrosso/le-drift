@@ -1,7 +1,15 @@
+import type { GestureClip } from '../hero/anim'
 import { EMOTES, type EmoteId } from '../shared/protocol'
 import { el } from './style'
 import { EMOTE_LABEL } from './text'
 
+/** What the hero does for each emote; null for the ones only an NPC can do, on a real chair or bed. */
+export const EMOTE_GESTURE: Record<EmoteId, GestureClip | null> = {
+  salut: 'wave', oui: 'talk', non: 'shake-off', rire: 'talk', applaudir: 'pump', montrer: 'hand-on-glass',
+  assis: null, dort: null, pluie: 'hand-on-ceiling',
+}
+export const EMOTE_SECONDS = 3
+const WHEEL = EMOTES.filter((id) => EMOTE_GESTURE[id] !== null)
 const WHEEL_KEY = 'KeyG'
 const RADIUS = 115
 
@@ -11,7 +19,7 @@ export class EmoteWheel {
   private readonly onDown = (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || !this.enabled()) return
     if (e.code === WHEEL_KEY && !e.repeat) this.open()
-    else if (this.isOpen() && /^Digit[1-9]$/.test(e.code)) this.pick(EMOTES[Number(e.code.slice(5)) - 1])
+    else if (this.isOpen() && /^Digit[1-9]$/.test(e.code)) this.pick(WHEEL[Number(e.code.slice(5)) - 1])
   }
   private readonly onUp = (e: KeyboardEvent) => {
     if (e.code === WHEEL_KEY) this.close()
@@ -19,8 +27,8 @@ export class EmoteWheel {
 
   constructor(parent: HTMLElement, private readonly send: (emote: EmoteId) => void, private readonly enabled: () => boolean) {
     this.root = el('div', 'net-wheel')
-    EMOTES.forEach((id, i) => {
-      const a = (i / EMOTES.length) * Math.PI * 2 - Math.PI / 2
+    WHEEL.forEach((id, i) => {
+      const a = (i / WHEEL.length) * Math.PI * 2 - Math.PI / 2
       const b = el('button')
       b.append(el('small', '', String(i + 1)), document.createTextNode(EMOTE_LABEL[id]))
       b.style.left = `calc(50% + ${Math.cos(a) * RADIUS}px)`

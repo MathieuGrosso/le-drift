@@ -7,9 +7,9 @@ export type ClipId =
   | 'idle-dry' | 'walk-dry' | 'run-dry' | 'stairs-up' | 'stairs-down' | 'ladder' | 'ladder-top' | 'fall' | 'land-dry'
   | 'shake-off' | 'sit-down' | 'sit' | 'eat' | 'stand-up' | 'lean' | 'open-hatch' | 'lie-down' | 'sleep' | 'wake'
   | 'sprint' | 'jump' | 'roll' | 'skid' | 'land-hard' | 'zip' | 'slide' | 'tube-in' | 'tube-out'
-  | 'carry-idle' | 'carry-walk' | 'clip-ring' | 'hand-on-glass' | 'turn-valve' | 'pump' | 'ladder-slide' | 'climb-slip'
+  | 'carry-idle' | 'carry-walk' | 'clip-ring' | 'hand-on-glass' | 'turn-valve' | 'pump' | 'ladder-slide' | 'climb-slip' | 'wave'
 
-export type GestureClip = 'hand-on-glass' | 'turn-valve' | 'pump' | 'open-hatch' | 'clip-ring' | 'talk' | 'eat' | 'shake-off'
+export type GestureClip = 'hand-on-glass' | 'turn-valve' | 'pump' | 'open-hatch' | 'clip-ring' | 'talk' | 'eat' | 'shake-off' | 'wave' | 'hand-on-ceiling'
 
 export interface AnimParams {
   t: number
@@ -404,6 +404,13 @@ const CLIPS: Record<ClipId, Clip> = {
     o.r('foreArmR', 1.2 + sin(s.t * 4.3) * 0.2)
     o.r('handR', 0, g * 0.4, 0)
     o.r('head', 0.05 + sin(s.t * 5.2) * 0.04, sin(s.t * 0.9) * 0.1)
+  },
+  wave(o, s) {
+    CLIPS['idle-dry'](o, s)
+    o.r('upperArmR', 0.15, 0, 2.55)
+    o.r('foreArmR', 0.55 + sin(s.t * 9) * 0.45)
+    o.r('handR', 0, 0, sin(s.t * 9 + 0.6) * 0.3)
+    o.r('head', 0.02, 0.12, 0.08)
   },
   'hand-on-ceiling'(o, s) {
     o.buf.pitch = 0.05

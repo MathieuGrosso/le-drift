@@ -2,10 +2,11 @@ import * as THREE from 'three'
 import { NET } from '../core/tuning'
 import type { GameContext, HeroMode, NetService, NetStatus, System } from '../core/types'
 import type { AvatarMode, ClientMessages, EmoteId, PlayerCardView, PlayerId, Profile, ServerMessages } from '../shared/protocol'
+import type { HeroServiceExt } from '../hero'
 import { RemoteAvatars } from './avatars'
 import { ChatBox } from './chat'
 import { probe, serverEndpoint } from './connect'
-import { EmoteWheel } from './emotes'
+import { EMOTE_GESTURE, EMOTE_SECONDS, EmoteWheel } from './emotes'
 import { loadIdentity, loadProfile, storeProfile } from './identity'
 import { Overlay } from './overlay'
 import { Presence } from './presence'
@@ -109,7 +110,9 @@ export function createNetSystem(): System {
       }
       case 'emote': {
         const e = payload as ServerMessages['emote']
-        avatars?.emote(e.from, e.emote)
+        const clip = EMOTE_GESTURE[e.emote]
+        if (e.from !== me) avatars?.emote(e.from, e.emote)
+        else if (clip) (ctx.services.hero as HeroServiceExt | undefined)?.gesture(clip, EMOTE_SECONDS)
         sayOver(e.from, EMOTE_BUBBLE[e.emote])
         ctx.bus.emit('net:emote', e)
         break
