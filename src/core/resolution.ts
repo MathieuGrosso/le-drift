@@ -9,7 +9,7 @@ export interface DynamicResolution {
 
 // Frame time, not GPU timer queries: on ANGLE Metal those include the vsync wait. The 90th percentile, not a mean,
 // so uneven pacing (fast frames between slow ones) still reads as slow.
-// A step up that misses the budget doubles the wait before the next try.
+// A step up that misses the budget doubles the wait before the next try; otherwise only a sustained miss shrinks.
 export function createDynamicResolution(ceiling: number): DynamicResolution {
   let max = ceiling
   let ratio = ceiling
@@ -17,6 +17,7 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
   const frames = createFrameWindow(DR.windowMs)
   let since = 0
   let calm = 0
+  let over = 0
   let growWait: number = DR.growAfterSeconds
   let probing = false
 
@@ -40,11 +41,17 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
       }
       let next = ratio
       if (ms > targetMs * DR.shrinkAbove) {
-        next = Math.max(DR.minRatio, Math.min(ratio - DR.step, quantize(ratio * Math.sqrt(targetMs / ms))))
+        calm = 0
+        over += dt
+        if (!probing && over < DR.shrinkAfterSeconds) return false
+        // Under vsync p90 snaps from 16.7 to 33.3 ms, so the measured miss overstates the cost: a failed probe
+        // steps back once, a sustained miss at most maxShrinkSteps.
+        const floor = probing ? ratio - DR.step : ratio - DR.step * DR.maxShrinkSteps
+        next = Math.max(DR.minRatio, floor, Math.min(ratio - DR.step, quantize(ratio * Math.sqrt(targetMs / ms))))
         if (probing) growWait = Math.min(growWait * 2, DR.maxGrowWaitSeconds)
         probing = false
-        calm = 0
       } else if (ms < targetMs * DR.growBelow && ratio < max) {
+        over = 0
         calm += dt
         if (calm >= (ms < targetMs * DR.headroomBelow ? DR.growAfterSeconds : growWait)) {
           next = Math.min(max, ratio + DR.step)
@@ -52,12 +59,14 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
         }
       } else {
         calm = 0
+        over = 0
       }
       if (next === ratio) return false
       ratio = next
       since = 0
       frames.clear()
       calm = 0
+      over = 0
       return true
     },
     setCeiling(c) {

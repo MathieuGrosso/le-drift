@@ -110,7 +110,7 @@ export const AUTOSAVE_SECONDS = 60
 // Pixel ratio follows the smoothed frame time; pixel count goes with the square of the ratio.
 export const DYNAMIC_RESOLUTION = {
   targetFps: 60, shrinkAbove: 1.12, growBelow: 1.05, headroomBelow: 0.75, growAfterSeconds: 2, maxGrowWaitSeconds: 32, probeSeconds: 4,
-  settleSeconds: 1, step: 0.125, minRatio: 0.75, windowMs: 1000, hitchMs: 250,
+  shrinkAfterSeconds: 1, maxShrinkSteps: 2, settleSeconds: 1, step: 0.125, minRatio: 0.75, windowMs: 1000, hitchMs: 250,
 } as const
 // Shader compiles and world loads stall single frames: skip the warm-up and any frame past hitchMs.
 export const FRAME_STATS_WINDOW_MS = 1000
