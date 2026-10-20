@@ -215,6 +215,7 @@ export function createCelFactory(shared: AllUniforms) {
     }
     mat.userData.celUniforms = own
     const onShader = params.onShader
+    mat.userData.celIndoor = indoor
     const key = `cel:${indoor ? 1 : 0}${caustics ? 1 : 0}${silhouette ? 1 : 0}:${onShader ? onShader.toString() : ''}`
     mat.customProgramCacheKey = () => key
     mat.onBeforeCompile = (shader) => {

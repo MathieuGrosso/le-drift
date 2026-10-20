@@ -21,7 +21,7 @@ function casts(o: THREE.Object3D): boolean {
   const m = (o as THREE.Mesh).material
   if (m) {
     const first = Array.isArray(m) ? m[0] : m
-    if (first?.transparent) return false
+    if (first?.transparent || first?.userData.celIndoor === true) return false
   }
   return true
 }
