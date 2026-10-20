@@ -30,6 +30,11 @@ const STRIDE = RING + 1
 const THICK = 0.016
 const RIBS = 9
 const ROW = 0.012
+// Forces in m/s² per unit of distance along the scarf; sway and flap are travelling waves, never a fixed trail.
+const W = {
+  waterDrag: 2, buoyancy: 0.06, waterSway: 0.7, waterSwayPerSpeed: 1.4, waterFreq: 1.8, waterFreqPerSpeed: 1.2, waterK: 0.55,
+  airDrag: 0.6, airDragTip: 1.9, wetDamping: 0.6, flap: 3.2, flapFreq: 4, flapFreqPerSpeed: 1.5, flapK: 0.7,
+} as const
 
 const TAILS: readonly TailDef[] = [
   { n: 20, length: 0.92, width0: 0.062, width1: 0.076, side: -0.07, fwd: -0.01, drop: 0.05, phase: 0, twist: Math.PI },
@@ -196,29 +201,28 @@ export class Scarf {
       else this.wind.copy(this.back).negate()
       this.side.crossVectors(this.wind, THREE.Object3D.DEFAULT_UP)
       if (s.inWater) {
-        const drag = 2.4
-        const wave = Math.sin(s.t * (2.6 + speed * 1.4) - i * 0.5 + phase)
-        const flutter = wave * (0.25 + along * 0.9) * (1 + speed * 0.6)
-        const trail = (1.6 + speed * 0.8) * along ** 0.7
+        const wave = Math.sin(s.t * (W.waterFreq + speed * W.waterFreqPerSpeed) - i * W.waterK + phase)
+        const heave = Math.cos(s.t * (W.waterFreq * 0.7 + speed) - i * W.waterK * 0.8 + phase)
+        const amp = (W.waterSway + speed * W.waterSwayPerSpeed) * along
         this.acc.set(
-          (s.flow.x - vx) * drag + this.side.x * flutter + this.back.x * trail,
-          (s.flow.y - vy) * drag + 0.12 + Math.cos(s.t * 2.1 - i * 0.5 + phase) * (0.25 + along * 0.7),
-          (s.flow.z - vz) * drag + this.side.z * flutter + this.back.z * trail,
+          (s.flow.x - vx) * W.waterDrag + this.side.x * wave * amp,
+          (s.flow.y - vy) * W.waterDrag + W.buoyancy + heave * amp * 0.6,
+          (s.flow.z - vz) * W.waterDrag + this.side.z * wave * amp,
         )
       } else {
-        const light = 1 - heavy * 0.75
-        const drag = (1.5 + 3.6 * along) * light + 0.4
+        const light = 1 - heavy * W.wetDamping
+        const drag = W.airDrag + W.airDragTip * along * light
         const idle = (0.35 + 0.5 * along * along) * light
         const sway = Math.sin(s.t * 0.9 + phase + i * 0.12) + 0.45 * Math.sin(s.t * 2.3 + phase * 2 - i * 0.35)
         this.acc.set(
-          s.gravity.x - vx * drag + s.right.x * sway * idle + this.back.x * idle * 0.6,
+          s.gravity.x - vx * drag + s.right.x * sway * idle,
           s.gravity.y - vy * drag,
-          s.gravity.z - vz * drag + s.right.z * sway * idle + this.back.z * idle * 0.6,
+          s.gravity.z - vz * drag + s.right.z * sway * idle,
         )
         if (speed > 0.25) {
           const w = Math.min(speed, 6)
-          const freq = 5.5 + w * 1.6
-          const flap = Math.sin(s.t * freq - i * 0.75 + phase) * w * (0.6 + w * 0.25) * along * along * light * 2.2
+          const freq = W.flapFreq + w * W.flapFreqPerSpeed
+          const flap = Math.sin(s.t * freq - i * W.flapK + phase) * w * W.flap * along * light
           this.acc.addScaledVector(this.side, flap)
           this.acc.y += Math.cos(s.t * freq * 0.8 - i * 0.6 + phase) * Math.abs(flap) * 0.35
         }
