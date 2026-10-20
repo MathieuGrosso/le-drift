@@ -57,7 +57,7 @@ async function shrink(doc) {
       if (a) p.setAttribute(s, null)
     }
   }
-  await doc.transform(prune(), dedup(), resample(), unpartition(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }))
+  await doc.transform(resample(), dedup(), prune(), unpartition(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }))
 }
 
 for (const [file, spec] of Object.entries(BODIES)) {
