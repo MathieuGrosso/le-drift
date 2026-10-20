@@ -9,26 +9,26 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | id | sév. | dossier | titre |
 |---|---|---|---|
 | QA-01 | blocker | `index.html`, `src/net` | Le calque réseau plein écran avale tous les clics des menus — CORRIGÉ (commit bf5b7d4) |
-| QA-02 | blocker | `src/gameplay/ui` | Menu Dormir (et tous les menus) sans chemin clavier : dormir impossible |
+| QA-02 | blocker | `src/gameplay/ui` | Menu Dormir (et tous les menus) sans chemin clavier : dormir impossible — CORRIGÉ (commit bf5b7d4, 22cfa1b) |
 | QA-03 | major | `src/hero`, `src/drift/city` | Échelle du sas : bloqué à 1,35 m du sommet, caméra dans le plafond — CORRIGÉ (commit 4506c84) |
 | QA-04 | major | `src/drift` (nav) | 43 sites injoignables depuis la cabine, dont la table des cartes et les 12 coques scellées |
 | QA-05 | major | `src/render`, `src/drift` | Réfectoire au petit-déj : 9 ips, 1,93 M triangles |
 | QA-06 | major | (global) | Tas JS à 1,2 Go trois minutes après un rechargement (0,43 Go au premier chargement) |
-| QA-07 | major | `src/gameplay/quests.ts` | La tâche « Lire le tableau des prévisions » se saute en passant l'écluse |
-| QA-08 | major | `src/gameplay`, `src/camille` | Sortie : on part face au large, aucun repère vers la grande vitre |
+| QA-07 | major | `src/gameplay/quests.ts` | La tâche « Lire le tableau des prévisions » se saute en passant l'écluse — CORRIGÉ (commit bf5b7d4) |
+| QA-08 | major | `src/gameplay`, `src/camille` | Sortie : on part face au large, aucun repère vers la grande vitre — CORRIGÉ (commit bf5b7d4) |
 | QA-09 | major | `src/net`, `src/gameplay/ui` | Le panneau « Seul à bord » cache le compteur « Tournée · 0/2 vitres » |
 | QA-10 | major | `src/hero` (caméra) | Caméra enfoncée dans la coque après quelques pas sur la passerelle de la Nef |
-| QA-11 | major | `src/gameplay/indoor.ts` | « Rentrer » demande un appui long que l'invite n'annonce pas |
-| QA-12 | major | `src/gameplay/ui` | « Partie sauvegardée. » affiché avec `?nosave`, rien n'est écrit |
+| QA-11 | major | `src/gameplay/indoor.ts` | « Rentrer » demande un appui long que l'invite n'annonce pas — CORRIGÉ (commit bf5b7d4) |
+| QA-12 | major | `src/gameplay/ui` | « Partie sauvegardée. » affiché avec `?nosave`, rien n'est écrit — CORRIGÉ (commit bf5b7d4) |
 | QA-13 | major | `src/hero` | Écharpe : planche rigide à l'horizontale en nage |
 | QA-14 | minor | `src/drift/interiors` | La porte-hublot de la cabine déborde de son encadrement |
 | QA-15 | minor | `src/drift/interiors` | Porte extérieure du sas : coins du cadre ouverts sur la mer |
 | QA-16 | minor | `src/drift/interiors` | Bassin du sas rendu comme une boîte cyan opaque, caméra dedans |
-| QA-17 | minor | `src/gameplay` (carte) | « pas encore relevé » chevauche les icônes de dôme sur la carte |
+| QA-17 | minor | `src/gameplay` (carte) | « pas encore relevé » chevauche les icônes de dôme sur la carte — CORRIGÉ (commit bf5b7d4) |
 | QA-18 | minor | `src/camille`, `src/drift/chatter.ts` | Bulles de PNJ superposées, lues à travers une porte fermée |
 | QA-19 | minor | `src/drift/chatter.ts` | Bulle hors champ coupée au bord gauche, réplique hors contexte (« au petit-déj » à 18 h) |
-| QA-20 | minor | `src/gameplay/indoor.ts` | Invite « Sortir par l'écluse » affichée en haut de l'échelle, 6 m au-dessus de la porte |
-| QA-21 | minor | `src/gameplay/text` | Astuce « [E] près de la porte ronde » en crochets bruts, chevauche le sous-titre |
+| QA-20 | minor | `src/gameplay/indoor.ts` | Invite « Sortir par l'écluse » affichée en haut de l'échelle, 6 m au-dessus de la porte — CORRIGÉ (commit 7046412) |
+| QA-21 | minor | `src/gameplay/text` | Astuce « [E] près de la porte ronde » en crochets bruts, chevauche le sous-titre — CORRIGÉ (commit bf5b7d4, 22cfa1b) |
 | QA-22 | minor | `src/fauna/curious.ts` | Les poissons curieux traversent Ilo et masquent le héros |
 | QA-23 | minor | `src/drift/city` | Câble de tyrolienne qui traverse la passerelle de la Nef |
 | QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef |
