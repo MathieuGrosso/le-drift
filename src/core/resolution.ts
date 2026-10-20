@@ -1,18 +1,20 @@
+import { createFrameWindow } from './framewindow'
 import { DYNAMIC_RESOLUTION as DR } from './tuning'
 
 export interface DynamicResolution {
   readonly pixelRatio: number
-  readonly frameMs: number
   update(dt: number): boolean
   setCeiling(ceiling: number): void
 }
 
-// Frame time, not GPU timer queries: on ANGLE Metal those include the vsync wait.
+// Frame time, not GPU timer queries: on ANGLE Metal those include the vsync wait. The 90th percentile, not a mean,
+// so uneven pacing (fast frames between slow ones) still reads as slow.
 // A step up that misses the budget doubles the wait before the next try.
 export function createDynamicResolution(ceiling: number): DynamicResolution {
   let max = ceiling
   let ratio = ceiling
   let ms = 1000 / DR.targetFps
+  const frames = createFrameWindow(DR.windowMs)
   let since = 0
   let calm = 0
   let growWait: number = DR.growAfterSeconds
@@ -25,14 +27,13 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
     get pixelRatio() {
       return ratio
     },
-    get frameMs() {
-      return ms
-    },
     update(dt) {
       if (dt * 1000 > DR.hitchMs) return false
-      ms += (Math.min(dt * 1000, targetMs * DR.sampleCap) - ms) * DR.smoothing
       since += dt
       if (since < DR.settleSeconds) return false
+      frames.push(dt * 1000)
+      if (frames.spanMs < DR.windowMs * 0.9) return false
+      ms = frames.p90Ms
       if (probing && since > DR.probeSeconds) {
         probing = false
         growWait = DR.growAfterSeconds
@@ -55,6 +56,7 @@ export function createDynamicResolution(ceiling: number): DynamicResolution {
       if (next === ratio) return false
       ratio = next
       since = 0
+      frames.clear()
       calm = 0
       return true
     },

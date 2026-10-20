@@ -4,11 +4,12 @@ import { createInput } from './input'
 import { createPhysics } from './physics'
 import { createPoseRegistry, registerCorePoses } from './poses'
 import { createQuality, isQualityLevel, QUALITY_ORDER } from './quality'
+import { createFrameWindow } from './framewindow'
 import { createDynamicResolution } from './resolution'
 import { seededRng } from './rng'
 import { createSaveStore } from './save'
 import { createInitialState, phaseAt } from './state'
-import { AUTOSAVE_SECONDS, AUTO_QUALITY, PHYSICS } from './tuning'
+import { AUTOSAVE_SECONDS, AUTO_QUALITY, FRAME_STATS_WINDOW_MS, PHYSICS } from './tuning'
 import { PLACES, ROOMS } from './layout'
 import { createModeController } from './mode'
 import type {
@@ -203,7 +204,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     let lastHourInt = Math.floor(state.time.hours)
     let lastPhase = phaseAt(state.time.hours)
     let autosaveTimer = 0
-    let fps = 60
+    const frameWindow = createFrameWindow(FRAME_STATS_WINDOW_MS)
     let slowTimer = 0
     let slowFrames = 0
     let slowSum = 0
@@ -258,10 +259,10 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     const stats = () => {
       const r = ctx.services.render?.stats()
       return {
-        fps: Math.round(fps),
+        fps: Math.round(frameWindow.fps),
         drawCalls: r?.drawCalls ?? renderer.info.render.calls,
         triangles: r?.triangles ?? renderer.info.render.triangles,
-        frameMs: resolution.frameMs,
+        frameMs: frameWindow.p90Ms,
         pixelRatio: resolution.pixelRatio,
       }
     }
@@ -277,7 +278,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
       const dt = stepping ? PHYSICS.step : Math.min(rawDt, PHYSICS.maxFrameDt)
       if (stepping) pendingSteps--
       const paused = ctx.clock.paused && !stepping
-      fps += (1 / Math.max(rawDt, 1e-4) - fps) * 0.05
+      frameWindow.push(rawDt * 1000)
 
       inputRt.poll(dt)
       if (!paused) {
@@ -348,8 +349,8 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         const s = stats()
         const ms = ctx.services.render?.stats().ms
         overlay.textContent =
-          `${s.fps} ips · ${s.drawCalls} appels · ${(s.triangles / 1000).toFixed(0)} k tri` +
-          (ms !== undefined ? ` · ${ms.toFixed(1)} ms` : '') +
+          `${s.fps} ips · p90 ${s.frameMs.toFixed(1)} ms · ${s.drawCalls} appels · ${(s.triangles / 1000).toFixed(0)} k tri` +
+          (ms !== undefined ? ` · rendu ${ms.toFixed(1)} ms` : '') +
           ` · ×${s.pixelRatio.toFixed(3)}` +
           ` · ${quality.settings.level} · j${state.time.day} ${state.time.hours.toFixed(2)} h`
       }

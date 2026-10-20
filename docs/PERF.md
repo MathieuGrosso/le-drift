@@ -39,9 +39,12 @@ préchargement de Vite y avait atterri).
 
 ## Ce qui a été fait
 
-- `src/core/resolution.ts` : résolution dynamique (ratio de pixels suivant le temps d'image lissé,
-  cible 60 ips, pas de 0,125, plancher 0,75, remontée par essais avec attente doublée en cas d'échec).
+- `src/core/resolution.ts` : résolution dynamique (ratio de pixels suivant le 90e centile du temps d'image
+  sur 1 s, cible 60 ips, pas de 0,125, plancher 0,75, remontée par essais avec attente doublée en cas d'échec).
   Les requêtes de minuterie GPU ont été essayées puis écartées : sur ANGLE Metal elles incluent l'attente vsync.
+- Compteur `?debug` : images comptées sur 1 s et 90e centile du temps d'image (`src/core/framewindow.ts`).
+  L'ancienne moyenne lissée de 1/dt affichait 150–250 ips débridé pour ~58 ips réels (le tableau ci-dessus,
+  compté au rAF, n'en dépend pas). « rendu » = temps CPU de soumission du rendu.
 - Auto-qualité : 4 s d'échauffement et images > 250 ms ignorées.
 - Shader cel intérieur : lampes hors de portée et coup de brosse mural sautés là où ils valaient zéro.
 - `src/render` précompile tous les matériaux cachés (sortie, faune) à l'image 3 puis à la fermeture de
