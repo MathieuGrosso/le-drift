@@ -20,6 +20,7 @@ import { registerDriftPoses } from './poses'
 import { METERS_PER_GAME_HOUR, currentGate, minimumProgressForAct, poseAt } from './route'
 import { drawingsTexture, menuTexture } from './textures'
 import { Windows } from './windows'
+import { PortalCull } from './portal'
 import { quarterPoint, quarterPoints } from '../core/quarter'
 import { mountProcgen, type ProcgenAware, type ProcgenSlot } from './procgen-hook'
 
@@ -67,6 +68,7 @@ export interface DriftServiceV2 extends DriftService {
   sites(): DriftSites
   siteById(id: string): DriftSite | null
   visibleCells(): readonly CellId[]
+  districtVisible(d: DistrictId): boolean
   glassPortalsVisible(): number
   setValve(id: string, open: boolean): void
   cycleLock(id: LockId, dir: 'in' | 'out'): Promise<void>
@@ -167,6 +169,7 @@ export function createDriftSystem(): System {
   let city: City | null = null
   let quarter: Quarter | null = null
   let windows: Windows | null = null
+  let portal: PortalCull | null = null
   let npcs: Npcs | null = null
   let board: ForecastBoard | null = null
   let chart: ChartTable | null = null
@@ -177,6 +180,7 @@ export function createDriftSystem(): System {
   let visibleKey = ''
   const loaded = new Set<DistrictId>()
   const visibleDistricts = new Set<DistrictId>()
+  let allDistricts = true
   const glass = glassPoints()
   const camEnv: CameraEnv = { indoor: 1, glassDist: 4, airHaze: 0, district: 'ecluse', cell: 'cabine', seaInView: true }
   let visible: CellId[] = []
@@ -415,6 +419,7 @@ export function createDriftSystem(): System {
     sites: () => (sitesCache ??= buildSites()),
     siteById: (id) => service.sites().all.find((s) => s.id === id) ?? null,
     visibleCells: () => visible,
+    districtVisible: (d) => allDistricts || visibleDistricts.has(d),
     glassPortalsVisible: () => glassVisible,
     setValve: (id, open) => {
       ;(ctxRef?.bus as unknown as { emit(k: string, p: unknown): void } | undefined)?.emit('valve:changed', { id, open })
@@ -458,13 +463,17 @@ export function createDriftSystem(): System {
       camEnv.airHaze = ATRIUM_AIR[room] ?? 0
       const g = glassInView(ctx, room)
       camEnv.glassDist = Math.max(0.5, g.dist)
-      camEnv.seaInView = g.inView || nefInSight(room)
+      const nef = nefInSight(room)
+      camEnv.seaInView = g.inView || nef
+      portal?.set(room, nef ? null : glass.get(room) ?? null)
     } else if (cc) {
+      portal?.set(null, null)
       camEnv.indoor = 1
       camEnv.airHaze = cc.air
       camEnv.glassDist = Math.max(1.5, cc.roof - camLocal.y)
       camEnv.seaInView = true
     } else {
+      portal?.set(null, null)
       const heroInside = st.mode === 'inside' && st.hero.medium === 'air' && !st.debug.cameraLocked
       camEnv.indoor = heroInside ? 1 : 0
       camEnv.airHaze = 0
@@ -540,6 +549,7 @@ export function createDriftSystem(): System {
       city?.setVisible(outside ? null : visibleDistricts, sealed)
       hulls?.setVisible(outside ? null : visibleDistricts)
     }
+    allDistricts = outside
     if (quarter) quarter.root.visible = outside || showQuarter
   }
 
@@ -617,6 +627,7 @@ export function createDriftSystem(): System {
       }
       district = ctx.state.hero.localPosition ? districtAt(ctx.state.hero.localPosition) : ctx.state.hero.district
       windows = new Windows(ctx, mats, quarter, quarter.root)
+      portal = new PortalCull(ctx.scene, ctx.camera, quarter.root, pose)
       npcs = new Npcs(ctx, mats, quarter)
       quarter.root.add(npcs.group)
       chatter = new Chatter(ctx)
@@ -722,6 +733,7 @@ export function createDriftSystem(): System {
     dispose() {
       for (const off of offs.splice(0)) off()
       chatter?.dispose()
+      portal?.dispose()
       npcs?.dispose()
       quarter?.dispose()
       hulls?.dispose()

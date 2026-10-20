@@ -18,6 +18,8 @@ import { buildSerres } from './serres'
 import { ShipFrame } from './ship'
 import { quarterPoint } from '../core/layout'
 
+type DistrictAware = { districtVisible?: (d: DistrictId) => boolean }
+
 export { SERRE_COLUMNS, SERRE_HALL, SERRE_TRELLIS } from './serres'
 
 export const FLORA_FLAGS = { lumiere: 'serres-lumiere', eau: 'serres-eau' } as const
@@ -391,8 +393,9 @@ export function createFloraSystem(): System {
         nefStreamed = loaded.includes('nef') || camDistrict === 'nef'
       }
       const sealed = drift?.cameraEnv().seaInView === false
-      for (const m of serreMeshes) m.visible = serresStreamed && !sealed
-      if (nefMesh) nefMesh.visible = nefStreamed && !sealed
+      const seen = (d: DistrictId) => !sealed && ((drift as DistrictAware | undefined)?.districtVisible?.(d) ?? true)
+      for (const m of serreMeshes) m.visible = serresStreamed && seen('serres')
+      if (nefMesh) nefMesh.visible = nefStreamed && seen('nef')
       scanStep(ctx)
     },
 
