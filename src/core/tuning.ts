@@ -144,6 +144,9 @@ export const NAV = {
   auditReach: 1.8,
   maxPathPolys: 4096,
   snapExtent: { x: 1.5, y: 2.5, z: 1.5 },
+  // A* node pool: the default 2048 runs dry on a cross-Drift path and returns a partial one.
+  queryNodes: 65535,
+  climbFoot: { reach: 2.5, depth: 4, probes: 8 },
   debugColor: 0x3fe0c0,
   crowd: {
     maxAgents: { high: 600, medium: 300, low: 120 },

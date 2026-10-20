@@ -5,7 +5,15 @@ import * as THREE from 'three'
 import { NAV } from '../../core/tuning'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import type { DriftNav, PhysicsWorld, Vec3, WalkReport } from '../../core/types'
-import { colliderSoup, type NavLink } from './soup'
+import { colliderSoup, ladderLink, type NavLink } from './soup'
+
+type LadderLike = Parameters<typeof ladderLink>[0]
+
+function segmentDistance(p: Vec3, a: Vec3, b: Vec3): number {
+  const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby + (p.z - a.z) * abz) / (abx * abx + aby * aby + abz * abz || 1)))
+  return Math.hypot(a.x + abx * t - p.x, a.y + aby * t - p.y, a.z + abz * t - p.z)
+}
 
 const voxels = (metres: number, size: number) => Math.ceil(metres / size)
 
@@ -15,7 +23,7 @@ export class DriftNavmesh implements DriftNav {
   readonly polys: number
 
   private constructor(readonly navMesh: NavMesh) {
-    this.query = new NavMeshQuery(navMesh)
+    this.query = new NavMeshQuery(navMesh, { maxNodes: NAV.queryNodes })
     this.query.defaultQueryHalfExtents = { ...NAV.snapExtent }
     let polys = 0
     for (let t = 0; t < navMesh.getMaxTiles(); t++) polys += navMesh.getTile(t).header()?.polyCount() ?? 0
@@ -49,22 +57,39 @@ export class DriftNavmesh implements DriftNav {
     return r.success && r.polyRef ? r.point : null
   }
 
+  // Floor around a climbable support, ringed so the hollow inside of a box collider never counts as its foot.
+  private feetAround(p: Vec3): Vec3[] {
+    const { reach, depth, probes } = NAV.climbFoot
+    const out: Vec3[] = []
+    for (let i = 0; i < probes; i++) {
+      const a = (i / probes) * Math.PI * 2
+      const r = this.query.findClosestPoint({ x: p.x + Math.cos(a) * reach, y: p.y - depth / 2, z: p.z + Math.sin(a) * reach }, { halfExtents: { x: reach / 2, y: depth / 2, z: reach / 2 } })
+      if (r.success && r.polyRef) out.push(r.point)
+    }
+    return out
+  }
+
+  private reaches(from: Vec3, to: Vec3): boolean {
+    const end = this.path(from, to).at(-1)
+    return !!end && Math.hypot(end.x - to.x, end.y - to.y, end.z - to.z) <= NAV.auditReach
+  }
+
   path(from: Vec3, to: Vec3): Vec3[] {
     const r = this.query.computePath(from, to, { maxPathPolys: NAV.maxPathPolys, maxStraightPathPoints: NAV.maxPathPolys })
     return r.success ? r.path : []
   }
 
   // Unreachable = no path ends within pick-up reach of the target; off-mesh = the target has no floor under it.
-  audit(from: Vec3, targets: readonly { id: string; at: Vec3 }[]): WalkReport {
+  // A target on a ladder (a shaft with no floor) is reached through that ladder's foot, one on a climbable
+  // prop through the floor at the prop's foot.
+  audit(from: Vec3, targets: readonly { id: string; at: Vec3 }[], ladders: readonly LadderLike[] = [], climbable: (at: Vec3) => boolean = () => false): WalkReport {
     const report: WalkReport = { from, checked: targets.length, unreachable: [], offMesh: [] }
     for (const t of targets) {
-      const snapped = this.snap(t.at)
-      if (!snapped) {
-        report.offMesh.push(t)
-        continue
-      }
-      const end = this.path(from, snapped).at(-1)
-      if (!end || Math.hypot(end.x - snapped.x, end.y - snapped.y, end.z - snapped.z) > NAV.auditReach) report.unreachable.push(t)
+      const ladder = ladders.find((l) => segmentDistance(t.at, l.bottom, l.top) <= NAV.auditReach)
+      const snapped = this.snap(ladder ? ladderLink(ladder).from : t.at)
+      const feet = snapped ? [snapped] : climbable(t.at) ? this.feetAround(t.at) : []
+      if (feet.length === 0) report.offMesh.push(t)
+      else if (!feet.some((f) => this.reaches(from, f))) report.unreachable.push(t)
     }
     return report
   }

@@ -234,13 +234,13 @@ function nef(k: Kit): void {
   ring(0, [])
   ring(8, [{ x: 2.9, z: 0, r: 0.7 }])
   ring(16, [{ x: -2.9, z: 0, r: 0.7 }])
-  ringFloor(k, 0, 0, 27, 2.5, 4.6, 'grille', [{ x: 0, z: -2.95, r: 0.7 }])
+  ringFloor(k, 0, 0, 27, 2.5, 5.6, 'grille', [{ x: 0, z: -2.95, r: 0.7 }])
   for (const y of [0, 8, 16]) {
     const gaps: [number, number][] = y === 8 ? [[Math.PI / 2 - 0.3, Math.PI / 2 + 0.3], [-Math.PI / 2 - 0.3, -Math.PI / 2 + 0.3]] : [[-0.3, 0.3], [Math.PI - 0.3, Math.PI + 0.3]]
     ringRail(k, 0, 0, y, 5.5, gaps, 28)
   }
-  ringRail(k, 0, 0, 27, 4.5, [[Math.PI / 2 - 0.25, Math.PI / 2 + 0.25]], 24)
-  mast(k, 0, 0, -22, 33, 2.4, [-14, -2, 6, 14, 22, 29])
+  ringRail(k, 0, 0, 27, 5.5, [[Math.PI / 2 - 0.25, Math.PI / 2 + 0.25]], 28)
+  mast(k, 0, 0, -22, 32.2, 2.4, [-14, -2, 6, 14, 22, 29])
   k.ladder('mat-0-8', 2.9, 0, 0, 8.1, 1, 0, ['nef'])
   k.ladder('mat-8-16', -2.9, 0, 8, 16.1, -1, 0, ['nef'])
   k.ladder('mat-16-27', 0, -2.95, 16, 27.1, 0, -1, ['nef'])
@@ -1056,12 +1056,12 @@ function trouvailles(kits: Map<DistrictId, Kit>): void {
     ['machines', 9, -21.8, -5], ['machines', -6, -13.8, 9.5], ['machines', 0.5, -26, 10], ['machines', -9, -21.8, 6],
     ['marche', -88, 21.2, 45], ['marche', -101, 13.2, 66], ['marche', -75, 6.7, 2], ['marche', -91.6, 3.05, 30], ['marche', -84.4, 3.05, 61],
     ['marche', -101, 0.2, 70], ['marche', -75, 13.2, 30], ['marche', -96, 6.7, 58],
-    ['serres', 90, 21.2, 45], ['serres', 82, 0.75, 30], ['serres', 105, 7.2, 68], ['serres', 75, 7.2, 3], ['serres', 98, 0.75, 60],
+    ['serres', 90, 21.2, 45], ['serres', 80.2, 0.2, 30], ['serres', 105, 7.2, 68], ['serres', 75, 7.2, 3], ['serres', 96.4, 0.2, 60],
     ['serres', 86, 6.5, 12], ['serres', 105, 0.2, -3],
     ['ateliers', -112, 14.2, -33], ['ateliers', -121, 0.2, -20], ['ateliers', -60, 1.7, -32], ['ateliers', -105, 6.7, -32],
     ['ateliers', -55, 6.7, -44], ['ateliers', -118, 3.3, -38], ['ateliers', -88, 0.2, -10],
-    ['scellees', 120, 0.2, -44], ['scellees', 112, 14.2, -33], ['scellees', 75, 0.2, -32], ['scellees', 58, 6.7, -20],
-    ['scellees', 100, 0.2, -20], ['scellees', 90, 0.2, -12],
+    ['scellees', 120, 0.2, -44], ['scellees', 112, 14.2, -33], ['scellees', 75, 0.2, -32], ['scellees', 58, 6.7, -23.5],
+    ['scellees', 100, 0.2, -23.5], ['scellees', 90, 0.2, -12],
     ['proue', -9, 16.2, -71], ['proue', 9, 8.2, -51], ['proue', 0, 8.2, -71],
     ['ecluse', -3.5, 0.2, 43.4], ['ecluse', 5.4, 16.2, 46.4], ['ecluse', 4, 16.2, 29.8], ['ecluse', -4.5, 16.2, 31.5],
     ['hauts', -40, 27.2, 44.9], ['hauts', 44, 27.2, 43.1], ['hauts', -86, 27.2, 41], ['hauts', 92, 27.2, 46],

@@ -311,7 +311,9 @@ export function createDriftSystem(): System {
     if (new URLSearchParams(location.search).has('nav')) root.add(mesh.helper())
     const rooms = Object.entries({ ...SPAWNS, ...EXTRA_SPAWNS }).map(([id, at]) => ({ id, at }))
     const sites = buildSites().all.map((s) => ({ id: s.id, at: s.local }))
-    const report = mesh.audit(SPAWNS.cabine, [...rooms, ...sites])
+    const ladders = [...city.anchorsNear({ x: 0, y: 0, z: 0 }, Infinity).flatMap((a) => (a.kind === 'ladder' ? [a] : [])), ...quarter.furniture.ladders]
+    const climbable = (at: Vec3) => ctx.physics.raycast(toWorld(pose, { x: at.x, y: at.y + 0.2, z: at.z }), { x: 0, y: -1, z: 0 }, 1)?.tag?.climbable === true
+    const report = mesh.audit(SPAWNS.cabine, [...rooms, ...sites], ladders, climbable)
     console.info(`[drift] navmesh ${mesh.polys} polys in ${ms.toFixed(0)} ms; ${report.unreachable.length} unreachable, ${report.offMesh.length} off-mesh of ${report.checked}`)
     if (report.unreachable.length > 0) console.info('[drift] unreachable from the cabin:', report.unreachable.map((t) => t.id).join(' '))
     if (report.offMesh.length > 0) console.info('[drift] no floor under:', report.offMesh.map((t) => t.id).join(' '))
