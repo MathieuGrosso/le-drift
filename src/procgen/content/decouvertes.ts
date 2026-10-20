@@ -3,6 +3,7 @@ import type { Vec3 } from '../../core/types'
 import { toWorld } from '../../drift/frame'
 import type { ProcgenHost } from '../../drift/procgen-hook'
 import type { ContentSet, DistrictPlan, ProcgenEvents } from '../types'
+import { createArrivee } from './arrivee'
 import { PHARE_KIT, kitDef, kitScale } from './landmarks'
 import { EVENTS, SIGHT, TOUCH } from './tuning'
 
@@ -46,6 +47,7 @@ export function createDecouvertes(host: ProcgenHost, plans: readonly DistrictPla
   const known = new Set<string>(host.ctx.state.chart.reperes)
   const byId = new Map(plans.map((p) => [p.id, p]))
   const emitted = new Set<string>()
+  const arrivee = createArrivee(host.ctx.uiRoot)
   let current: string | null = null
   let wait = 0
   let lastHour = host.ctx.state.time.hours
@@ -73,10 +75,12 @@ export function createDecouvertes(host: ProcgenHost, plans: readonly DistrictPla
 
   return {
     update(dt, hero, sets) {
+      arrivee.update(dt)
       const here = plans.find((p) => inside(p, hero)) ?? null
       if ((here?.id ?? null) !== current) {
         current = here?.id ?? null
         if (here) {
+          arrivee.enter(here)
           bus.emit('procgen:entered', { id: here.id, nom: here.nom, quartier: here.quartier, archetype: here.archetype })
           discover(here.id, here.nom, 'quartier', here.id)
         }

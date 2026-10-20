@@ -58,3 +58,5 @@ export const SITE = {
 } as const
 
 export const BEACON = { minLift: 16, gap: 2.5, under: 2, body: 1.1, color: 0xffb766, satellites: 3, satR: 0.45, satDrop: 2.2, satSpread: 2.4, radius: 20, power: 1.1 } as const
+
+export const ARRIVEE = { top: '14%', fade: 0.9, hold: 4.2, repeatAfter: 90 } as const
