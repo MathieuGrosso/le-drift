@@ -34,15 +34,19 @@ void main() {
 `
 
 const CEILING_VS = /* glsl */ `
+#include <fog_pars_vertex>
 varying vec3 vW;
 void main() {
   vec4 w = modelMatrix * vec4(position, 1.0);
   vW = w.xyz;
-  gl_Position = projectionMatrix * viewMatrix * w;
+  vec4 mvPosition = viewMatrix * w;
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
 }
 `
 
 const CEILING_FS = /* glsl */ `
+#include <fog_pars_fragment>
 varying vec3 vW;
 
 float rd_wave(vec2 p) {
@@ -115,6 +119,7 @@ void main() {
   float haze = 1.0 - exp(-pow(d / (rdHazeDist * 1.25), 1.35));
   col = mix(col, rd_hazeColor(V, rdCeilY), haze);
   gl_FragColor = vec4(col, 1.0);
+  #include <fog_fragment>
 }
 `
 
@@ -142,7 +147,8 @@ export function createEnvironment(scene: THREE.Scene, shared: AllUniforms): Envi
   backdrop.userData.noShadow = true
 
   const ceilingMat = new THREE.ShaderMaterial({
-    uniforms: shared,
+    uniforms: { ...shared, ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog) },
+    fog: true,
     vertexShader: CEILING_VS,
     fragmentShader: GLSL_COMMON + CEILING_FS,
     side: THREE.FrontSide,
