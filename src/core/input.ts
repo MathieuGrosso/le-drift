@@ -1,5 +1,5 @@
 import { INPUT } from './tuning'
-import type { ButtonAction, GameState, Input } from './types'
+import type { ButtonAction, GameState, Input, NavDir } from './types'
 
 const ACTIONS: readonly ButtonAction[] = [
   'up', 'down', 'sprint', 'interact', 'scrub', 'map', 'inventory', 'pause', 'whistle', 'recenter',
@@ -44,6 +44,10 @@ const FIXED_KEY_LABELS: Record<string, string> = {
   Tab: 'Tab', Escape: 'Échap',
 }
 
+const NAV_KEYS: Readonly<Record<string, NavDir>> = {
+  KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
+}
+
 const MOVE_KEYS = {
   forward: ['KeyW', 'ArrowUp'],
   back: ['KeyS', 'ArrowDown'],
@@ -81,6 +85,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
   const keys = new Set<string>()
   const mouseButtons = new Set<number>()
   const latchedPresses = new Set<ButtonAction>()
+  const latchedNav: NavDir[] = []
   let prevDown = new Set<ButtonAction>()
   let curDown = new Set<ButtonAction>()
   let latchedPressesFrame = new Set<ButtonAction>()
@@ -96,6 +101,7 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
 
   const input: Input = {
     move: { x: 0, y: 0 },
+    navPresses: [],
     look: { x: 0, y: 0 },
     down: (a) => curDown.has(a),
     pressed: (a) => (curDown.has(a) && !prevDown.has(a)) || latchedPressesFrame.has(a),
@@ -138,6 +144,8 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
     if (!keys.has(e.code)) {
       const a = actionForKey(e.code)
       if (a) latchedPresses.add(a)
+      const dir = NAV_KEYS[e.code]
+      if (dir) latchedNav.push(dir)
     }
     keys.add(e.code)
   }
@@ -197,6 +205,8 @@ export function createInput(canvas: HTMLCanvasElement, getState: () => GameState
       curDown = new Set()
       latchedPressesFrame = new Set(latchedPresses)
       latchedPresses.clear()
+      const navs = latchedNav.splice(0)
+      input.navPresses = enabled ? navs : []
       const settings = getState().settings
       const invert = settings.invertY ? -1 : 1
 

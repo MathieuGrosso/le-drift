@@ -95,8 +95,11 @@ export interface PhysicsWorld {
 
 export type ButtonAction =
   | 'up' | 'down' | 'sprint' | 'interact' | 'scrub' | 'map' | 'inventory' | 'pause' | 'whistle' | 'recenter'
+export type NavDir = 'up' | 'down' | 'left' | 'right'
 export interface Input {
   move: { x: number; y: number }
+  /** Directional key-downs of this frame, in order, so quick taps are not merged into one held level. */
+  navPresses: readonly NavDir[]
   look: { x: number; y: number }
   down(a: ButtonAction): boolean
   pressed(a: ButtonAction): boolean
@@ -223,6 +226,8 @@ export interface SaveStore {
   clear(): void
   /** Online, writes go to this player's own key so the solo save is left as it was; null returns to solo. */
   useSlot(slot: string | null): void
+  /** While held (the title screen poses the hero elsewhere), writes wait and the last one lands on release. */
+  hold(held: boolean): void
 }
 
 export interface CelMaterialParams {

@@ -1,4 +1,4 @@
-import type { ButtonAction } from '../../core/types'
+import type { ButtonAction, NavDir } from '../../core/types'
 import { cookDish, eatDish } from '../cooking'
 import type { Gp, Menus } from '../context'
 import { categoryOf, DISHES, INGREDIENTS, isKeyItem, itemName, type ItemCategory } from '../inventory'
@@ -17,10 +17,10 @@ const TRADES: readonly Trade[] = [
   { give: { 'sel-de-machine': 1 }, get: { moule: 2 } },
 ]
 
-type NavDir = 'up' | 'down' | 'left' | 'right'
 const FOCUSABLE = 'button:not(:disabled), input, .gp-card.pick, .gp-slot.full'
 const NAV_DELAY_MS = 380
 const NAV_REPEAT_MS = 130
+const ROW_TOLERANCE_PX = 12
 
 const stallIndex = (id: string) => {
   let h = 0
@@ -365,20 +365,26 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     const r0 = cur.getBoundingClientRect()
     const x0 = r0.left + r0.width / 2
     const y0 = r0.top + r0.height / 2
-    let best: HTMLElement | null = null
-    let bestScore = Infinity
+    const vertical = dir === 'up' || dir === 'down'
+    const ahead: { it: HTMLElement; along: number; across: number }[] = []
     for (const it of items) {
       if (it === cur) continue
       const r = it.getBoundingClientRect()
       const dx = r.left + r.width / 2 - x0
       const dy = r.top + r.height / 2 - y0
       const along = dir === 'up' ? -dy : dir === 'down' ? dy : dir === 'left' ? -dx : dx
-      const across = dir === 'up' || dir === 'down' ? dx : dy
-      if (along <= 4) continue
-      const score = along + 2 * Math.abs(across)
+      if (along > 4) ahead.push({ it, along, across: Math.abs(vertical ? dx : dy) })
+    }
+    // Up/down walk the rows in order (nearest row first, then nearest column); left/right weigh straightness.
+    const nearestRow = Math.min(...ahead.map((a) => a.along))
+    let best: HTMLElement | null = null
+    let bestScore = Infinity
+    for (const a of ahead) {
+      if (vertical && a.along > nearestRow + ROW_TOLERANCE_PX) continue
+      const score = vertical ? a.across : a.along + 2 * a.across
       if (score < bestScore) {
         bestScore = score
-        best = it
+        best = a.it
       }
     }
     if (!best && (dir === 'up' || dir === 'down') && items.length > 1) best = dir === 'down' ? items[0]! : items[items.length - 1]!
@@ -398,11 +404,14 @@ export function createMenus(gp: Gp, root: HTMLElement): Menus {
     keepFocus(el)
     const dir = navDir()
     const now = performance.now()
-    if (dir && (dir !== navHeld || now >= navNext)) {
+    const taps = ctx.input.navPresses
+    for (const t of taps) moveFocus(el, t)
+    if (taps.length > 0) navNext = now + NAV_DELAY_MS
+    else if (dir && (dir !== navHeld || now >= navNext)) {
       navNext = now + (dir !== navHeld ? NAV_DELAY_MS : NAV_REPEAT_MS)
       moveFocus(el, dir)
     }
-    navHeld = dir
+    navHeld = taps.at(-1) ?? dir
     if (ctx.input.pressed('interact') || ctx.input.pressed('up')) {
       const active = document.activeElement
       if (active instanceof HTMLElement && el.contains(active)) {
