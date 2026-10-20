@@ -10,6 +10,8 @@ const AWAY = 0, COME = 1, NOSE = 2, FLEE = 3
 const LINGER_FIRST = 1.2
 const LINGER_EACH = 2.4
 const NEAR_GLASS = 4.5
+const HERO_CLEAR = 1.5
+const SIGHT_CLEAR = 0.45
 const TINTS = [PALETTE.corail2, 0xf3d36b, PALETTE.corail1, PALETTE.clair, PALETTE.corail3, 0x9fd3e6, 0xf6efe0]
 
 /**
@@ -39,6 +41,7 @@ export class Curious {
   private readonly fwd = new THREE.Vector3()
   private readonly target = new THREE.Vector3()
   private readonly tmp = new THREE.Vector3()
+  private readonly ray = new THREE.Vector3()
 
   constructor(private readonly ctx: GameContext, private readonly stage: Stage, private readonly bubbles: Bubbles) {
     this.rng = ctx.rng('fauna:curieux')
@@ -152,6 +155,27 @@ transformed.y += sin(uFaunaTime * 9.0 + aPhase * 12.0) * 0.03 * cFin;`,
     this.state[i] = COME
   }
 
+  /** Out of a sphere around Ilo and out of the cone from the camera to him, so no fish hides the hero. */
+  private keepClear(p: THREE.Vector3, size: number): void {
+    const st = this.stage
+    const hero = st.pos
+    const r = HERO_CLEAR + size * 0.5
+    const off = this.ray.subVectors(p, hero)
+    const d = off.length()
+    if (d < r) p.copy(hero).addScaledVector(d > 1e-4 ? off.divideScalar(d) : st.tangent, r)
+    const seg = this.ray.subVectors(hero, st.viewer)
+    const len2 = seg.lengthSq()
+    if (len2 < 1e-4) return
+    const t = THREE.MathUtils.clamp(((p.x - st.viewer.x) * seg.x + (p.y - st.viewer.y) * seg.y + (p.z - st.viewer.z) * seg.z) / len2, 0, 1)
+    const rc = THREE.MathUtils.lerp(SIGHT_CLEAR + size * 0.4, r, t)
+    const qx = st.viewer.x + seg.x * t, qy = st.viewer.y + seg.y * t, qz = st.viewer.z + seg.z * t
+    const ox = p.x - qx, oy = p.y - qy, oz = p.z - qz
+    const od = Math.hypot(ox, oy, oz)
+    if (od >= rc) return
+    if (od > 1e-4) p.set(qx + (ox / od) * rc, qy + (oy / od) * rc, qz + (oz / od) * rc)
+    else p.set(qx, qy, qz).addScaledVector(st.tangent, rc)
+  }
+
   update(dt: number): void {
     const st = this.stage
     const now = this.ctx.clock.elapsed
@@ -211,6 +235,7 @@ transformed.y += sin(uFaunaTime * 9.0 + aPhase * 12.0) * 0.03 * cFin;`,
         if (st.kind === 'sortie') {
           const a = now * 0.25 + i * 2.2
           st.point(2.2 + Math.sin(a) * 0.6, Math.cos(a) * 2.2 + this.lat[i]!, 0.4 + this.hgt[i]! + wob * 0.3, this.target)
+          this.keepClear(this.target, this.size[i]!)
         } else {
           this.kiss[i] = this.kiss[i]! - dt
           const k01 = this.kiss[i]! < 0 ? Math.sin(Math.min(1, -this.kiss[i]! / 0.7) * Math.PI) : 0
@@ -242,7 +267,10 @@ transformed.y += sin(uFaunaTime * 9.0 + aPhase * 12.0) * 0.03 * cFin;`,
         }
       }
       px += vx * dt; py += vy * dt; pz += vz * dt
-      if (st.kind !== 'sortie') {
+      if (st.kind === 'sortie') {
+        this.keepClear(this.tmp.set(px, py, pz), this.size[i]!)
+        px = this.tmp.x; py = this.tmp.y; pz = this.tmp.z
+      } else {
         this.tmp.set(px, py, pz)
         const dd = st.depth(this.tmp)
         if (dd < 0.18) { const f = 0.18 - dd; px += st.normal.x * f; py += st.normal.y * f; pz += st.normal.z * f }
