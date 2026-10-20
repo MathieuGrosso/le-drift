@@ -9,6 +9,8 @@ const VENDOR_CHUNKS: ReadonlyArray<readonly [chunk: string, packages: readonly s
 ]
 
 function vendorChunk(id: string): string | undefined {
+  // Rollup helpers (vite's preload helper among them) would otherwise land in whichever vendor chunk saw them first.
+  if (id.startsWith('\0')) return 'runtime'
   const at = id.lastIndexOf('/node_modules/')
   if (at < 0) return undefined
   const path = id.slice(at + '/node_modules/'.length)
