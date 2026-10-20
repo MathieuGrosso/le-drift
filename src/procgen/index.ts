@@ -69,7 +69,7 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   root.name = 'procgen'
   host.root.add(root)
   const silhouette = buildSilhouette(ship.districts, (plan) => massing(plan).hulls, host.mats)
-  root.add(silhouette.mesh)
+  root.add(silhouette.group)
   const far = buildFarLandmarks(ship.districts, host.mats)
   root.add(far.group)
   const decouvertes = createDecouvertes(host, ship.districts)

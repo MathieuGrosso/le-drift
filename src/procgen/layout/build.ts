@@ -1,9 +1,11 @@
 import * as THREE from 'three'
 import { GeoBuilder } from '../../drift/builder'
+import { glowMaterial, LampGrid, lightAt, type BakeLamp } from '../../drift/city/glow'
+import type { Mats } from '../../drift/materials'
 import { PAL } from '../../drift/palette'
 import { ARCHETYPES } from '../archetypes'
 import type { BuildLayoutFn, ColliderSpec, DistrictShell } from '../types'
-import { HULL, LEVELS } from './tuning'
+import { BAKE, HULL, LEVELS } from './tuning'
 
 const VAULT = new THREE.CylinderGeometry(1, 1, 1, 14, 1, false, -Math.PI / 2, Math.PI)
 const DISC = new THREE.CylinderGeometry(1, 1, 1, 12)
@@ -87,12 +89,16 @@ function drawCollider(b: GeoBuilder, c: ColliderSpec, t: Tones, top: number): vo
 }
 
 function drawHull(b: GeoBuilder, shell: DistrictShell, t: Tones): void {
+  const ceiling = LEVELS[shell.plan.layer].top - HULL.slab
   for (const h of shell.hulls) {
     const lx = Math.abs(Math.sin(h.yaw)) > 0.5
     const top = h.floors[h.floors.length - 1]! + LEVELS.haut.storey
-    _s.makeScale(h.rx, h.length, HULL.roofRise)
-    _m.copy(lx ? ALONG_X : ALONG_Z).multiply(_s).setPosition(h.center.x, top, h.center.z)
-    b.add(VAULT, _m, t.voute)
+    const rise = Math.min(HULL.roofRise, ceiling - top)
+    if (rise > HULL.slab) {
+      _s.makeScale(h.rx, h.length, rise)
+      _m.copy(lx ? ALONG_X : ALONG_Z).multiply(_s).setPosition(h.center.x, top, h.center.z)
+      b.add(VAULT, _m, t.voute)
+    }
     const sx = lx ? h.length : h.rx * 2
     const sz = lx ? h.rx * 2 : h.length
     const y0 = h.floors[0]!
@@ -118,6 +124,35 @@ function drawHull(b: GeoBuilder, shell: DistrictShell, t: Tones): void {
   }
 }
 
+const matCache = new WeakMap<Mats, THREE.Material>()
+const structureMat = (mats: Mats) => {
+  let m = matCache.get(mats)
+  if (!m) matCache.set(mats, (m = glowMaterial(mats, { side: THREE.DoubleSide, rim: BAKE.rim })))
+  return m
+}
+
+// Every shell lamp (room, stair key, keel sconce) baked as a light floor into the walls and floors.
+function* bake(geo: THREE.BufferGeometry, shell: DistrictShell): Generator<void, THREE.BufferGeometry, void> {
+  const a = ARCHETYPES[shell.plan.archetype]
+  const base = new THREE.Color(a.light.ambiance[0]).lerp(new THREE.Color(a.light.ambiance[1]), BAKE.ambientMix)
+    .multiplyScalar(BAKE.ambient[shell.plan.layer])
+  const grid = new LampGrid(shell.lamps.map((l): BakeLamp => ({ x: l.at.x, y: l.at.y, z: l.at.z, color: new THREE.Color(l.color), radius: l.radius * BAKE.radius, power: BAKE.power })))
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute
+  const nor = geo.getAttribute('normal') as THREE.BufferAttribute
+  const glow = new Float32Array(pos.count * 3)
+  const c = new THREE.Color()
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    lightAt(x, y, z, nor.getX(i), nor.getY(i), nor.getZ(i), grid.near(x, y, z), base, c).toArray(glow, i * 3)
+    if (i % BAKE.slice === BAKE.slice - 1) yield
+  }
+  geo.setAttribute('aGlow', new THREE.BufferAttribute(glow, 3))
+  geo.setAttribute('aSky', new THREE.BufferAttribute(new Float32Array(pos.count), 1))
+  return geo
+}
+
 export const buildLayout: BuildLayoutFn = function* (shell, host) {
   const t0 = performance.now()
   const t = tones(shell)
@@ -136,7 +171,7 @@ export const buildLayout: BuildLayoutFn = function* (shell, host) {
   drawHull(b, shell, t)
   yield
   const pb = shell.plan.bounds
-  b.box((pb.x0 + pb.x1) / 2, lv.top + 0.2, (pb.z0 + pb.z1) / 2, pb.x1 - pb.x0, 0.4, pb.z1 - pb.z0, t.plafond)
+  b.box((pb.x0 + pb.x1) / 2, lv.top - HULL.slab / 2 - BAKE.ceilingGap, (pb.z0 + pb.z1) / 2, pb.x1 - pb.x0, HULL.slab, pb.z1 - pb.z0, t.plafond)
   for (let x = pb.x0 + 6; x < pb.x1; x += 12) b.box(x, lv.top - 0.4, (pb.z0 + pb.z1) / 2, 0.5, 0.8, pb.z1 - pb.z0, t.coque)
   for (const w of shell.windows) {
     const nx = w.normal.x
@@ -166,15 +201,15 @@ export const buildLayout: BuildLayoutFn = function* (shell, host) {
   const group = new THREE.Group()
   group.name = `structure:${shell.plan.id}`
   const geos: THREE.BufferGeometry[] = []
-  const add = (gb: GeoBuilder, mat: THREE.Material) => {
-    if (gb.vertexCount === 0) return
-    const geo = gb.build()
+  const add = (gb: GeoBuilder | THREE.BufferGeometry, mat: THREE.Material) => {
+    if (gb instanceof GeoBuilder && gb.vertexCount === 0) return
+    const geo = gb instanceof GeoBuilder ? gb.build() : gb
     geos.push(geo)
     const mesh = new THREE.Mesh(geo, mat)
     mesh.matrixAutoUpdate = false
     group.add(mesh)
   }
-  add(b, host.mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, side: THREE.DoubleSide }))
+  if (b.vertexCount > 0) add(yield* bake(b.build(), shell), structureMat(host.mats))
   add(glass, host.mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, emissive: 0x6a8a80 }))
   add(water, host.mats.water(host.mats.cel({ color: 0xffffff, vertexColors: true, indoor: true, caustics: true })))
   yield

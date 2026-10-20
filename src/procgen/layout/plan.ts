@@ -7,8 +7,8 @@ import type {
   Box, CellSpec, ColliderSpec, DistrictPlan, DressSlot, FloorSpec, FloorStyle, HullSpec, LampSpec, LinkSpec, PortSpec,
   Rect, VoidSpec, WalkEdge, WalkNode, WaterSpec, WindowSpec,
 } from '../types'
-import { cellX, cellZ, DIRS, type Dir, type Grid, K, type Lot, opposite, walkable } from './grid'
-import { BRIDGE, DECK_AT, GRID, HULL, LAMPS, LEVELS, PORT, WINDOWS } from './tuning'
+import { cellX, cellZ, DIRS, type Dir, type Fosse, type Grid, K, type Lot, opposite, walkable } from './grid'
+import { ARRIVAL, BRIDGE, DECK_AT, FOSSE, GRID, HULL, LAMPS, LEVELS, PORT, WATER, WINDOWS } from './tuning'
 
 export interface Door { lot: number; dir: Dir; storey: number; at: number; w: number }
 export interface Bridge { a: number; b: number; dir: Dir; storey: number; at: number; from: number; to: number }
@@ -361,7 +361,7 @@ export function shell(plan: DistrictPlan, sk: Skeleton): Shelled {
     if (g.kind[c] !== K.Water || g.ramp[c]) continue
     const i = c % g.nx
     const j = Math.floor(c / g.nx)
-    o.waters.push({ cell: streetCell, rect: { x0: g.x0 + i * GRID, x1: g.x0 + (i + 1) * GRID, z0: g.z0 + j * GRID, z1: g.z0 + (j + 1) * GRID }, y: G - 0.12 })
+    o.waters.push({ cell: streetCell, rect: { x0: g.x0 + i * GRID, x1: g.x0 + (i + 1) * GRID, z0: g.z0 + j * GRID, z1: g.z0 + (j + 1) * GRID }, y: g.h[c]! + (g.sunk[c] ? FOSSE.flood : WATER.surface) })
   }
   const { walls, links } = edgeWalls(g)
   for (const w of walls) {
@@ -494,6 +494,7 @@ export function shell(plan: DistrictPlan, sk: Skeleton): Shelled {
     const low: Vec3 = s.alongX ? { x: s.up > 0 ? s.s0 : s.s1, y: y0, z: s.lateral } : { x: s.lateral, y: y0, z: s.up > 0 ? s.s0 : s.s1 }
     const high: Vec3 = s.alongX ? { x: s.up > 0 ? s.s1 : s.s0, y: y1, z: s.lateral } : { x: s.lateral, y: y1, z: s.up > 0 ? s.s1 : s.s0 }
     o.links.push({ id: `${id}/escalier-${lot}-${s.storey}`, kind: 'escalier', from: low, to: high, both: true, cells: [cellIdOf(lot, s.storey), cellIdOf(lot, s.storey + 1)] })
+    o.lamps.push({ cell: cellIdOf(lot, s.storey), at: { x: (low.x + high.x) / 2, y: y1 - 1, z: (low.z + high.z) / 2 }, color: LAMPS.key, radius: LAMPS.keyRadius, live: false })
     edge(hn(lot, s.storey), hn(lot, s.storey + 1), 'escalier', nodeAt.get(hn(lot, s.storey))!, nodeAt.get(hn(lot, s.storey + 1))!)
   }
   for (const br of sk.bridges) {
@@ -554,10 +555,17 @@ export function shell(plan: DistrictPlan, sk: Skeleton): Shelled {
     node(pid, streetCell, { ...e.port.at })
     edge(pid, sn(e.cell), e.open ? 'escalier' : 'porte', e.port.at, nodeAt.get(sn(e.cell))!)
     o.ports.push({ port: e.port.id, cell: streetCell, at: { ...e.port.at } })
+    if (e.port.kind === 'escalier') o.lamps.push({ cell: streetCell, at: { x: e.port.at.x, y: e.port.at.y + LAMPS.keyHeight, z: e.port.at.z }, color: LAMPS.key, radius: LAMPS.keyRadius, live: true })
   }
+  for (const f of g.fosses) {
+    if (f.landing < 0) continue
+    o.lamps.push({ cell: streetCell, at: { x: cellX(g, f.landing % g.nx), y: G + LAMPS.keyHeight, z: cellZ(g, Math.floor(f.landing / g.nx)) }, color: LAMPS.key, radius: LAMPS.keyRadius, live: false })
+  }
+  if (plan.layer === 'bas') wallLamps(o, plan, perim.map((p) => p.gaps), G)
   markMain(o, g.entries.map((e) => `p:${e.port.id}`))
   for (const v of g.voids) {
-    const vb: Box = { x0: g.x0 + v.i0 * GRID, x1: g.x0 + (v.i1 + 1) * GRID, y0: G, y1: lv.top, z0: g.z0 + v.j0 * GRID, z1: g.z0 + (v.j1 + 1) * GRID }
+    const floor = g.fosses.some((f) => f.i0 === v.i0 && f.j0 === v.j0) ? G - FOSSE.depth : G
+    const vb: Box = { x0: g.x0 + v.i0 * GRID, x1: g.x0 + (v.i1 + 1) * GRID, y0: floor, y1: lv.top, z0: g.z0 + v.j0 * GRID, z1: g.z0 + (v.j1 + 1) * GRID }
     const kind = plan.shape === 'archipel' ? 'bassin' : plan.shape === 'puits' ? 'puits' : plan.shape === 'nef-longue' ? 'nef' : 'atrium'
     o.voids.push({ id: `${id}/vide-${o.voids.length}`, cell: streetCell, kind, box: vb })
     o.lamps.push({ cell: streetCell, at: { x: (vb.x0 + vb.x1) / 2, y: G + (lv.top - G) * 0.6, z: (vb.z0 + vb.z1) / 2 }, color: arch.light.lampe, radius: LAMPS.radius * 2, live: true })
@@ -574,13 +582,83 @@ export function shell(plan: DistrictPlan, sk: Skeleton): Shelled {
     }
   }
   for (const w of o.windows) o.slots.push({ kind: 'fenetre', cell: streetCell, at: { ...w.at }, yaw: Math.atan2(-w.normal.x, -w.normal.z), w: w.w, d: 0.6, h: w.h, weight: w.kind === 'baie' ? 1 : 0.3, onPath: false })
-  const head = g.entries[0]?.head ?? g.hub
   o.cells.push({
     id: streetCell, district: id, quartier: plan.quartier, deck: deckAt(G), nom: plan.nom,
     boxes: [{ ...b }], roof: lv.top, air: arch.light.airHaze, glass: sk.outer.length > 0,
-    spawn: { x: cellX(g, head % g.nx), y: g.h[head]!, z: cellZ(g, Math.floor(head / g.nx)), yaw: 0 },
+    spawn: arrival(g),
   })
   return o
+}
+
+const heroYaw = (dx: number, dz: number) => Math.atan2(dx, -dz)
+
+function flatGround(g: Grid, x: number, z: number): boolean {
+  const i = Math.floor((x - g.x0) / GRID)
+  const j = Math.floor((z - g.z0) / GRID)
+  if (i < 0 || j < 0 || i >= g.nx || j >= g.nz) return false
+  const c = j * g.nx + i
+  return walkable(g.kind[c]!) && !g.ramp[c] && !g.sunk[c] && !g.fixed[c] && g.h[c] === g.ground
+}
+
+// The arrival spot: on the main void's rim, looking down at its centre (the landmark's square).
+// The return tube booth stands ARRIVAL.side to the spawn's right, so that spot must be rim too.
+function overlook(g: Grid, f: Fosse): { c: number; yaw: number } | null {
+  const focus = g.focus!
+  const lx = cellX(g, f.landing % g.nx)
+  const lz = cellZ(g, Math.floor(f.landing / g.nx))
+  let best: { c: number; yaw: number; score: number } | null = null
+  for (let c = 0; c < g.kind.length; c++) {
+    const i = c % g.nx
+    const j = Math.floor(c / g.nx)
+    const x = cellX(g, i)
+    const z = cellZ(g, j)
+    if (!flatGround(g, x, z)) continue
+    const rim = ([1, 2, 3, 4] as const).some((d) => {
+      const ni = i + DIRS[d][0]
+      const nj = j + DIRS[d][1]
+      const n = nj * g.nx + ni
+      return ni >= 0 && nj >= 0 && ni < g.nx && nj < g.nz && g.sunk[n] === 1 && !g.ramp[n] && g.h[n]! < g.ground - 1
+    })
+    if (!rim) continue
+    const yaw = heroYaw(focus.x - x, focus.z - z)
+    const rx = Math.cos(yaw)
+    const rz = Math.sin(yaw)
+    if (![ARRIVAL.side - 0.9, ARRIVAL.side + 0.9].every((s) => flatGround(g, x + rx * s, z + rz * s))) continue
+    const bx = x + rx * ARRIVAL.side
+    const bz = z + rz * ARRIVAL.side
+    const away = f.landing >= 0 ? Math.hypot(bx - lx, bz - lz) : ARRIVAL.clear
+    if (away < ARRIVAL.clear) continue
+    const score = Math.hypot(x - lx, z - lz) - (g.main[c] ? ARRIVAL.mainBonus : 0)
+    if (!best || score < best.score) best = { c, yaw, score }
+  }
+  return best
+}
+
+function arrival(g: Grid): { x: number; y: number; z: number; yaw: number } {
+  const f = g.fosses[0]
+  const o = f && g.focus ? overlook(g, f) : null
+  const c = o?.c ?? g.entries[0]?.head ?? g.hub
+  const x = cellX(g, c % g.nx)
+  const z = cellZ(g, Math.floor(c / g.nx))
+  const yaw = o?.yaw ?? (g.focus ? heroYaw(g.focus.x - x, g.focus.z - z) : 0)
+  return { x, y: g.h[c]!, z, yaw }
+}
+
+// The keel has no sea light: warm sconces along its hull skin keep the far walls readable.
+function wallLamps(o: Shelled, plan: DistrictPlan, gaps: readonly { at: number; w: number }[][], G: number): void {
+  const b = plan.bounds
+  const arch = ARCHETYPES[plan.archetype]
+  for (const d of [1, 2, 3, 4] as const) {
+    const alongZ = d <= 2
+    const a0 = alongZ ? b.z0 : b.x0
+    const a1 = alongZ ? b.z1 : b.x1
+    const fixed = (d === 1 ? b.x1 : d === 2 ? b.x0 : d === 3 ? b.z1 : b.z0) - (d === 1 || d === 3 ? 1 : -1) * LAMPS.wallInset
+    for (let a = a0 + LAMPS.wallEvery / 2; a < a1; a += LAMPS.wallEvery) {
+      if (gaps[d - 1]!.some((gp) => Math.abs(gp.at - a) < gp.w)) continue
+      const at: Vec3 = alongZ ? { x: fixed, y: G + LAMPS.wallHeight, z: a } : { x: a, y: G + LAMPS.wallHeight, z: fixed }
+      o.lamps.push({ cell: plan.id, at, color: arch.light.lampe, radius: LAMPS.wallRadius, live: false })
+    }
+  }
 }
 
 export function dirYaw(d: Dir): number {

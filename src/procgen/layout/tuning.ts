@@ -37,17 +37,29 @@ export const HULL = {
   roofRise: 3.5,
 }
 
+export const BAKE = { ambient: { haut: 0.55, bas: 0.42 } as const, ambientMix: 0.55, radius: 1.2, power: 0.7, rim: 0.3, slice: 30000, ceilingGap: 0.1 }
+
 export const BRIDGE = { width: 2.4, maxGap: 4, chance: 0.6, perHull: 2 }
 
 export const RAMP = { risePerCell: 2 }
 
 export const PORT = { w: 4, h: 4.6 }
 
-export const WATER = { depth: 0.45, surface: 0.15 }
+export const WATER = { depth: 0.45, surface: 0.33 }
+
+// The haut layer's main void is sunk to deck bas (y −6): the landmark square, ramps down its rim.
+export const FOSSE = { depth: 6, portClear: 1, ramps: 4, rampGap: 1, tries: 8, flood: 0.5, plain: [6, 6] as const }
 
 export const WINDOWS = { hublotEvery: 6, hublotR: 0.7, baie: { w: 12, h: 7 } }
 
-export const LAMPS = { streetEvery: 16, radius: 9 }
+export const LAMPS = {
+  streetEvery: 16, radius: 9,
+  key: 0xffb36b, keyRadius: 10, keyHeight: 3.2,
+  wallEvery: 14, wallHeight: 5, wallInset: 0.8, wallRadius: 11,
+}
+
+// Spawn on the void rim; `side` mirrors liaisons' BOOTH.side (the return booth stands to its right).
+export const ARRIVAL = { side: 3.2, clear: 5, mainBonus: 6 }
 
 export const SHAPE_VOID: Readonly<Record<string, readonly [w: number, d: number] | null>> = {
   rue: null,
@@ -70,4 +82,8 @@ export const STREAM = {
   navDwell: 20,
 }
 
-export const SILHOUETTE = { color: 0x6f6a78, tint: 0.45, valueJitter: 0.12, girth: 0.92, capSegments: 2, radial: 8 }
+export const SILHOUETTE = {
+  color: 0xa07a5c, tint: 0.3, valueJitter: 0.14, girth: 0.92, capSegments: 2, radial: 8,
+  // Window cards: `span` of the hull length carries them, `sill` of a storey up, `off` share unlit.
+  windows: { w: 1.1, h: 1.5, every: 3.2, span: 0.6, sill: 0.45, lift: 0.12, off: 0.3, dim: 0.35, jitter: 0.12 },
+}

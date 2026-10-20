@@ -1,6 +1,8 @@
 import { mulberry32 } from '../../core/rng'
+import { ARCHETYPES } from '../archetypes'
+import type { Vec3 } from '../../core/types'
 import type { DistrictPlan, PortPlan, Rng } from '../types'
-import { GRID, LEVELS, LOT, RAMP, SHAPE_VOID, STREET, WATER } from './tuning'
+import { FOSSE, GRID, LEVELS, LOT, RAMP, SHAPE_VOID, STREET, WATER } from './tuning'
 
 export const enum K { Empty = 0, Street = 1, Void = 2, Water = 3, Lot = 4 }
 
@@ -12,6 +14,9 @@ export const opposite = (d: Dir): Dir => (d === 1 ? 2 : d === 2 ? 1 : d === 3 ? 
 export interface Lot { id: number; i0: number; i1: number; j0: number; j1: number; storeys: number }
 
 export interface Entry { port: PortPlan; cell: number; head: number; open: Dir | 0 }
+
+export interface CellRect { i0: number; i1: number; j0: number; j1: number }
+export interface Fosse extends CellRect { landing: number; flooded: boolean }
 
 export interface Grid {
   nx: number
@@ -28,7 +33,10 @@ export interface Grid {
   lot: Int16Array
   lots: Lot[]
   entries: Entry[]
-  voids: { i0: number; i1: number; j0: number; j1: number }[]
+  voids: CellRect[]
+  fosses: Fosse[]
+  sunk: Uint8Array
+  focus: Vec3 | null
   hub: number
 }
 
@@ -125,7 +133,80 @@ function carve(g: Grid, cells: readonly number[], kind: K.Street | K.Void | K.Wa
 
 function fillRect(g: Grid, i0: number, j0: number, i1: number, j1: number, kind: K): void {
   for (let j = Math.max(0, j0); j <= Math.min(g.nz - 1, j1); j++)
-    for (let i = Math.max(0, i0); i <= Math.min(g.nx - 1, i1); i++) if (!g.fixed[j * g.nx + i]) g.kind[j * g.nx + i] = kind
+    for (let i = Math.max(0, i0); i <= Math.min(g.nx - 1, i1); i++) if (!g.fixed[j * g.nx + i] && !g.sunk[j * g.nx + i]) g.kind[j * g.nx + i] = kind
+}
+
+const inRect = (r: CellRect, c: number, nx: number) => {
+  const i = c % nx
+  const j = Math.floor(c / nx)
+  return i >= r.i0 && i <= r.i1 && j >= r.j0 && j <= r.j1
+}
+
+function nearEntry(g: Grid, c: number): boolean {
+  const i = c % g.nx
+  const j = Math.floor(c / g.nx)
+  const r = FOSSE.portClear
+  return g.entries.some((e) => [e.cell, e.head].some((x) => Math.abs((x % g.nx) - i) <= r && Math.abs(Math.floor(x / g.nx) - j) <= r))
+    || g.fixed[c] === 1
+}
+
+function sink(g: Grid, f: Fosse, kind: K): void {
+  const floor = g.ground - FOSSE.depth
+  for (let j = f.j0; j <= f.j1; j++) for (let i = f.i0; i <= f.i1; i++) {
+    const c = j * g.nx + i
+    if (nearEntry(g, c) || g.sunk[c]) continue
+    g.sunk[c] = 1
+    g.kind[c] = kind
+    g.h[c] = floor
+  }
+}
+
+// A ramp hugging the rim, from a ground landing where a street meets the fosse down to its floor.
+function rampDown(g: Grid, f: Fosse, rim: number, out: Dir): boolean {
+  const steps = Math.round(FOSSE.depth / RAMP.risePerCell)
+  const tangents = (out === 1 || out === 2 ? [3, 4] : [1, 2]) as Dir[]
+  for (const t of tangents) {
+    const lane: number[] = []
+    for (let k = 0; k <= steps + 1; k++) {
+      const i = (rim % g.nx) + DIRS[t][0] * k
+      const j = Math.floor(rim / g.nx) + DIRS[t][1] * k
+      const c = j * g.nx + i
+      if (i < f.i0 || i > f.i1 || j < f.j0 || j > f.j1 || !g.sunk[c] || g.ramp[c]) break
+      lane.push(c)
+    }
+    if (lane.length < steps + 2) continue
+    const [landing, ...rest] = lane
+    g.h[landing!] = g.ground
+    g.kind[landing!] = K.Street
+    g.main[landing!] = 1
+    for (let k = 0; k < steps; k++) {
+      const c = rest[k]!
+      g.kind[c] = K.Street
+      g.ramp[c] = opposite(t)
+      g.rise[c] = RAMP.risePerCell
+      g.h[c] = g.ground - RAMP.risePerCell * (k + 1)
+      g.main[c] = 1
+    }
+    if (f.landing < 0) f.landing = landing!
+    return true
+  }
+  return false
+}
+
+function rimCrossings(g: Grid, f: Fosse, path: readonly number[]): { rim: number; out: Dir }[] {
+  const out: { rim: number; out: Dir }[] = []
+  for (let p = 1; p < path.length; p++) {
+    const a = path[p - 1]!
+    const b = path[p]!
+    const ia = g.sunk[a] === 1 && inRect(f, a, g.nx)
+    const ib = g.sunk[b] === 1 && inRect(f, b, g.nx)
+    if (ia === ib) continue
+    const [rim, outside] = ia ? [a, b] : [b, a]
+    const di = (outside % g.nx) - (rim % g.nx)
+    const dj = Math.floor(outside / g.nx) - Math.floor(rim / g.nx)
+    out.push({ rim, out: di > 0 ? 1 : di < 0 ? 2 : dj > 0 ? 3 : 4 })
+  }
+  return out
 }
 
 function entries(g: Grid, plan: DistrictPlan): void {
@@ -285,36 +366,65 @@ export function planGrid(plan: DistrictPlan, variant: number): Grid {
   const g: Grid = {
     nx, nz, x0: b.x0, z0: b.z0, ground: lv.ground,
     kind: new Uint8Array(n), h: new Float32Array(n).fill(lv.ground), ramp: new Uint8Array(n), rise: new Float32Array(n),
-    fixed: new Uint8Array(n), main: new Uint8Array(n), lot: new Int16Array(n).fill(-1), lots: [], entries: [], voids: [], hub: 0,
+    fixed: new Uint8Array(n), main: new Uint8Array(n), lot: new Int16Array(n).fill(-1), lots: [], entries: [], voids: [],
+    fosses: [], sunk: new Uint8Array(n), focus: null, hub: 0,
   }
   const noise = noiseField(nx, nz, rng)
   const water = plan.shape === 'archipel'
   const voidKind = water ? K.Water : K.Void
 
-  const vs = SHAPE_VOID[plan.shape] ?? null
-  if (vs) {
-    const vw = Math.min(nx - 4, vs[0] + Math.floor(rng() * 2))
-    const vd = vs[1] === 0 ? nz - 4 : Math.min(nz - 4, vs[1] + Math.floor(rng() * 2))
-    const ci = Math.floor(nx / 2 + (rng() - 0.5) * nx * 0.25)
-    const cj = Math.floor(nz / 2 + (rng() - 0.5) * nz * 0.2)
+  const flooded = water || ARCHETYPES[plan.archetype].materials.includes('eau')
+  const vs = SHAPE_VOID[plan.shape] ?? FOSSE.plain
+  entries(g, plan)
+  const vw = Math.min(nx - 4, vs[0] + Math.floor(rng() * 2))
+  const vd = vs[1] === 0 ? nz - 4 : Math.min(nz - 4, vs[1] + Math.floor(rng() * 2))
+  const clear = (r: CellRect) => {
+    for (let j = r.j0 - FOSSE.portClear; j <= r.j1 + FOSSE.portClear; j++)
+      for (let i = r.i0 - FOSSE.portClear; i <= r.i1 + FOSSE.portClear; i++) if (i >= 0 && j >= 0 && i < nx && j < nz && g.fixed[j * nx + i]) return false
+    return !g.entries.some((e) => inRect({ i0: r.i0 - 1, i1: r.i1 + 1, j0: r.j0 - 1, j1: r.j1 + 1 }, e.head, nx))
+  }
+  let vr: CellRect | null = null
+  for (let k = 0; k < FOSSE.tries && !(vr && clear(vr)); k++) {
+    const ci = Math.floor(nx / 2 + (rng() - 0.5) * nx * (k ? 0.6 : 0.25))
+    const cj = Math.floor(nz / 2 + (rng() - 0.5) * nz * (k ? 0.6 : 0.2))
     const i0 = Math.max(2, Math.min(nx - 2 - vw, ci - Math.floor(vw / 2)))
     const j0 = Math.max(2, Math.min(nz - 2 - vd, cj - Math.floor(vd / 2)))
-    g.voids.push({ i0, i1: i0 + vw - 1, j0, j1: j0 + vd - 1 })
+    vr = { i0, i1: i0 + vw - 1, j0, j1: j0 + vd - 1 }
   }
-  entries(g, plan)
+  g.voids.push(vr!)
+  if (plan.layer === 'haut' && vs[1] > 0) {
+    const f: Fosse = { ...g.voids[0]!, landing: -1, flooded }
+    sink(g, f, flooded ? K.Water : K.Void)
+    g.fosses.push(f)
+  }
   for (const v of g.voids) fillRect(g, v.i0, v.j0, v.i1, v.j1, voidKind)
   const v0 = g.voids[0]
+  g.focus = v0 ? { x: g.x0 + ((v0.i0 + v0.i1 + 1) / 2) * GRID, y: g.fosses.length ? lv.ground - FOSSE.depth : lv.ground, z: g.z0 + ((v0.j0 + v0.j1 + 1) / 2) * GRID } : null
   g.hub = v0
     ? Math.floor((v0.j0 + v0.j1) / 2) * nx + Math.floor((v0.i0 + v0.i1) / 2)
     : Math.floor(nz / 2 + (rng() - 0.5) * 4) * nx + Math.floor(nx / 2 + (rng() - 0.5) * 4)
 
   const heads = g.entries.map((e) => e.head)
-  for (const h of heads) carve(g, carvePath(g, noise, h, g.hub), K.Street, true, STREET.mainWidth, rng)
+  const paths: number[][] = []
+  const main = (from: number, to: number) => {
+    const p = carvePath(g, noise, from, to)
+    paths.push(p)
+    carve(g, p, K.Street, true, STREET.mainWidth, rng)
+  }
+  for (const h of heads) main(h, g.hub)
   if (plan.shape === 'rue' || plan.shape === 'terrasses' || heads.length < 2) {
     const a = Math.floor(nx * (0.25 + rng() * 0.5))
     const z = Math.floor(nx * (0.25 + rng() * 0.5))
-    carve(g, carvePath(g, noise, 1 * nx + a, g.hub), K.Street, true, STREET.mainWidth, rng)
-    carve(g, carvePath(g, noise, g.hub, (nz - 2) * nx + z), K.Street, true, STREET.mainWidth, rng)
+    main(1 * nx + a, g.hub)
+    main(g.hub, (nz - 2) * nx + z)
+  }
+  for (const f of g.fosses) {
+    const landings: number[] = []
+    const near = (c: number) => landings.some((l) => Math.max(Math.abs((l % nx) - (c % nx)), Math.abs(Math.floor(l / nx) - Math.floor(c / nx))) <= FOSSE.rampGap)
+    for (const x of paths.flatMap((p) => rimCrossings(g, f, p))) {
+      if (landings.length >= FOSSE.ramps || near(x.rim)) continue
+      if (rampDown(g, f, x.rim, x.out)) landings.push(x.rim)
+    }
   }
   for (let c = 0, run = 0; c < n; c++) {
     if (!g.main[c] || g.fixed[c]) continue
@@ -350,6 +460,6 @@ export function planGrid(plan: DistrictPlan, variant: number): Grid {
     if (long >= 4 && lot.storeys === 1 && rng() < 0.5) lot.storeys = Math.min(maxS, 2)
     for (let j = lot.j0; j <= lot.j1; j++) for (let i = lot.i0; i <= lot.i1; i++) g.lot[j * nx + i] = lot.id
   }
-  for (let c = 0; c < n; c++) if (g.kind[c] === K.Water && !g.ramp[c] && !g.fixed[c]) g.h[c] = lv.ground - WATER.depth
+  for (let c = 0; c < n; c++) if (g.kind[c] === K.Water && !g.ramp[c] && !g.fixed[c] && !g.sunk[c]) g.h[c] = lv.ground - WATER.depth
   return g
 }
