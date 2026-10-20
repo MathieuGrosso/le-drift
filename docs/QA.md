@@ -29,7 +29,7 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-19 | minor | `src/drift/chatter.ts` | Bulle hors champ coupée au bord gauche, réplique hors contexte (« au petit-déj » à 18 h) — CORRIGÉ (commit 614f466) |
 | QA-20 | minor | `src/gameplay/indoor.ts` | Invite « Sortir par l'écluse » affichée en haut de l'échelle, 6 m au-dessus de la porte — CORRIGÉ (commit 7046412) |
 | QA-21 | minor | `src/gameplay/text` | Astuce « [E] près de la porte ronde » en crochets bruts, chevauche le sous-titre — CORRIGÉ (commit bf5b7d4, 22cfa1b) |
-| QA-22 | minor | `src/fauna/curious.ts` | Les poissons curieux traversent Ilo et masquent le héros |
+| QA-22 | minor | `src/fauna/curious.ts` | Les poissons curieux traversent Ilo et masquent le héros — CORRIGÉ (commit e9b723b) |
 | QA-23 | minor | `src/drift/city` | Câble de tyrolienne qui traverse la passerelle de la Nef — CORRIGÉ (commit 3917921 : poissons en papier pendus à leur corde ; câble non reproduit, aucun collider touché, il passe 5 m sous la passerelle) |
 | QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef — CORRIGÉ (commits 79efd1c linge, 3f27b4e portes de maisons) |
 | QA-25 | minor | `src/render`, `src/drift/interiors` | Cabine au réveil presque noire, moiré sur les cercles au sol — CORRIGÉ (commit 9eab880) |
