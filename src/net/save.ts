@@ -12,6 +12,9 @@ export function toPlayerSave(s: GameState): PlayerSave {
   }
 }
 
+/** Where the hero goes once the title screen is gone: the server's spot, or the cabin for a new player. */
+export type Placement = PlayerSave['hero'] | 'cabine'
+
 /** The server copy wins on join: it is the same player, possibly last seen on another device. */
 export function applyPlayerSave(ctx: GameContext, save: PlayerSave): void {
   const s = ctx.state
@@ -20,19 +23,19 @@ export function applyPlayerSave(ctx: GameContext, save: PlayerSave): void {
     shallows: save.shallows, trouvailles: save.trouvailles,
   })
   if (save.act !== s.act) ctx.services.gameplay?.setAct(save.act)
-  if (save.hero.localPosition && s.mode === 'inside') ctx.services.hero?.teleportLocal(save.hero.localPosition, save.hero.yaw)
 }
 
 /**
  * Returning player: the server copy. One the server has never seen starts a new game, whatever this tab
- * played solo, and that new game is saved to their slot and the server at once. True when it was new.
+ * played solo, and that new game is saved to their slot and the server at once. Returns where to put the
+ * hero, for the caller to apply once the title screen (which restores its own copy of the hero) is gone.
  */
-export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], remote: RemoteSave | null, storyStarted: boolean): boolean {
+export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], remote: RemoteSave | null, storyStarted: boolean): Placement | null {
   // Kept after a drop to solo: this tab now carries that player's progress, not the solo one.
   ctx.save.useSlot(`online:${w.you}`)
   if (w.save) {
     applyPlayerSave(ctx, w.save)
-    return false
+    return w.save.hero.localPosition ? w.save.hero : null
   }
   const act = ctx.state.act
   resetToNewGame(ctx.state)
@@ -41,14 +44,20 @@ export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], rem
   else if (act !== 1) ctx.bus.emit('act:changed', { act: 1 })
   ctx.save.write()
   remote?.flush()
-  return true
+  return 'cabine'
 }
 
-/** Same placement as a new solo game's `enterRoom('cabine')`; outside, the hero is left where they swim. */
-export function spawnInCabin(ctx: GameContext): void {
+/** Same placement as a new solo game's `enterRoom('cabine')` or the saved spot; outside, the hero is left where they swim. */
+export function place(ctx: GameContext, where: Placement): void {
   const drift = ctx.services.drift
   const hero = ctx.services.hero
   if (!drift || !hero || ctx.state.mode !== 'inside') return
+  if (where !== 'cabine' && where.localPosition) {
+    const local = { ...where.localPosition }
+    Object.assign(ctx.state.hero, { room: where.room, district: where.district, medium: 'air', localPosition: local })
+    hero.teleportLocal(local, where.yaw - drift.pose().heading)
+    return
+  }
   const spawn = drift.roomSpawn('cabine')
   Object.assign(ctx.state.hero, { room: 'cabine', medium: 'air', wetness: 0, localPosition: drift.toLocal(spawn.position) })
   hero.teleport(spawn.position, spawn.yaw)

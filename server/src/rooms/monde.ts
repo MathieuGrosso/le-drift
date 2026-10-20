@@ -72,9 +72,9 @@ export function createMondeRoom(deps: RoomDeps) {
       deps.registry.detachMonde(this.port)
     }
 
-    override onAuth(_client: Client, raw: unknown) {
+    override async onAuth(_client: Client, raw: unknown) {
       const opts: JoinOptions = joinOptions.parse(raw)
-      const rec = authenticate(deps.store, opts)
+      const rec = await authenticate(deps.store, opts)
       if (!rec) throw new Error('identity')
       return rec
     }
@@ -92,7 +92,8 @@ export function createMondeRoom(deps: RoomDeps) {
     override onDrop(client: Client): void {
       const id = this.sessions.playerOf(client)
       if (id) this.port.updateCard(id, { status: 'absent' })
-      this.allowReconnection(client, NET.reconnectSeconds)
+      // Rejects on expiry (onLeave follows) and during shutdown: both are expected.
+      this.allowReconnection(client, NET.reconnectSeconds).catch(() => undefined)
     }
 
     override onReconnect(client: Client): void {

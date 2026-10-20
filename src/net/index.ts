@@ -9,7 +9,7 @@ import { EmoteWheel } from './emotes'
 import { loadIdentity, loadProfile, storeProfile } from './identity'
 import { Overlay } from './overlay'
 import { Presence } from './presence'
-import { adoptWelcome, RemoteSave, spawnInCabin } from './save'
+import { adoptWelcome, place, RemoteSave, type Placement } from './save'
 import type { Dispatch, Session } from './session'
 import { netRoot } from './style'
 import { EMOTE_BUBBLE, TEXT } from './text'
@@ -22,6 +22,8 @@ const AVATAR_MODES: ReadonlySet<HeroMode> = new Set<AvatarMode>([
 const PRESENCE_SECONDS = 1
 const NPC_HEAD = 1.9
 const ME = 'moi'
+// A server that just shut down still answers for a moment; rejoining at once would hit it while it dies.
+const REJOIN_DELAY_MS = 3000
 
 function titleGone(): boolean {
   const el = document.getElementById('loading')
@@ -42,8 +44,9 @@ export function createNetSystem(): System {
   let save: RemoteSave | null = null
   let me: PlayerId | null = null
   let canRejoin = false
-  let cabinPending = false
+  let placement: Placement | null = null
   let starting = false
+  let rejoinTimer: ReturnType<typeof setTimeout> | null = null
   let sendTimer = 0
   let presenceTimer = 0
   let lastMove = ''
@@ -83,8 +86,8 @@ export function createNetSystem(): System {
       case 'welcome': {
         const w = payload as ServerMessages['welcome']
         me = w.you
-        // The title screen restores its own copy of the hero when it closes, so a new player moves after it.
-        if (adoptWelcome(ctx, w, save, titleGone())) cabinPending = true
+        // The title screen restores its own copy of the hero when it closes, so the hero moves after it.
+        placement = adoptWelcome(ctx, w, save, titleGone())
         break
       }
       case 'chat': {
@@ -177,7 +180,12 @@ export function createNetSystem(): System {
         lost: () => {
           if (session !== s) return
           session = null
-          void s.stop().then(() => connect())
+          void s.stop().then(() => {
+            rejoinTimer = setTimeout(() => {
+              rejoinTimer = null
+              void connect()
+            }, REJOIN_DELAY_MS)
+          })
         },
       })
       session = s
@@ -254,9 +262,9 @@ export function createNetSystem(): System {
 
     update(dt, c) {
       if (!ui || !avatars) return
-      if (cabinPending && titleGone()) {
-        cabinPending = false
-        spawnInCabin(c)
+      if (placement && titleGone()) {
+        place(c, placement)
+        placement = null
       }
       const online = status() === 'online'
       ui.chat.show(online)
@@ -282,6 +290,7 @@ export function createNetSystem(): System {
 
     dispose() {
       unsubs.splice(0).forEach((u) => u())
+      if (rejoinTimer) clearTimeout(rejoinTimer)
       // The engine's unload save only schedules the debounced send; it must leave before the socket closes.
       if (status() === 'online') save?.flush()
       void session?.stop()

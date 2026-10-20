@@ -40,9 +40,9 @@ function soloTab() {
 
 test('a first join starts a new game and uploads it, not the solo progress of the tab', () => {
   const tab = soloTab()
-  const isNew = adoptWelcome(tab.ctx, { you: 'p1', save: null, brains: false }, tab.remote, true)
+  const placement = adoptWelcome(tab.ctx, { you: 'p1', save: null, brains: false }, tab.remote, true)
 
-  assert.equal(isNew, true)
+  assert.equal(placement, 'cabine')
   assert.deepEqual(tab.slots, ['online:p1'])
   assert.equal(tab.writes.length, 1)
   assert.deepEqual(tab.acts, [1])
@@ -54,10 +54,18 @@ test('a first join starts a new game and uploads it, not the solo progress of th
 test('a returning player gets their server save and uploads nothing on join', () => {
   const tab = soloTab()
   const server = { ...toPlayerSave(createInitialState()), act: 1 as const, quests: { 'a1-reveil': 'sas' } }
-  const isNew = adoptWelcome(tab.ctx, { you: 'p2', save: server, brains: false }, tab.remote, true)
+  const placement = adoptWelcome(tab.ctx, { you: 'p2', save: server, brains: false }, tab.remote, true)
 
-  assert.equal(isNew, false)
+  assert.notEqual(placement, 'cabine')
   assert.deepEqual(tab.state.quests, { 'a1-reveil': 'sas' })
   assert.equal(tab.sent.length, 0)
   assert.equal(tab.writes.length, 0)
+})
+
+test('a returning player is put back where they left, after the title screen, not in the cabin', () => {
+  const tab = soloTab()
+  const hero = { localPosition: { x: 28.8, y: 0, z: 54 }, yaw: 1, district: 'ecluse' as const, room: 'refectoire' }
+  const placement = adoptWelcome(tab.ctx, { you: 'p3', save: { ...toPlayerSave(createInitialState()), hero }, brains: false }, tab.remote, false)
+
+  assert.deepEqual(placement, hero)
 })

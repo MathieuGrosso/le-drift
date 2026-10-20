@@ -100,10 +100,10 @@ export function createQuartierRoom(deps: RoomDeps) {
       if (this.district) deps.brains.rooms.removeQuartier(this)
     }
 
-    override onAuth(_client: Client, raw: unknown) {
+    override async onAuth(_client: Client, raw: unknown) {
       const opts: QuartierJoinOptions = quartierJoinOptions.parse(raw)
       if (opts.district !== this.district) throw new Error('district')
-      const rec = authenticate(deps.store, opts)
+      const rec = await authenticate(deps.store, opts)
       if (!rec) throw new Error('identity')
       return rec
     }
@@ -122,7 +122,8 @@ export function createQuartierRoom(deps: RoomDeps) {
     }
 
     override onDrop(client: Client): void {
-      this.allowReconnection(client, NET.reconnectSeconds)
+      // Rejects on expiry (onLeave follows) and during shutdown: both are expected.
+      this.allowReconnection(client, NET.reconnectSeconds).catch(() => undefined)
     }
 
     override onReconnect(client: Client): void {
