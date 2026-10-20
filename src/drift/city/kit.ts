@@ -470,11 +470,33 @@ export class Kit {
     const n = Math.max(2, Math.round(len / 0.9))
     const rot = Math.atan2(b.x - a.x, b.z - a.z) + Math.PI / 2
     const cloth = [PAL.tissu1, PAL.tissu2, PAL.tissu3, PAL.blanc, PAL.creme, PAL.vertDoux, PAL.bleuDoux]
+    const ux = (b.x - a.x) / (len || 1)
+    const uz = (b.z - a.z) / (len || 1)
     this.sag(a, b, sag, n, (p, i) => {
       if (i === 0 || i === n || this.rand() < 0.25) return
-      const h = 0.5 + this.rand() * 0.6
-      const w = 0.4 + this.rand() * 0.35
-      this.cloth.box(p.x, p.y - h / 2 - 0.03, p.z, w, h, 0.02, C(this.pick(cloth)), rot)
+      const main = C(this.pick(cloth))
+      const trim = C(this.pick(cloth)).lerp(C(PAL.boisOmbre), 0.25)
+      const put = (u: number, dy: number, w: number, h: number, c: THREE.Color, t = 0.02) => this.cloth.box(p.x + ux * u, p.y - 0.03 - dy, p.z + uz * u, w, h, t, c, rot)
+      const kind = this.rand()
+      let half: number
+      if (kind < 0.4) {
+        const w = 0.42 + this.rand() * 0.12
+        put(0, 0.3, w, 0.6, main)
+        for (const sd of [-1, 1]) put(sd * (w / 2 + 0.1), 0.12, 0.22, 0.2, main)
+        put(0, 0.04, 0.16, 0.06, trim, 0.03)
+        half = w / 2
+      } else if (kind < 0.65) {
+        for (const sd of [-1, 1]) put(sd * 0.11, 0.42, 0.19, 0.74, main)
+        put(0, 0.05, 0.42, 0.09, trim, 0.03)
+        half = 0.21
+      } else {
+        const h = 0.55 + this.rand() * 0.5
+        const w = 0.45 + this.rand() * 0.3
+        put(0, h / 2, w, h, main)
+        for (const f of [0.78, 0.86]) put(0, h * f, w, 0.035, trim, 0.03)
+        half = w / 2
+      }
+      for (const sd of [-1, 1]) put(sd * (half - 0.05), -0.01, 0.025, 0.08, C(PAL.boisClair), 0.035)
     })
   }
 
