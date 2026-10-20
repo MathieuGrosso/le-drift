@@ -96,11 +96,11 @@ export const GAMEPLAY_CSS = `
 .gp-panel h2 { margin: 0 0 4px; font-family: var(--gp-serif); font-weight: 600; font-size: 36px; color: var(--gp-abysse); }
 .gp-panel .sub { margin: 0 0 22px; font-size: 14px; letter-spacing: .08em; color: #6b7a82; }
 .gp-btn { font: inherit; font-size: 18px; padding: 12px 22px; border-radius: 14px; border: 1px solid rgba(14,59,82,.18); cursor: pointer;
-  background: rgba(14,59,82,.06); color: var(--gp-abysse); transition: background .2s, transform .15s; text-align: left; }
-.gp-btn:hover, .gp-btn:focus-visible { background: rgba(232,103,74,.14); outline: none; transform: translateX(3px); }
+  background: rgba(14,59,82,.06); color: var(--gp-abysse); transition: background .2s, box-shadow .15s; text-align: left; }
+.gp-btn:hover, .gp-btn:focus-visible { background: rgba(232,103,74,.14); outline: none; box-shadow: inset 3px 0 0 var(--gp-accent); }
 .gp-btn.primary { background: var(--gp-accent); color: #fff8ee; border-color: transparent; text-align: center; }
-.gp-btn.primary:hover { background: #d95a3e; transform: none; }
-.gp-btn:disabled { opacity: .4; cursor: default; transform: none; }
+.gp-btn.primary:hover, .gp-btn.primary:focus-visible { background: #d95a3e; box-shadow: none; }
+.gp-btn:disabled { opacity: .4; cursor: default; }
 .gp-menu-aide { position: absolute; left: 0; right: 0; bottom: 4vh; text-align: center; font-size: 14px; letter-spacing: .06em; color: var(--gp-texte); opacity: .85; pointer-events: none; }
 .gp-menu-aide .gp-key { min-width: 24px; height: 24px; margin: 0 4px; font-size: 13px; vertical-align: middle; }
 .gp-menu :is(.gp-btn, .gp-tab, .gp-card.pick, .gp-slot.full, input):focus { outline: 3px solid var(--gp-abysse); outline-offset: 3px; }
