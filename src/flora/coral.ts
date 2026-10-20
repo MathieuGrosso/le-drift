@@ -2,11 +2,12 @@ import * as THREE from 'three'
 import { CEILING_Y } from '../core/layout'
 import { CORAL_TYPES, coralGeometry, type CoralType } from './geometry'
 import { blancFactor, coralDensity, ventFactor, type Ground } from './ground'
-import { InstanceBuffers, makeMesh, RECORD } from './instances'
+import { InstanceBounds, InstanceBuffers, makeMesh, RECORD } from './instances'
 import { cellRng } from './noise'
 import { FLORA_COLORS } from './palette'
 
 const CELL = 64
+const CORAL_REACH = 6
 
 interface CoralCell {
   types: Uint8Array
@@ -16,6 +17,7 @@ interface CoralCell {
 interface TypeLayer {
   geo: THREE.InstancedBufferGeometry
   buf: InstanceBuffers
+  bounds: InstanceBounds
   mesh: THREE.Mesh
   count: number
 }
@@ -44,7 +46,7 @@ export class CoralField {
       const buf = new InstanceBuffers(4096, geo)
       const mesh = makeMesh(geo, materials[t].material, `flora-coral-${t}`)
       this.group.add(mesh)
-      this.layers.push({ geo, buf, mesh, count: 0 })
+      this.layers.push({ geo, buf, bounds: new InstanceBounds(geo), mesh, count: 0 })
       this.fadeRefs.push(materials[t].fade)
     }
     this.applyFade()
@@ -68,7 +70,10 @@ export class CoralField {
     this.lastZ = camZ
     const r = this.radius
     const rsq = r * r
-    for (const l of this.layers) l.count = 0
+    for (const l of this.layers) {
+      l.count = 0
+      l.bounds.reset()
+    }
     const x0 = Math.floor((camX - r) / CELL)
     const x1 = Math.floor((camX + r) / CELL)
     const z0 = Math.floor((camZ - r) / CELL)
@@ -84,12 +89,14 @@ export class CoralField {
           if (dx * dx + dz * dz > rsq) continue
           const layer = this.ensure(cell.types[i]!)
           layer.buf.copyFrom(cell.data, i, layer.count++)
+          layer.bounds.add(cell.data[o]!, cell.data[o + 1]!, cell.data[o + 1]!, cell.data[o + 2]!, CORAL_REACH)
         }
       }
     }
     for (const l of this.layers) {
       l.geo.instanceCount = l.count
       l.buf.uploadAll(l.count)
+      l.bounds.commit()
     }
     if (this.cells.size > 900) this.evict(camX, camZ)
   }

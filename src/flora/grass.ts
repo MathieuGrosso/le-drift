@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { grassDensity, type Ground } from './ground'
-import { InstanceBuffers, makeMesh } from './instances'
+import { InstanceBounds, InstanceBuffers, makeMesh } from './instances'
 import { cellRng, fbm, smoothstep } from './noise'
 
 export interface GrassLayerSpec {
@@ -14,6 +14,7 @@ export interface GrassLayerSpec {
   tuft: boolean
 }
 
+const BLADE_REACH = 2.5
 const WARM = [1.1, 1.04, 0.78] as const
 const COOL = [0.84, 0.98, 1.04] as const
 
@@ -31,6 +32,8 @@ export class GrassLayer {
   private lastZ = Number.NaN
   private budget: number
   private readonly heights: Float32Array
+  private readonly slotY: Float32Array
+  private readonly bounds: InstanceBounds
 
   constructor(
     readonly spec: GrassLayerSpec,
@@ -44,6 +47,8 @@ export class GrassLayer {
     this.buf = new InstanceBuffers(spec.slots * this.perCell, geometry)
     geometry.instanceCount = spec.slots * this.perCell
     this.mesh = makeMesh(geometry, material, spec.name)
+    this.bounds = new InstanceBounds(geometry)
+    this.slotY = new Float32Array(spec.slots * 2)
     for (let i = spec.slots - 1; i >= 0; i--) this.free.push(i)
     this.budget = spec.slots
     this.heights = new Float32Array((spec.sub + 1) * (spec.sub + 1))
@@ -81,6 +86,7 @@ export class GrassLayer {
       this.retarget(camX, camZ)
     }
     let n = jumped ? Infinity : maxGen
+    let changed = false
     while (n-- > 0 && this.pending.length > 0) {
       const key = this.pending.shift()!
       if (this.cellOf.has(key)) continue
@@ -88,7 +94,19 @@ export class GrassLayer {
       if (slot === undefined) break
       this.cellOf.set(key, slot)
       this.fill(key, slot)
+      changed = true
     }
+    if (changed) this.refit()
+  }
+
+  private refit(): void {
+    const cs = this.spec.cellSize
+    const h = cs / 2
+    this.bounds.reset()
+    for (const [key, slot] of this.cellOf) {
+      this.bounds.add((keyX(key) + 0.5) * cs, this.slotY[slot * 2]!, this.slotY[slot * 2 + 1]!, (keyZ(key) + 0.5) * cs, h + BLADE_REACH)
+    }
+    this.bounds.commit()
   }
 
   private retarget(camX: number, camZ: number): void {
@@ -117,6 +135,7 @@ export class GrassLayer {
       this.buf.clear(slot * this.perCell, this.perCell)
       this.buf.uploadRange(slot * this.perCell, this.perCell)
     }
+    this.refit()
     this.pending = []
     for (const w of want) if (keep.has(w.key) && !this.cellOf.has(w.key)) this.pending.push(w.key)
   }
@@ -129,9 +148,18 @@ export class GrassLayer {
     const oz = cz * cs
     const step = cs / sub
     const n1 = sub + 1
+    let y0 = Infinity
+    let y1 = -Infinity
     for (let i = 0; i <= sub; i++) {
-      for (let j = 0; j <= sub; j++) this.heights[i * n1 + j] = this.ground.height(ox + i * step, oz + j * step)
+      for (let j = 0; j <= sub; j++) {
+        const y = this.ground.height(ox + i * step, oz + j * step)
+        this.heights[i * n1 + j] = y
+        y0 = Math.min(y0, y)
+        y1 = Math.max(y1, y)
+      }
     }
+    this.slotY[slot * 2] = y0
+    this.slotY[slot * 2 + 1] = y1
     const rng = cellRng(cx, cz, tuft ? 7177 : 3301)
     const start = slot * this.perCell
     let k = 0

@@ -69,10 +69,34 @@ export class InstanceBuffers {
 
 export const RECORD = 10
 
+// Instances live in custom attributes three cannot measure, so each field fits its own bounds.
+export class InstanceBounds {
+  private readonly box = new THREE.Box3()
+
+  constructor(private readonly geometry: THREE.InstancedBufferGeometry) {
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity)
+    geometry.boundingBox = new THREE.Box3()
+  }
+
+  reset(): void {
+    this.box.makeEmpty()
+  }
+
+  add(x: number, y0: number, y1: number, z: number, reach: number): void {
+    const b = this.box
+    b.min.set(Math.min(b.min.x, x - reach), Math.min(b.min.y, y0 - reach), Math.min(b.min.z, z - reach))
+    b.max.set(Math.max(b.max.x, x + reach), Math.max(b.max.y, y1 + reach), Math.max(b.max.z, z + reach))
+  }
+
+  commit(): void {
+    this.geometry.boundingBox!.copy(this.box)
+    this.box.getBoundingSphere(this.geometry.boundingSphere!)
+  }
+}
+
 export function makeMesh(geometry: THREE.InstancedBufferGeometry, material: THREE.Material, name: string): THREE.Mesh {
   const mesh = new THREE.Mesh(geometry, material)
   mesh.name = name
-  mesh.frustumCulled = false
   mesh.castShadow = false
   mesh.receiveShadow = false
   mesh.matrixAutoUpdate = false

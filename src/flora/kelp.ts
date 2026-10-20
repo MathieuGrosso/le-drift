@@ -4,12 +4,13 @@ import { CEILING_Y, HAUTS_FONDS, REGIONS, SONDES } from '../core/layout'
 import type { GameContext, PhysicsWorld, Vec3 } from '../core/types'
 import { kelpGeometry } from './geometry'
 import { blancFactor, distanceToDriftRoute, forestEdge, forestFactor, grassDensity, ventFactor, type Ground } from './ground'
-import { InstanceBuffers, makeMesh, RECORD } from './instances'
+import { InstanceBounds, InstanceBuffers, makeMesh, RECORD } from './instances'
 import { cellRng, fbm } from './noise'
 import { FLORA_COLORS } from './palette'
 
 const GRID = 32
 const STALK_RADIUS = 0.35
+const KELP_REACH = 10
 
 export interface KelpLodSpec {
   r0: number
@@ -29,7 +30,7 @@ export class KelpField {
   readonly data: Float32Array
   readonly count: number
   private readonly grid = new Map<number, number[]>()
-  private readonly lods: { buf: InstanceBuffers; geo: THREE.InstancedBufferGeometry; mesh: THREE.Mesh }[] = []
+  private readonly lods: { buf: InstanceBuffers; bounds: InstanceBounds; geo: THREE.InstancedBufferGeometry; mesh: THREE.Mesh }[] = []
   private spec: KelpLodSpec
   private readonly close: number[] = []
   private readonly frustum = new THREE.Frustum()
@@ -54,7 +55,7 @@ export class KelpField {
       const buf = new InstanceBuffers(Math.max(1, this.count), geo)
       const mesh = makeMesh(geo, materials[lod]!, `flora-kelp-lod${lod}`)
       this.group.add(mesh)
-      this.lods.push({ buf, geo, mesh })
+      this.lods.push({ buf, bounds: new InstanceBounds(geo), geo, mesh })
     }
     this.spec = spec
   }
@@ -75,6 +76,7 @@ export class KelpField {
     const d = this.data
     const close = this.close
     close.length = 0
+    for (const l of this.lods) l.bounds.reset()
     for (let i = 0; i < this.count; i++) {
       const o = i * RECORD
       const x = d[o]!
@@ -103,12 +105,16 @@ export class KelpField {
       const l = this.lods[lod]!
       l.geo.instanceCount = counts[lod]!
       l.buf.uploadAll(counts[lod]!)
+      l.bounds.commit()
     }
   }
 
   private place(lod: number, i: number, counts: number[]): void {
     if (lod === 1 && counts[1]! >= this.spec.cap1) lod = 2
-    this.lods[lod]!.buf.copyFrom(this.data, i, counts[lod]!)
+    const l = this.lods[lod]!
+    l.buf.copyFrom(this.data, i, counts[lod]!)
+    const o = i * RECORD
+    l.bounds.add(this.data[o]!, this.data[o + 1]!, this.data[o + 1]! + this.data[o + 5]!, this.data[o + 2]!, KELP_REACH)
     counts[lod]!++
   }
 
