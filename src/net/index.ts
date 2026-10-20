@@ -13,6 +13,7 @@ import { adoptWelcome, place, RemoteSave, type Placement } from './save'
 import type { Dispatch, Session } from './session'
 import { netRoot } from './style'
 import { EMOTE_BUBBLE, TEXT } from './text'
+import { NpcExecutor } from './npc'
 import { askProfile } from './welcome'
 import { SharedWorld } from './world'
 
@@ -43,6 +44,9 @@ export function createNetSystem(): System {
   let world: SharedWorld | null = null
   let save: RemoteSave | null = null
   let me: PlayerId | null = null
+  let npcs: NpcExecutor | null = null
+  let brains = false
+  let seatAsked: string | null = null
   let canRejoin = false
   let placement: Placement | null = null
   let starting = false
@@ -72,6 +76,10 @@ export function createNetSystem(): System {
       session.send('talk', { npcId, text })
       return true
     },
+    seatTaken(seatId) {
+      for (const a of session?.quartierState?.avatars.values() ?? []) if (a.id !== me && a.seatId === seatId) return true
+      return false
+    },
   }
 
   const sayOver = (id: PlayerId, text: string) => {
@@ -86,6 +94,7 @@ export function createNetSystem(): System {
       case 'welcome': {
         const w = payload as ServerMessages['welcome']
         me = w.you
+        brains = w.brains
         // The title screen restores its own copy of the hero when it closes, so the hero moves after it.
         placement = adoptWelcome(ctx, w, save, titleGone())
         break
@@ -105,26 +114,15 @@ export function createNetSystem(): System {
         ctx.bus.emit('net:emote', e)
         break
       }
-      case 'npc:say': {
-        const s = payload as ServerMessages['npc:say']
-        const p = ctx.services.drift?.npcPosition(s.npcId)
-        if (p) ui.overlay.say(`npc:${s.npcId}`, v.set(p.x, p.y + NPC_HEAD, p.z), s.text, ctx.clock.elapsed)
-        if (s.to === me) ui.chat.line(null, s.text)
+      case 'npc:say':
+        npcs?.say(payload as ServerMessages['npc:say'], me)
         break
-      }
-      case 'npc:give': {
-        const g = payload as ServerMessages['npc:give']
-        ctx.services.gameplay?.giveItem(g.item, g.count)
+      case 'npc:give':
+        npcs?.give(payload as ServerMessages['npc:give'])
         break
-      }
-      case 'npc:quest': {
-        const q = payload as ServerMessages['npc:quest']
-        if (ctx.state.quests[q.questId]) break
-        ctx.state.quests[q.questId] = 'proposee'
-        ctx.bus.emit('quest:step', { questId: q.questId, step: 'proposee' })
-        ui.chat.line(null, TEXT.quest)
+      case 'npc:quest':
+        npcs?.quest(payload as ServerMessages['npc:quest'])
         break
-      }
       case 'refused': {
         const r = payload as ServerMessages['refused']
         ui.chat.line(null, TEXT.refused[r.reason])
@@ -134,6 +132,9 @@ export function createNetSystem(): System {
   }
 
   const goSolo = () => {
+    npcs?.reset()
+    brains = false
+    seatAsked = null
     avatars?.clear()
     ui?.overlay.clear()
     world?.release()
@@ -175,6 +176,7 @@ export function createNetSystem(): System {
         status: (st) => {
           c.bus.emit('net:status', { status: st })
           if (st === 'solo') goSolo()
+          else if (st === 'online' && document.hidden) onVisibility()
         },
         message: onMessage,
         lost: () => {
@@ -212,6 +214,13 @@ export function createNetSystem(): System {
     session.send('move', move)
   }
 
+  // A hidden tab stops the frame loop but keeps its socket: tell the others instead of freezing mid-stride.
+  const onVisibility = () => {
+    if (status() !== 'online') return
+    lastMove = ''
+    session?.send('away', { away: document.hidden })
+  }
+
   const markTags = (c: GameContext) => {
     if (!ui || !avatars) return
     const views = session?.quartierState?.avatars
@@ -239,11 +248,34 @@ export function createNetSystem(): System {
         presence: new Presence(root, () => void connect()),
       }
       avatars = new RemoteAvatars(c)
+      npcs = new NpcExecutor(c, {
+        line: (name, text) => ui?.chat.line(name, text),
+        bubble: (npcId, text) => {
+          const p = c.services.drift?.npcPosition(npcId)
+          if (p) ui?.overlay.say(`npc:${npcId}`, v.set(p.x, p.y + NPC_HEAD, p.z), text, c.clock.elapsed)
+        },
+      })
       world = new SharedWorld(c.state, (m) => session?.send('scrub', m))
       save = new RemoteSave(c.state, (m) => session?.send('save', m))
       unsubs.push(
         c.bus.on('district:entered', ({ district }) => {
           session?.enter(district).catch(() => undefined)
+        }),
+        c.bus.on('interact', ({ targetId, kind }) => {
+          if (status() !== 'online') return
+          seatAsked = kind === 'seat' ? targetId : null
+          if (kind === 'npc' && brains && session?.mondeState?.npcs.has(targetId)) service.talk(targetId, null)
+        }),
+        c.bus.on('hero:mode', ({ from, to }) => {
+          if (status() !== 'online') return
+          if (to === 'sit' && seatAsked) session?.send('sit', { seatId: seatAsked })
+          else if (from === 'sit') session?.send('sit', { seatId: null })
+          if (to !== 'sit') seatAsked = null
+        }),
+        c.bus.on('quest:step', () => {
+          if (status() !== 'online') return
+          save?.hold(false)
+          save?.schedule()
         }),
         c.bus.on('save:written', () => {
           if (status() === 'online') save?.schedule()
@@ -253,6 +285,7 @@ export function createNetSystem(): System {
           if (m && status() === 'online') world?.scrubbed(m, windowId, coat)
         }),
       )
+      document.addEventListener('visibilitychange', onVisibility)
       c.bus.emit('net:status', { status: 'solo' })
       if (new URLSearchParams(location.search).has('debug')) {
         Object.assign(window as unknown as Record<string, unknown>, { __net: { service, connect: () => connect() } })
@@ -265,6 +298,7 @@ export function createNetSystem(): System {
       if (placement && titleGone()) {
         place(c, placement)
         placement = null
+        session?.enter(c.state.hero.district).catch(() => undefined)
       }
       const online = status() === 'online'
       ui.chat.show(online)
@@ -276,6 +310,7 @@ export function createNetSystem(): System {
       if (online && session) {
         const m = session.mondeState
         if (m && world) world.apply(dt, m)
+        npcs?.sync(session.quartierState, m)
         sendTimer -= dt
         if (sendTimer <= 0) {
           sendTimer = 1 / NET.sendHz
@@ -290,6 +325,7 @@ export function createNetSystem(): System {
 
     dispose() {
       unsubs.splice(0).forEach((u) => u())
+      document.removeEventListener('visibilitychange', onVisibility)
       if (rejoinTimer) clearTimeout(rejoinTimer)
       // The engine's unload save only schedules the debounced send; it must leave before the socket closes.
       if (status() === 'online') save?.flush()

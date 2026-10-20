@@ -28,5 +28,4 @@ export const TEXT = {
     rate: 'Doucement, laisse parler les autres.',
     invalid: 'Message refusé.',
   },
-  quest: 'Une petite demande t’attend.',
 } as const

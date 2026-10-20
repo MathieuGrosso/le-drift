@@ -88,6 +88,7 @@ export interface ClientMessages {
   emote: { emote: EmoteId }
   sit: { seatId: string | null }
   talk: { npcId: string; text: string | null }
+  away: { away: boolean }
   scrub: { windowId: string; amount: number }
   save: { save: PlayerSave }
   profile: Profile

@@ -1,6 +1,6 @@
 import type * as THREE from 'three'
 import type RAPIER from '@dimforge/rapier3d-compat'
-import type { ChatLine, EmoteId, PlayerCardView, PlayerId } from '../shared/protocol'
+import type { ChatLine, EmoteId, NpcOrderView, PlayerCardView, PlayerId } from '../shared/protocol'
 
 export type Vec3 = { x: number; y: number; z: number }
 export type Act = 1 | 2 | 3
@@ -280,6 +280,7 @@ export interface DriftService {
   scrub(windowId: string, amount: number): number
   npcPosition(npcId: string): Vec3 | null
   playScene(id: 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie' | 'chose-vitre'): Promise<void>
+  npcOrder(npcId: string, order: NpcOrderView | null): void
   mediumAt(p: Vec3): Medium
   roomAt(p: Vec3): RoomId | null
   toLocal(p: Vec3): Vec3
@@ -340,6 +341,7 @@ export interface NetService {
   chat(text: string): void
   emote(emote: EmoteId): void
   talk(npcId: string, text: string | null): boolean
+  seatTaken(seatId: string): boolean
 }
 export interface AudioService { cue(c: MusicCue): void; sfx(id: string, at?: Vec3): void; unlock(): Promise<void> }
 export type MusicCue = 'explore' | 'drift' | 'sonde' | 'shallow' | 'danger' | 'night' | 'wonder' | 'rain' | 'silence'

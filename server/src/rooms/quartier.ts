@@ -51,6 +51,12 @@ export function createQuartierRoom(deps: RoomDeps) {
         a.outside = m.outside
         deps.registry.monde()?.updateCard(id, { status: statusOf(m.mode, m.outside) })
       }),
+      away: this.guard.guarded(clientMessages.away, (client, m) => {
+        const a = this.avatarOf(client)
+        if (!a) return
+        if (m.away) a.mode = 'idle'
+        deps.registry.monde()?.updateCard(a.id, { status: m.away ? 'absent' : statusOf(a.mode, a.outside) })
+      }),
       chat: this.guard.guarded(clientMessages.chat, (client, m) => {
         const a = this.avatarOf(client)
         if (!a) return

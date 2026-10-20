@@ -1,10 +1,6 @@
-import type { DriftService, GameContext, GameplayService } from '../../core/types'
+import type { GameContext } from '../../core/types'
 import { ITEMS, SPEAKERS } from '../../gameplay/text/fr'
-import type { MondeStateView, NpcOrderView, NpcSay, PlayerId, QuartierStateView, ServerMessages, SideQuestId } from '../../shared/protocol'
-
-// Hooks gameplay-adapt adds (MULTI §7); until they land, lines fall back to the chat log and orders are skipped.
-type NpcDrift = DriftService & Partial<{ npcSay(npcId: string, text: string): void; npcOrder(npcId: string, order: NpcOrderView | null): void }>
-type NpcGameplay = GameplayService & Partial<{ startSideQuest(questId: SideQuestId, npcId: string): void }>
+import type { MondeStateView, NpcOrderView, NpcSay, PlayerId, QuartierStateView, ServerMessages } from '../../shared/protocol'
 
 const TEXT = {
   thinking: '…',
@@ -12,8 +8,9 @@ const TEXT = {
   quest: 'a une petite demande pour toi.',
 } as const
 
-export interface NpcLog {
+export interface NpcSink {
   line(name: string | null, text: string): void
+  bubble(npcId: string, text: string): void
 }
 
 const orderKey = (o: NpcOrderView) => `${o.kind}|${o.place}|${o.emote}|${o.until}`
@@ -24,30 +21,28 @@ export class NpcExecutor {
   private readonly applied = new Map<string, string>()
   private readonly thinking = new Set<string>()
 
-  constructor(private readonly ctx: GameContext, private readonly log: NpcLog) {}
+  constructor(private readonly ctx: GameContext, private readonly sink: NpcSink) {}
 
   say(msg: NpcSay, me: PlayerId | null): void {
-    const drift = this.drift()
-    const forMe = msg.to !== null && msg.to === me
-    if (drift?.npcSay) drift.npcSay(msg.npcId, msg.text)
-    if (forMe || !drift?.npcSay) this.log.line(npcName(msg.npcId), msg.text)
+    // The reply can land before the patch that ends the thought: it must not be covered by a late « … ».
+    this.thinking.add(msg.npcId)
+    this.sink.bubble(msg.npcId, msg.text)
+    if (msg.to !== null && msg.to === me) this.sink.line(npcName(msg.npcId), msg.text)
   }
 
   give(msg: ServerMessages['npc:give']): void {
     this.ctx.services.gameplay?.giveItem(msg.item, msg.count)
-    this.log.line(npcName(msg.npcId), TEXT.gives(msg.item))
+    this.sink.line(npcName(msg.npcId), TEXT.gives(msg.item))
   }
 
   quest(msg: ServerMessages['npc:quest']): void {
-    const gp: NpcGameplay | undefined = this.ctx.services.gameplay
-    gp?.startSideQuest?.(msg.questId, msg.npcId)
-    this.log.line(npcName(msg.npcId), TEXT.quest)
+    this.sink.line(npcName(msg.npcId), TEXT.quest)
   }
 
   /** Called each frame with the synced state; only changed orders reach the drift. */
   sync(quartier: QuartierStateView | null, monde: MondeStateView | null): void {
-    const drift = this.drift()
-    if (!drift?.npcOrder) return
+    const drift = this.ctx.services.drift
+    if (!drift) return
     const seen = new Set<string>()
     for (const [id, order] of quartier?.orders ?? []) {
       seen.add(id)
@@ -62,7 +57,7 @@ export class NpcExecutor {
       drift.npcOrder(id, null)
     }
     for (const [id, card] of monde?.npcs ?? []) {
-      if (card.thinking && !this.thinking.has(id) && card.district === quartier?.district) drift.npcSay?.(id, TEXT.thinking)
+      if (card.thinking && !this.thinking.has(id) && card.district === quartier?.district) this.sink.bubble(id, TEXT.thinking)
       if (card.thinking) this.thinking.add(id)
       else this.thinking.delete(id)
     }
@@ -70,13 +65,8 @@ export class NpcExecutor {
 
   /** Back to solo: every NPC returns to its scripted routine. */
   reset(): void {
-    const drift = this.drift()
-    for (const id of this.applied.keys()) drift?.npcOrder?.(id, null)
+    for (const id of this.applied.keys()) this.ctx.services.drift?.npcOrder(id, null)
     this.applied.clear()
     this.thinking.clear()
-  }
-
-  private drift(): NpcDrift | undefined {
-    return this.ctx.services.drift
   }
 }

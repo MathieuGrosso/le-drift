@@ -27,12 +27,14 @@ export function applyPlayerSave(ctx: GameContext, save: PlayerSave): void {
 
 /**
  * Returning player: the server copy. One the server has never seen starts a new game, whatever this tab
- * played solo, and that new game is saved to their slot and the server at once. Returns where to put the
- * hero, for the caller to apply once the title screen (which restores its own copy of the hero) is gone.
+ * played solo. Returns where to put the hero, for the caller to apply once the title screen (which restores
+ * its own copy of the hero) is gone.
  */
 export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], remote: RemoteSave | null, storyStarted: boolean): Placement | null {
   // Kept after a drop to solo: this tab now carries that player's progress, not the solo one.
   ctx.save.useSlot(`online:${w.you}`)
+  // A new player's slot is only sent once the story has seeded its first quest, or a reload would skip the intro.
+  remote?.hold(!w.save && !storyStarted)
   if (w.save) {
     applyPlayerSave(ctx, w.save)
     return w.save.hero.localPosition ? w.save.hero : null
@@ -47,19 +49,24 @@ export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], rem
   return 'cabine'
 }
 
-/** Same placement as a new solo game's `enterRoom('cabine')` or the saved spot; outside, the hero is left where they swim. */
+/**
+ * Same placement as a new solo game's `enterRoom('cabine')` or the saved spot; outside, the hero is left where they swim.
+ * District and room come from the position, never from the save: older saves paired a spot with another district.
+ */
 export function place(ctx: GameContext, where: Placement): void {
   const drift = ctx.services.drift
   const hero = ctx.services.hero
   if (!drift || !hero || ctx.state.mode !== 'inside') return
   if (where !== 'cabine' && where.localPosition) {
     const local = { ...where.localPosition }
-    Object.assign(ctx.state.hero, { room: where.room, district: where.district, medium: 'air', localPosition: local })
+    const room = drift.roomAt(drift.toWorld(local)) ?? where.room
+    Object.assign(ctx.state.hero, { room, district: drift.districtAt(local), medium: 'air', localPosition: local })
     hero.teleportLocal(local, where.yaw - drift.pose().heading)
     return
   }
   const spawn = drift.roomSpawn('cabine')
-  Object.assign(ctx.state.hero, { room: 'cabine', medium: 'air', wetness: 0, localPosition: drift.toLocal(spawn.position) })
+  const local = drift.toLocal(spawn.position)
+  Object.assign(ctx.state.hero, { room: 'cabine', district: drift.districtAt(local), medium: 'air', wetness: 0, localPosition: local })
   hero.teleport(spawn.position, spawn.yaw)
 }
 
@@ -67,17 +74,24 @@ export function place(ctx: GameContext, where: Placement): void {
 export class RemoteSave {
   private timer: ReturnType<typeof setTimeout> | null = null
   private readonly encoder = new TextEncoder()
+  private held = false
 
   constructor(private readonly state: GameState, private readonly send: (m: ClientMessages['save']) => void) {}
 
+  hold(held: boolean): void {
+    this.held = held
+    if (held) this.cancel()
+  }
+
   schedule(): void {
-    if (this.timer) return
+    if (this.timer || this.held) return
     this.timer = setTimeout(() => this.flush(), NET.saveDebounceMs)
   }
 
   flush(): void {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
+    if (this.held) return
     const save = toPlayerSave(this.state)
     if (this.encoder.encode(JSON.stringify(save)).length > LIMITS.saveBytesMax) {
       console.warn('[net] sauvegarde trop lourde pour le serveur, gardée en local seulement')

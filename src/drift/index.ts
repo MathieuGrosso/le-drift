@@ -344,6 +344,7 @@ export function createDriftSystem(): System {
       return l ? toWorld(pose, l) : null
     },
     playScene: (id) => npcs?.playScene(id) ?? Promise.resolve(),
+    npcOrder: (id, order) => npcs?.order(id, order),
     mediumAt: (p): Medium => localMedium(toLocal(pose, p, tmp)),
     roomAt: (p) => localCell(toLocal(pose, p, tmp)) as RoomId | null,
     toLocal: (p) => toLocal(pose, p),

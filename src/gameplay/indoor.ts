@@ -124,7 +124,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     return { label: PROMPTS.tube(dest), kind: 'tube', reach: 2.4, run: () => ctx.services.drift?.openDoor(id, true) }
   })
   uses.on(BED, () => ({ label: PROMPTS.dormir, kind: 'bed', run: () => gp.menus.sleep() }))
-  uses.on(SEAT, (id) => ({ label: PROMPTS.asseoir, kind: 'seat', reach: 1.5, run: () => ctx.services.hero?.sit(id) }))
+  uses.on(SEAT, (id) => ctx.services.net?.seatTaken(id) ? null : { label: PROMPTS.asseoir, kind: 'seat', reach: 1.5, run: () => ctx.services.hero?.sit(id) })
   uses.on(CHART, () => ({ label: PROMPTS.carte, kind: 'chart-table', reach: 2.4, run: () => gp.quests.chartTable() }))
   uses.on(STALL, (id) => ({ label: PROMPTS.etal, kind: 'stall', reach: 2.2, run: () => gp.menus.market(id) }))
   uses.on(BOARD, () => ({ label: PROMPTS.tableau, kind: 'npc', run: () => gp.quests.talk('mme-rouille') }))

@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { NPC_LOD } from '../core/tuning'
 import type { GameContext } from '../core/types'
+import type { EmoteId, NpcOrderView, NpcPlace } from '../shared/protocol'
 import { PORTHOLES } from './interiors/layout'
 import type { Quarter } from './interiors/quarter'
 import type { Spot } from './interiors/types'
@@ -54,6 +55,15 @@ interface Npc {
 }
 
 type SceneId = 'petit-dejeuner' | 'rebord' | 'grand-pere-pluie' | 'chose-vitre'
+
+// Places outside the Écluse quarter (or without a spot) hide the NPC: it has gone there.
+const PLACE_SPOT: Partial<Record<NpcPlace, string>> = {
+  'cabine-grand-pere': 'grand-pere-table', cuisine: 'cuistot-fourneau', rebord: 'rebord-mila', sas: 'chambre-sas',
+  'tableau-meteo': 'rouille-tableau', marche: 'marche-banc', refectoire: 'cuistot-allee',
+}
+const EMOTE_POSE: Record<EmoteId, PoseKind> = {
+  salut: 'hand', oui: 'look', non: 'look', rire: 'cheer', applaudir: 'clap', montrer: 'hand', assis: 'sit', dort: 'sleep', pluie: 'hand',
+}
 
 const PATHS = mapPaths({
   coursive: { part: 'coursive-sud', pts: [{ x: -12.5, z: 62.2 }, { x: 8.5, z: 62.2 }], loop: false },
@@ -138,6 +148,7 @@ export class Npcs {
   private readonly list: Npc[] = []
   private readonly batches = new Map<string, Batch>()
   private readonly overrides = new Map<string, { act: Activity; until: number }>()
+  private readonly orders = new Map<string, Activity>()
   private standAll = 0
   private time = 0
   private readonly held = new Map<string, number>()
@@ -315,6 +326,31 @@ export class Npcs {
   }
   private waiters: (() => void)[] = []
 
+  /** A server-decided order replaces the routine until it is withdrawn (null); scenes and dialogue still win. */
+  order(id: string, o: NpcOrderView | null): void {
+    const n = this.list.find((q) => q.def.id === id)
+    if (!n) return
+    if (!o) {
+      this.orders.delete(id)
+      return
+    }
+    const tag = `ordre:${o.kind}:${o.place}:${o.emote}:${o.until}`
+    if (o.kind === 'emote') {
+      const cur = n.act
+      if (!cur || cur.hidden) return
+      const spot = { part: n.part, x: n.pos.x, y: cur.spot?.y ?? 0, z: n.pos.z, yaw: n.yaw }
+      this.orders.set(id, { key: tag, pose: EMOTE_POSE[o.emote as EmoteId] ?? 'stand', part: n.part, spot })
+      return
+    }
+    if (o.kind === 'sit' && o.place === 'refectoire') {
+      this.orders.set(id, { ...this.seat(50 + n.def.index, 'sit'), key: tag })
+      return
+    }
+    const spotId = PLACE_SPOT[o.place as NpcPlace]
+    const act = spotId ? this.at(spotId, o.kind === 'sit' ? 'sit' : 'stand') : this.hidden()
+    this.orders.set(id, { ...act, key: tag })
+  }
+
   position(id: string): THREE.Vector3 | null {
     const n = this.list.find((q) => q.def.id === id)
     if (!n || !n.act || n.act.hidden) return null
@@ -355,7 +391,7 @@ export class Npcs {
       else if (ov && ov.until > this.time) act = ov.act
       else {
         if (ov) this.overrides.delete(n.def.id)
-        act = this.schedule(n, h)
+        act = this.orders.get(n.def.id) ?? this.schedule(n, h)
       }
       if (!n.act || n.act.key !== act.key) this.enter(n, act)
       n.act = act
