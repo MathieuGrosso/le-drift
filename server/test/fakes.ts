@@ -5,10 +5,12 @@ export function memoryStore(): Store {
   const players = new Map<string, PlayerRecord>()
   const world: WorldRecord = { epochMs: Date.now(), windows: {}, npcs: {}, tokens: { day: '', used: 0 } }
   return {
+    loadPlayer: async (id) => players.get(id) ?? null,
     player: (id) => players.get(id) ?? null,
     putPlayer: (rec) => void players.set(rec.id, rec),
     world: () => world,
     flush: async () => undefined,
+    close: async () => undefined,
   }
 }
 

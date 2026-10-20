@@ -5,9 +5,19 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback
 }
 
+const STORES = ['json'] as const
+export type StoreKind = (typeof STORES)[number]
+
+function storeKind(): StoreKind {
+  const v = process.env.DRIFT_STORE ?? 'json'
+  if ((STORES as readonly string[]).includes(v)) return v as StoreKind
+  throw new Error(`DRIFT_STORE=${v} inconnu (${STORES.join(', ')})`)
+}
+
 export const CONFIG = {
   port: int('PORT', DEFAULT_PORT),
   dataDir: process.env.DRIFT_DATA_DIR ?? new URL('../data/', import.meta.url).pathname,
+  store: storeKind(),
   flushMs: int('FLUSH_MS', 10_000),
   npcScripted: process.env.NPC_BRAINS === 'scripted',
   npcModel: process.env.NPC_MODEL ?? 'claude-opus-5-5',

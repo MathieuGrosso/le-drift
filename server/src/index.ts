@@ -3,14 +3,14 @@ import { WebSocketTransport } from '@colyseus/ws-transport'
 import { ROOM } from '../../src/shared/protocol'
 import { CONFIG } from './config'
 import { createBrains } from './npc'
-import { openStore } from './persist'
+import { configuredPersistence, openStore } from './persist'
 import { createMondeRoom } from './rooms/monde'
 import { createQuartierRoom } from './rooms/quartier'
 import { createPlayerLimits } from './rooms/limits'
 import { createRegistry } from './rooms/registry'
 import type { RoomDeps } from './rooms/deps'
 
-const store = await openStore(CONFIG.dataDir)
+const store = await openStore(await configuredPersistence())
 const brains = await createBrains(store, CONFIG.npcScripted ? { credentials: async () => false } : {})
 console.log(brains.enabled
   ? `PNJ Claude : ${CONFIG.npcModel}, ${CONFIG.npcDailyTokens} jetons par jour`
@@ -30,7 +30,7 @@ const flusher = setInterval(() => void store.flush(), CONFIG.flushMs)
 server.onShutdown(async () => {
   clearInterval(flusher)
   deps.brains.dispose()
-  await store.flush()
+  await store.close()
 })
 
 await server.listen(CONFIG.port)
