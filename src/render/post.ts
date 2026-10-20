@@ -87,7 +87,7 @@ void main() {
     }
   }
   float avg = exp(acc / wsum);
-  float key = mix(${E.keyOut}, ${E.keyIn}, uIndoor);
+  float key = mix(${E.keyOut}, mix(${E.keyIn}, ${E.keyInNight}, uNight), uIndoor);
   float lo = mix(${E.minOut}, ${E.minIn}, uIndoor);
   float hi = mix(${E.maxOut}, mix(${E.maxIn}, ${E.maxInNight}, uNight), uIndoor);
   float target = clamp(key / max(avg, 1e-3), lo, hi);

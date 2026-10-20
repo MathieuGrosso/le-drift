@@ -176,10 +176,13 @@ export const POST = {
     radius: 1.1, falloff: 1.0, intensity: 2.6, indoorScale: 0.6, tintMix: 0.55, floor: 0.4,
     levels: { high: { k: 1, mode: 'Medium' }, medium: { k: 0.85, mode: 'Low' }, low: { k: 0, mode: 'Performance' } },
   },
-  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.46, minOut: 0.86, minIn: 0.82, maxOut: 1.18, maxIn: 1.9, maxInNight: 1.6 },
-  shoulder: 0.82,
+  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.36, keyInNight: 0.16, minOut: 0.86, minIn: 0.6, maxOut: 1.18, maxIn: 1.5, maxInNight: 1.1 },
+  tone: { curve: 'aces' as 'aces' | 'agx' | 'neutral', exposure: 1 },
   vignette: { outdoor: 0.35, indoor: 0.28 },
 } as const
+
+// Indoor light at night, as a fraction of the day value: lamps and lit glass carry the scene.
+export const INDOOR_NIGHT = { ambient: 0.2, canopy: 0.05, air: 0.16, emissive: 2.2 } as const
 
 // Colour grade per mood, baked into one LUT atlas. Tints are hex, ks are blend weights.
 export interface GradeMood {

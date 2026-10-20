@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { CelMaterialParams } from '../core/types'
+import { INDOOR_NIGHT } from '../core/tuning'
 import { GLSL_COMMON } from './glsl'
 import { MAX_GLASS, MAX_LAMPS, type AllUniforms } from './uniforms'
 import { PALETTE } from './palette'
@@ -62,7 +63,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   float floorUp = smoothstep(0.75, 0.95, N.y);
   albedo = mix(albedo, albedo * vec3(1.07, 1.0, 0.86), floorUp * 0.75);
   vec3 plum = rdInterieur / max(max(rdInterieur.r, rdInterieur.g), max(rdInterieur.b, 1e-3));
-  float dayK = 0.5 + 0.5 * rdDay;
+  float dayK = mix(${INDOOR_NIGHT.ambient.toFixed(3)}, 1.0, rdDay);
   vec3 skyB = mix(vec3(1.0), rdCreme / max(rdCreme.r, 1e-3), 0.2) * 0.62;
   vec3 floorB = rdBoisOmbre * 0.4 + rdCreme * 0.12;
   vec3 amb = mix(floorB, skyB, smoothstep(0.0, 1.0, up)) * mix(mix(vec3(1.0), plum, 0.3), vec3(1.0), smoothstep(0.0, 0.9, N.y) * 0.6);
@@ -95,7 +96,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
     lampRim += rdLampColors[i] * smoothstep(0.0, 0.25, att) * smoothstep(-0.1, 0.6, dot(-V, Ld)) * (1.0 - smoothstep(0.3, 0.75, nl));
   }
   key = (1.0 - exp(-key * 1.4)) * 0.74;
-  vec3 canopy = mix(rdVitreMer, rdCreme, 0.6) * rdAirHaze * (0.25 + 0.75 * rdDay);
+  vec3 canopy = mix(rdVitreMer, rdCreme, 0.6) * rdAirHaze * mix(${INDOOR_NIGHT.canopy.toFixed(3)}, 1.0, rdDay);
   canopy *= smoothstep(0.1, 0.5, N.y) * 0.26 + smoothstep(0.6, 0.85, N.y) * 0.14;
   vec3 patchL;
   vec3 sea = rd_glassLight(W, N, length(fwidth(W)), patchL);
@@ -122,7 +123,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
   col += (sea * 0.9 + lampRim * 0.55) * rimEdge + backRim * mix(0.8, 1.9, rimK) * smoothstep(mix(0.1, 0.05, rimK), mix(0.32, 0.22, rimK), rimI) + rdCreme * 0.02 * dayK * rimI;
   float hz;
   col = rd_applyIndoorHaze(col, W, hz);
-  return col + rdCelEmissive * 1.6 * (1.0 - 0.6 * hz);
+  return col + rdCelEmissive * 1.6 * mix(${INDOOR_NIGHT.emissive.toFixed(3)}, 1.0, rdDay) * (1.0 - 0.6 * hz);
 #else
   float sh = rd_shadow(W, ndl);
   float b1 = smoothstep(-0.08, 0.0, ndl);
@@ -165,7 +166,7 @@ vec3 rd_cel(vec3 albedo, vec3 N, vec3 V, vec3 W) {
 #else
   col = rd_applyHaze(col, W, true, hz);
 #endif
-  return col + rdCelEmissive * 1.6 * (1.0 - 0.6 * hz);
+  return col + rdCelEmissive * 1.6 * mix(${INDOOR_NIGHT.emissive.toFixed(3)}, 1.0, rdDay) * (1.0 - 0.6 * hz);
 #endif
 }
 `
@@ -214,8 +215,8 @@ export function createCelFactory(shared: AllUniforms) {
       rdCelEmissive: { value: new THREE.Color(params.emissive ?? 0x000000) },
     }
     mat.userData.celUniforms = own
-    const onShader = params.onShader
     mat.userData.celIndoor = indoor
+    const onShader = params.onShader
     const key = `cel:${indoor ? 1 : 0}${caustics ? 1 : 0}${silhouette ? 1 : 0}:${onShader ? onShader.toString() : ''}`
     mat.customProgramCacheKey = () => key
     mat.onBeforeCompile = (shader) => {

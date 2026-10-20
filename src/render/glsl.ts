@@ -1,3 +1,4 @@
+import { INDOOR_NIGHT } from '../core/tuning'
 import { MAX_GLASS, MAX_LAMPS, MAX_RIPPLES, MAX_WIPES } from './uniforms'
 
 export const GLSL_UNIFORMS = /* glsl */ `
@@ -112,7 +113,7 @@ vec3 rd_airColor(float d) {
   vec3 c = rdAirBrume * mix(vec3(1.0), mix(vec3(1.0), lamp, 0.2), near * (1.0 - smoothstep(20.0, 60.0, d)));
   c = mix(c, rdAirTint.rgb, rdAirTint.w * smoothstep(25.0, 60.0, d));
   c = mix(c, rdVitreMer * dot(c, vec3(0.33)) / max(dot(rdVitreMer, vec3(0.33)), 1e-3), 0.2 * smoothstep(30.0, 80.0, d));
-  return c * mix(0.5, 0.72, rdDay);
+  return c * mix(${(0.72 * INDOOR_NIGHT.air).toFixed(3)}, 0.72, rdDay);
 }
 vec3 rd_applyHaze(vec3 col, vec3 wp, bool absorb, out float hz) {
   vec3 dv = wp - cameraPosition;

@@ -5,7 +5,10 @@ import type { QualitySettings } from '../core/types'
 import { createLutAtlas, LUT_GLSL, MoodMixer, type MoodInputs } from './lut'
 import type { InternalUniforms, PublicUniforms } from './uniforms'
 
+const TONE_FN = { aces: 'ACESFilmicToneMapping', agx: 'AgXToneMapping', neutral: 'NeutralToneMapping' } as const
+
 const GRADE_FS = /* glsl */ `
+${THREE.ShaderChunk.tonemapping_pars_fragment}
 ${LUT_GLSL}
 uniform sampler2D tDepth;
 uniform sampler2D tBloom;
@@ -19,7 +22,6 @@ uniform float uAirHaze;
 uniform float uBloomOut;
 uniform float uBloomIn;
 uniform vec3 uProfond;
-uniform float uShoulder;
 uniform float uVignetteOut;
 uniform float uVignetteIn;
 uniform vec3 uInterieur;
@@ -102,9 +104,7 @@ void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor)
 #endif
   col += texture2D(tBloom, uv).rgb * mix(uBloomOut, uBloomIn * mix(1.0, 1.5, clamp(uAirHaze, 0.0, 1.0)), uIndoor);
 
-  float m = max(col.r, max(col.g, col.b));
-  float sh = uShoulder;
-  if (m > sh) col *= (sh + (1.0 - sh) * (1.0 - exp(-(m - sh) / (1.0 - sh)))) / m;
+  col = ${TONE_FN[POST.tone.curve]}(col);
   vec2 vq = uv - 0.5;
   float vig = smoothstep(0.25, 0.95, length(vq * vec2(1.15, 1.0)));
   vec3 plumHue = uInterieur / max(max(uInterieur.r, uInterieur.g), uInterieur.b);
@@ -142,7 +142,7 @@ export class GradeEffect extends Effect {
       ['uFar', new THREE.Uniform(4000)],
       ['uIndoor', new THREE.Uniform(0)],
       ['uAirHaze', new THREE.Uniform(0)],
-      ['uShoulder', new THREE.Uniform(POST.shoulder)],
+      ['toneMappingExposure', new THREE.Uniform(POST.tone.exposure)],
       ['uVignetteOut', new THREE.Uniform(POST.vignette.outdoor)],
       ['uVignetteIn', new THREE.Uniform(POST.vignette.indoor)],
       ['tLut', new THREE.Uniform(lut)],
