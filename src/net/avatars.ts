@@ -24,6 +24,9 @@ const RUN_THRESHOLD = (MOVE.walk + MOVE.run) / 2
 const MAX_SAMPLES = 24
 const STILL_SPEED = 0.2
 const SPEED_SMOOTHING = 8
+const PATCH_MS = 1000 / NET.sendHz
+// Farther than the speed cap allows in one patch: a teleport (door, tube, sleep), drawn as a cut.
+const TELEPORT_METRES = 4
 // Cloth vertices are recognised by hue ratio, since paint() bakes a per-vertex shade into the colour.
 const TINTED = [PALETTE.tunique, PALETTE.tuniqueOmbre, PALETTE.doublure] as const
 const RATIO_TOLERANCE = 0.03
@@ -98,6 +101,9 @@ class RemoteAvatar {
   push(a: AvatarView, now: number): void {
     const last = this.samples[this.samples.length - 1]
     if (last && last.x === a.x && last.y === a.y && last.z === a.z && last.yaw === a.yaw) return
+    if (last && Math.hypot(a.x - last.x, a.y - last.y, a.z - last.z) > TELEPORT_METRES) this.samples.length = 0
+    // After a still spell the last sample is old: hold it until one patch ago, or the first step lurches.
+    else if (last && now - last.t > 2 * PATCH_MS) this.samples.push({ ...last, t: now - PATCH_MS })
     this.samples.push({ t: now, x: a.x, y: a.y, z: a.z, yaw: a.yaw })
     if (this.samples.length > MAX_SAMPLES) this.samples.shift()
   }
@@ -115,7 +121,8 @@ class RemoteAvatar {
     const w = toWorld(this.local)
     const root = this.model.root
     this.cur.set(this.local.x, this.local.y, this.local.z)
-    const speed = this.placed && dt > 0 ? this.cur.distanceTo(this.prevLocal) / dt : 0
+    const moved = this.cur.distanceTo(this.prevLocal)
+    const speed = this.placed && dt > 0 && moved < TELEPORT_METRES ? moved / dt : 0
     this.prevLocal.copy(this.cur)
     this.placed = true
     root.position.set(w.x, w.y, w.z)
