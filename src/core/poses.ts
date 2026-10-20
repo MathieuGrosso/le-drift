@@ -83,7 +83,6 @@ const ART_ALIASES: Record<string, { base: string; hour?: number }> = {
   'art-refectoire': { base: 'refectoire-window', hour: 7.7 },
   'art-serre': { base: 'serre-cathedrale', hour: 11.5 },
   'art-sortie': { base: 'sortie', hour: 7.2 },
-  'art-ilo': { base: 'heros', hour: 8 },
 }
 
 function registerArtPoses(reg: PoseRegistry): void {

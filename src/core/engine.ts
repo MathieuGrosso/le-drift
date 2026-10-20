@@ -197,7 +197,8 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     }
 
     // ---- loop ----
-    let lockedPose: CameraPose | null = null
+    // Held in the ship's frame: a pose is resolved before the ship has moved to the pose's hour, and it keeps moving.
+    let lockedPose: (() => CameraPose) | null = null
     let pendingSteps = 0
     const stepWaiters: { frame: number; resolve: () => void }[] = []
     const afterDraw: (() => void)[] = []
@@ -302,7 +303,7 @@ export async function boot({ systems }: BootOptions): Promise<void> {
           console.error(`[core] lateUpdate ${s.id}`, err)
         }
       }
-      if (state.debug.cameraLocked && lockedPose) applyCameraPose(camera, lockedPose)
+      if (state.debug.cameraLocked && lockedPose) applyCameraPose(camera, lockedPose())
 
       renderer.info.reset()
       const render = ctx.services.render
@@ -359,6 +360,14 @@ export async function boot({ systems }: BootOptions): Promise<void> {
     const waitFrames = (n: number) =>
       new Promise<void>((resolve) => stepWaiters.push({ frame: ctx.clock.frame + n, resolve }))
 
+    const shipBound = (pose: CameraPose): (() => CameraPose) => {
+      const drift = ctx.services.drift
+      if (!drift) return () => pose
+      const position = drift.toLocal(pose.position)
+      const target = drift.toLocal(pose.target)
+      return () => ({ position: drift.toWorld(position), target: drift.toWorld(target), fov: pose.fov })
+    }
+
     const applyPose = (pose: DebugPose) => {
       if (pose.hour !== undefined) api.setTime(pose.hour)
       if (pose.place) modes.goto(pose.place)
@@ -370,9 +379,9 @@ export async function boot({ systems }: BootOptions): Promise<void> {
           state.hero.yaw = yaw
         }
       }
-      lockedPose = pose.camera
+      lockedPose = shipBound(pose.camera)
       state.debug.cameraLocked = true
-      applyCameraPose(camera, pose.camera)
+      applyCameraPose(camera, lockedPose())
     }
 
     const api: DebugApi = {
@@ -445,8 +454,6 @@ export async function boot({ systems }: BootOptions): Promise<void> {
         bus.emit('debug:pose', { name })
         if (ctx.clock.paused) pendingSteps += 2
         await waitFrames(2)
-        const again = poses.resolve(name, ctx)
-        if (again) applyPose(again)
         return new Promise<string>((resolve) => {
           afterDraw.push(() => resolve(canvas.toDataURL('image/png')))
         })
