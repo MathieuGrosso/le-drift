@@ -164,6 +164,9 @@ export const NAV = {
   },
 } as const
 
+// Frame at which render compiles every hidden material (sortie, fauna), inside the first-load stall.
+export const RENDER_WARM_FRAME = 3
+
 export const POST = {
   bloom: { threshold: 1.15, indoorThreshold: 0.3, smoothing: 0.25, levels: 5, radius: 0.75, outdoor: 0.55, indoor: 0.3 },
   ao: {

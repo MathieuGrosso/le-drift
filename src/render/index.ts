@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { BLOOM_HAZE_MUL, HAZE_BY_VISIBILITY } from '../core/tuning'
+import { BLOOM_HAZE_MUL, HAZE_BY_VISIBILITY, RENDER_WARM_FRAME } from '../core/tuning'
 import type { DayPhase, DistrictId, GameContext, RenderService, System, Vec3 } from '../core/types'
 import { createCelFactory, createPatchWater, type CelParams } from './cel'
 import { createEnvironment, FX_LAYER, type Environment } from './environment'
@@ -87,6 +87,31 @@ export function createRenderSystem(): System {
   }
 
   const shadowCenter = new THREE.Vector3()
+  const warmCam = new THREE.PerspectiveCamera()
+  const warmFog = new THREE.Fog(0x000000)
+  // Builds every program the sortie needs while it is hidden: keys must match draw()'s passes, and the
+  // sea volume's linear fog outside flips every fogged material to another program.
+  const prewarm = (renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) => {
+    if (!post) return
+    const prevTarget = renderer.getRenderTarget()
+    const prevFog = scene.fog
+    renderer.setRenderTarget(post.sceneTarget)
+    for (const fog of [null, warmFog]) {
+      scene.fog = fog
+      warmCam.copy(camera)
+      warmCam.layers.enable(FX_LAYER)
+      warmCam.layers.disable(GLASS_LAYER)
+      void renderer.compileAsync(scene, warmCam)
+      warmCam.layers.set(GLASS_LAYER)
+      scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material
+        if ((o as THREE.Mesh).isMesh && !Array.isArray(m) && m?.userData.rdGlass) void renderer.compileAsync(o, warmCam, scene)
+      })
+    }
+    scene.fog = prevFog
+    renderer.setRenderTarget(prevTarget)
+  }
+  let warmAt = 0
 
   const service: RenderServiceV2 = {
     cel: createCelFactory(shared),
@@ -113,6 +138,7 @@ export function createRenderSystem(): System {
         renderer.render(scene, camera)
         return
       }
+      if (frameNo === warmAt) prewarm(renderer, scene, camera)
       camera.layers.enable(FX_LAYER)
       env.follow(camera)
       env.backdrop.visible = seaVis
@@ -300,6 +326,10 @@ export function createRenderSystem(): System {
         post?.setQuality(q)
       }))
       unsubs.push(ctx.bus.on('ceiling:ripple', ({ x, z, strength }) => addRipple(x, z, strength)))
+      unsubs.push(ctx.bus.on('airlock:cycle', ({ dir, phase }) => {
+        if (dir === 'out' && phase === 'close') warmAt = frameNo + 1
+      }))
+      warmAt = RENDER_WARM_FRAME
 
       ctx.services.render = service
       updateEnvironment(0, ctx)
