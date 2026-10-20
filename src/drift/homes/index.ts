@@ -50,7 +50,7 @@ export class Homes {
     for (const c of closed) if (c.note) this.notes.set(c.id, c.note)
     this.doors = defs.map((def) => {
       const f = def.frame
-      const hinge = framePoint(f, def.room.du - HOMES.doorW / 2, def.room.floor, def.doorD + 0.06)
+      const hinge = framePoint(f, def.room.du - HOMES.doorW / 2, def.room.floor, def.doorOuter - 0.04)
       const base = f.along ? 0 : -Math.PI / 2
       const open = (a: number) => new THREE.Vector3(1, 0, 0).applyAxisAngle(UP, base + a)
       const swing = open(1.6).x * -f.inX + open(1.6).z * -f.inZ > 0 ? 1.6 : -1.6

@@ -31,6 +31,8 @@ export interface HomeDef {
   frame: WallFrame
   room: Room
   doorD: number
+  // Outer face of the door reveal, where the leaf hangs so it shows even before the hull is cut open.
+  doorOuter: number
   template: TemplateId
   nom: string
   owner: string | null
@@ -89,11 +91,15 @@ function hollowHull(k: Kit, s: DoorSlot, room: Room): void {
   solid(k, f, room.du - half, room.du + half, room.floor + HOMES.doorH, ceil, room.d1, reach, 'hull')
 }
 
+function revealOuter(s: DoorSlot, room: Room): number {
+  return faceDepth(s, room.floor + HOMES.doorH / 2) + 0.06
+}
+
 function reveal(k: Kit, s: DoorSlot, room: Room): void {
   const f = s.frame
   const half = HOMES.doorW / 2
   const t = HOMES.wallT
-  const outer = faceDepth(s, room.floor + HOMES.doorH / 2) + 0.06
+  const outer = revealOuter(s, room)
   const depth = outer - room.d1
   const dc = (outer + room.d1) / 2
   const trim = C(PAL.laiton, 0.9)
@@ -155,7 +161,7 @@ export function bakeHomes(k: Kit, hall: { id: string; district: DistrictId; deck
     const inhabited = hr() < 0.8
     const paroles = PAROLES[template]
     const home: HomeDef = {
-      id, district: hall.district, frame: s.frame, room, doorD: d1, template,
+      id, district: hall.district, frame: s.frame, room, doorD: d1, doorOuter: revealOuter(s, room), template,
       nom: NOM_TEMPLATE[template](famille, prenom),
       owner: inhabited ? (template === 'famille' || template === 'echoppe' || template === 'chambre-enfants' ? `${prenom} ${famille}` : prenom) : null,
       role: ROLE_TEMPLATE[template],
