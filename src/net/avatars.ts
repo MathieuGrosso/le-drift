@@ -150,6 +150,7 @@ class RemoteAvatar {
 
   dispose(scene: THREE.Scene): void {
     scene.remove(this.model.root, this.scarf.mesh)
+    this.model.rig.dispose()
     this.model.root.traverse((o) => {
       if (o instanceof THREE.Mesh) o.geometry.dispose()
     })
