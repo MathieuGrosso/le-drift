@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { SPEECH_BUBBLE } from '../core/bubbles'
 import type { GameContext, Vec3 } from '../core/types'
 import type { Line } from './text'
 
@@ -77,7 +78,7 @@ export class EggUi {
     })
 
     this.toastEl.className = 'eg-toast'
-    this.bubble.className = 'eg-bubble'
+    this.bubble.className = `eg-bubble ${SPEECH_BUBBLE}`
     this.root.append(this.prompt, this.dlg, this.toastEl, this.bubble)
   }
 

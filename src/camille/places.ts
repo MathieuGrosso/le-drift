@@ -47,10 +47,21 @@ export const CABINE_CADEAUX: Record<'feuille' | 'dessin' | 'ligne' | 'bocal', Ve
   bocal: quarterPoint({ x: -5.45, y: 0.62, z: 66.6 }),
 }
 
+const WAKE = 6
+const BREAKFAST = 7.5
+const BREAKFAST_END = 8.5
+
+const hourOfDay = (hours: number) => ((hours % 24) + 24) % 24
+
+export function breakfastAhead(hours: number): boolean {
+  const h = hourOfDay(hours)
+  return h >= WAKE && h < BREAKFAST_END
+}
+
 export function routine(hours: number): Where {
-  const h = ((hours % 24) + 24) % 24
-  if (h >= 22 || h < 6) return 'dodo'
-  if (h >= 7.5 && h < 8.5) return 'refectoire'
+  const h = hourOfDay(hours)
+  if (h >= 22 || h < WAKE) return 'dodo'
+  if (h >= BREAKFAST && h < BREAKFAST_END) return 'refectoire'
   if (h >= 18.5) return 'proue'
   return 'serres'
 }

@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { SPEECH_BUBBLE, shownBubbles } from '../core/bubbles'
+import { hiddenFrom } from '../core/sight'
 import type { GameContext, Vec3 } from '../core/types'
 import type { Line } from './text'
 
@@ -32,12 +34,14 @@ const CSS = `
 .cb-toast .k { font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: #f2c46a; font-weight: 700; }
 .cb-toast .t { font-family: 'Fraunces', Georgia, serif; font-size: 22px; text-shadow: 0 2px 14px rgba(14,59,82,.6); }
 .cb-toast .n { font-family: 'Caveat', cursive; font-size: 21px; opacity: .92; max-width: 560px; }
-.cb-bubble { position: absolute; transform: translate(-50%, -100%); padding: 6px 12px; border-radius: 14px; background: rgba(246,236,208,.94);
+.cb-bubble { position: absolute; left: 0; top: 0; padding: 6px 12px; border-radius: 14px; background: rgba(246,236,208,.94);
   color: #3a2410; font-size: 14px; max-width: 260px; text-align: center; opacity: 0; transition: opacity .4s; }
 .cb-bubble.show { opacity: 1; }
 `
 
 const CHARS_PER_SEC = 48
+const BUBBLE_MARGIN = 12
+const BUBBLE_GAP = 6
 
 export class CamilleUi {
   readonly root = document.createElement('div')
@@ -65,6 +69,7 @@ export class CamilleUi {
   private toastTimer = 0
   private bubbleLeft = 0
   private bubbleAt: (() => Vec3 | null) | null = null
+  private bubbleThroughWalls = false
   private readonly v = new THREE.Vector3()
   private readonly onKey = (e: KeyboardEvent) => {
     if (!this.choose) return
@@ -94,7 +99,7 @@ export class CamilleUi {
     })
     this.choiceEl.className = 'cb-choice'
     this.toastEl.className = 'cb-toast'
-    this.bubble.className = 'cb-bubble'
+    this.bubble.className = `cb-bubble ${SPEECH_BUBBLE}`
     this.root.append(this.prompt, this.dlg, this.choiceEl, this.toastEl, this.bubble)
     window.addEventListener('keydown', this.onKey)
   }
@@ -161,10 +166,11 @@ export class CamilleUi {
     this.toastTimer = note ? 5.5 : 3.2
   }
 
-  speak(at: () => Vec3 | null, text: string, seconds = 4.5): void {
+  speak(at: () => Vec3 | null, text: string, seconds = 4.5, throughWalls = false): void {
     this.bubble.textContent = text
     this.bubbleAt = at
     this.bubbleLeft = seconds
+    this.bubbleThroughWalls = throughWalls
   }
 
   update(dt: number): void {
@@ -248,14 +254,34 @@ export class CamilleUi {
       this.bubbleLeft = 0
       return
     }
-    this.v.set(p.x, p.y, p.z).project(this.ctx.camera)
-    if (this.v.z > 1 || Math.abs(this.v.x) > 1.1 || Math.abs(this.v.y) > 1.1) {
+    const cam = this.ctx.camera
+    this.v.set(p.x, p.y, p.z).project(cam)
+    const offscreen = this.v.z > 1 || Math.abs(this.v.x) > 1.1 || Math.abs(this.v.y) > 1.1
+    if (offscreen || (!this.bubbleThroughWalls && hiddenFrom(this.ctx.physics, cam.position, p))) {
       this.bubble.classList.remove('show')
       return
     }
-    this.bubble.style.left = `${((this.v.x + 1) / 2) * 100}%`
-    this.bubble.style.top = `${((1 - this.v.y) / 2) * 100}%`
+    this.placeBubble(((this.v.x + 1) / 2) * this.root.clientWidth, ((1 - this.v.y) / 2) * this.root.clientHeight)
     this.bubble.classList.toggle('show', this.bubbleLeft > 0.4)
+  }
+
+  private placeBubble(anchorX: number, anchorY: number): void {
+    const w = this.root.clientWidth
+    const h = this.root.clientHeight
+    const bw = this.bubble.offsetWidth
+    const bh = this.bubble.offsetHeight
+    const clampTop = (t: number) => Math.min(h - bh - BUBBLE_MARGIN, Math.max(BUBBLE_MARGIN, t))
+    const left = Math.min(w - bw - BUBBLE_MARGIN, Math.max(BUBBLE_MARGIN, anchorX - bw / 2))
+    let top = clampTop(anchorY - bh)
+    const others = shownBubbles(this.ctx.uiRoot, this.root, this.bubble)
+      .filter((r) => r.r > left && r.l < left + bw)
+      .sort((a, b) => b.t - a.t)
+    for (const r of others) {
+      if (top >= r.b + BUBBLE_GAP || top + bh <= r.t - BUBBLE_GAP) continue
+      const above = r.t - BUBBLE_GAP - bh
+      top = above >= BUBBLE_MARGIN ? above : clampTop(r.b + BUBBLE_GAP)
+    }
+    this.bubble.style.transform = `translate(${left}px, ${top}px)`
   }
 
   dispose(): void {

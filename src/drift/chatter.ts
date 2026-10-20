@@ -1,8 +1,12 @@
 import * as THREE from 'three'
+import { SPEECH_BUBBLE } from '../core/bubbles'
+import { hiddenFrom } from '../core/sight'
 import type { GameContext } from '../core/types'
 import { CHATTER } from './text'
 
 interface Bubble { el: HTMLDivElement; npc: string; world: THREE.Vector3; until: number }
+
+const EDGE = 12
 
 const STYLE = `
 .drift-bulles { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
@@ -73,10 +77,11 @@ export class Chatter {
       const n = near.find((q) => q.id === b.npc)
       if (n) b.world.copy(n.world).y += n.height
       this.v.copy(b.world).project(cam)
-      const behind = this.v.z > 1
-      b.el.style.left = `${((this.v.x + 1) / 2) * w}px`
-      b.el.style.top = `${((1 - this.v.y) / 2) * h}px`
-      b.el.style.visibility = behind ? 'hidden' : 'visible'
+      const hidden = this.v.z > 1 || hiddenFrom(this.ctx.physics, cam.position, b.world)
+      const half = b.el.offsetWidth / 2 + EDGE
+      b.el.style.left = `${Math.min(w - half, Math.max(half, ((this.v.x + 1) / 2) * w))}px`
+      b.el.style.top = `${Math.min(h - EDGE, Math.max(b.el.offsetHeight + EDGE, ((1 - this.v.y) / 2) * h))}px`
+      b.el.style.visibility = hidden ? 'hidden' : 'visible'
       if (this.time > b.until || !indoor) {
         b.el.classList.remove('on')
         if (this.time > b.until + 0.5 || !indoor) {
@@ -86,13 +91,14 @@ export class Chatter {
       }
     }
     if (!indoor || this.talking || this.time < this.nextAt || this.bubbles.length >= 2 || near.length === 0) return
-    const cands = near.filter((n) => (this.cooldown.get(n.id) ?? -1e9) < this.time && !this.bubbles.some((b) => b.npc === n.id))
+    const cands = near.filter((n) => (this.cooldown.get(n.id) ?? -1e9) < this.time && !this.bubbles.some((b) => b.npc === n.id)
+      && !hiddenFrom(this.ctx.physics, cam.position, { x: n.world.x, y: n.world.y + n.height, z: n.world.z }))
     if (cands.length === 0) return
     const n = cands[Math.floor(Math.random() * cands.length)]!
     const lines = this.pool(n.id, n.key, dirtyWindow)
     const text = lines[Math.floor(Math.random() * lines.length)]!
     const el = document.createElement('div')
-    el.className = 'drift-bulle'
+    el.className = `drift-bulle ${SPEECH_BUBBLE}`
     el.textContent = text
     this.root.appendChild(el)
     requestAnimationFrame(() => el.classList.add('on'))

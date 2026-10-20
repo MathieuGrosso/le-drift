@@ -4,7 +4,7 @@ import { Animator, type Pose } from './anim'
 import { buildCamille, type CamilleModel } from './model'
 import {
   BOCAUX, CABINE_CADEAUX, COURSIVE, COURSIVE_DEPART, DEJEUNER, DODO, ETAGERE, ETAGERE_MEUBLE, FINALE_SOL, FINALE_VITRE,
-  POUSSE, REFECTOIRE, SERRES_PTS, VIGIE_BANC, VIGIE_FINALE, faceDir, routine, type Spot, type Where,
+  POUSSE, REFECTOIRE, SERRES_PTS, VIGIE_BANC, VIGIE_FINALE, breakfastAhead, faceDir, routine, type Spot, type Where,
 } from './places'
 import { Pousse, etagere, gift, jar } from './props'
 import {
@@ -133,7 +133,7 @@ export function createCamilleSystem(): System {
     if (r === 'dodo' && nightWake) return 'dodo'
     nightWake = false
     if (st.act === 1) {
-      if (!flag('coursive') && !q['a1-sortie']) return 'coursive'
+      if (!flag('coursive') && !q['a1-sortie'] && breakfastAhead(st.time.hours)) return 'coursive'
       const pd = q['a1-petit-dejeuner']
       if (pd === 'cuisine' || pd === 'cuisiner' || (pd === 'done' && q['a1-rebord'] !== 'done')) return 'dejeuner'
       if (r === 'serres') return 'etagere'
@@ -264,14 +264,15 @@ export function createCamilleSystem(): System {
     if (!anim || !ui || flag('coursive')) return
     const inCabin = ctx.services.drift?.cellAt(heroLocal) === 'cabine'
     if (greetT < 0) {
+      if (!breakfastAhead(ctx.state.time.hours)) return
       if (inCabin && !heroNear(pos, 4.5)) {
         knockT += dt
         if (knockT > 22) {
           knockT = -18
-          ui.speak(headWorld, COURSIVE_TXT.toc, 3.5)
+          ui.speak(headWorld, COURSIVE_TXT.toc, 3.5, true)
           ctx.services.audio?.sfx('glass-tap', ctx.services.drift?.toWorld(pos))
         }
-      } else if (heroNear(pos, 7.5)) {
+      } else if (!inCabin && heroNear(pos, 7.5)) {
         knockT = 0
         greetT = 0
         anim.pose = 'wave'
