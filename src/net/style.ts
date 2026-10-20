@@ -13,7 +13,7 @@ const CSS = `
 .net-chat.open input { display: block; }
 .net-chat.open .net-chat-line.old { opacity: 0.85; }
 .net-hint { font-size: 12px; color: rgba(255, 246, 230, 0.75); text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
-.net-presence { position: absolute; right: 16px; top: 16px; padding: 8px 12px; min-width: 150px; max-width: 240px; pointer-events: auto; }
+.net-presence { position: absolute; right: 16px; top: 76px; padding: 8px 12px; min-width: 150px; max-width: 240px; pointer-events: auto; }
 .net-presence h3 { margin: 0 0 4px; font-size: 13px; font-weight: 700; }
 .net-presence ul { list-style: none; margin: 0; padding: 0; }
 .net-presence li { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 1px 0; }
