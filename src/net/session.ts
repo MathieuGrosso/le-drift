@@ -83,7 +83,10 @@ export class Session {
       this.quartier = null
       const d = this.district
       this.district = null
-      if (d && this.monde) this.enter(d).catch(() => this.sink.lost())
+      if (!d || !this.monde) return
+      this.enter(d).then(() => {
+        if (this.quartier && this.monde) this.setStatus('online')
+      }, () => this.sink.lost())
     })
     if (prev) this.leave(prev)
   }
