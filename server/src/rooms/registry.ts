@@ -1,11 +1,18 @@
 import type { PlayerCardView, PlayerId, Profile } from '../../../src/shared/protocol'
+import type { DistrictId } from '../../../src/core/types'
 
 export interface MondePort {
   updateCard(id: PlayerId, patch: Partial<Pick<PlayerCardView, 'district' | 'status'>>): void
+  /** A district session needs a live monde session of the same player. */
+  online(id: PlayerId): boolean
 }
 
 export interface QuartierPort {
   updateProfile(id: PlayerId, profile: Profile): void
+  district(): DistrictId
+  hosts(id: PlayerId): boolean
+  /** Closes the player's district session: a newer tab took the player over. */
+  evict(id: PlayerId): void
 }
 
 /** How the rooms reach each other: districts feed the roster, a profile change reaches every avatar. NPCs use `brains.rooms`. */

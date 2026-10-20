@@ -1,7 +1,7 @@
 import { Client, CloseCode, type Room } from '@colyseus/sdk'
 import type { DistrictId, NetStatus } from '../core/types'
 import {
-  PROTOCOL_VERSION, ROOM,
+  CLOSE_TAKEN_OVER, PROTOCOL_VERSION, ROOM,
   type ClientMessages, type ClientMessageType, type Identity, type JoinOptions, type MondeStateView, type Profile,
   type QuartierJoinOptions, type QuartierStateView, type ServerMessages, type ServerMessageType,
 } from '../shared/protocol'
@@ -11,8 +11,8 @@ export type Dispatch = <K extends ServerMessageType>(type: K, payload: ServerMes
 export interface SessionSink {
   status(s: NetStatus): void
   message: Dispatch
-  /** The server forgot us (reconnection window expired or it restarted). */
-  lost(): void
+  /** The server forgot us (reconnection window expired or it restarted), or another tab took this player over. */
+  lost(takenOver: boolean): void
 }
 
 const SERVER_MESSAGES: readonly ServerMessageType[] = ['welcome', 'chat', 'emote', 'npc:say', 'npc:give', 'npc:quest', 'refused']
@@ -53,7 +53,7 @@ export class Session {
       const opts: JoinOptions = { protocol: PROTOCOL_VERSION, identity: this.identity, profile: this.profile }
       const monde = await this.client.joinOrCreate<MondeStateView>(ROOM.monde, opts)
       this.monde = monde
-      this.wire(monde, () => this.sink.lost())
+      this.wire(monde, (code) => this.sink.lost(code === CLOSE_TAKEN_OVER))
       await this.enter(district)
       this.setStatus('online')
       return true
@@ -78,15 +78,15 @@ export class Session {
     const prev = this.quartier
     this.quartier = next
     this.wire(next, (code) => {
-      // A shutdown closes every room: the monde's loss decides, rejoining a dying server would only fail.
-      if (this.quartier !== next || code === CloseCode.SERVER_SHUTDOWN) return
+      // A shutdown or a takeover closes the monde too: its loss decides, rejoining here would only fail or steal back.
+      if (this.quartier !== next || code === CloseCode.SERVER_SHUTDOWN || code === CLOSE_TAKEN_OVER) return
       this.quartier = null
       const d = this.district
       this.district = null
       if (!d || !this.monde) return
       this.enter(d).then(() => {
         if (this.quartier && this.monde) this.setStatus('online')
-      }, () => this.sink.lost())
+      }, () => this.sink.lost(false))
     })
     if (prev) this.leave(prev)
   }

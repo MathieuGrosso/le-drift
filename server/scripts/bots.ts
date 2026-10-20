@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { Client, type Room } from '@colyseus/sdk'
 import {
-  AVATAR_COLORS, DEFAULT_PORT, PROTOCOL_VERSION, ROOM,
+  AVATAR_COLORS, CLOSE_TAKEN_OVER, DEFAULT_PORT, PROTOCOL_VERSION, ROOM,
   type ChatLine, type ClientMessages, type JoinOptions, type MondeStateView, type NpcSay, type QuartierJoinOptions,
   type PlayerSave, type QuartierStateView, type ServerMessages,
 } from '../../src/shared/protocol'
@@ -87,7 +87,7 @@ await sleep(1200)
 
 check('every bot sees 3 players on board', bots.every((b) => b.monde.state.players.size >= 3))
 check('every bot sees 3 avatars in the district', bots.every((b) => b.quartier.state.avatars.size >= 3))
-check('chat reaches the others, markup stripped', bots.every((b) => b.chats.some((c) => c.text === 'Bonjour btout le monde/b !')))
+check('chat reaches the others, markup stripped', bots.every((b) => b.chats.some((c) => c.text === 'Bonjour tout le monde !')))
 check('a chat that sanitizes to nothing is refused, not kicked', bastien.refused.some((r) => r.reason === 'invalid') && bastien.quartier.connection.isOpen)
 check('a taken seat is refused', bastien.refused.some((r) => r.detail.includes('prise')))
 check('chat flood is rate-limited', nour.refused.some((r) => r.reason === 'rate'))
@@ -146,8 +146,24 @@ check('each player gets back their own quest progress on rejoin', questsOf(mila)
 const coatAt = (b: Bot) => b.monde.state.windows.get(WINDOW)
 check('every player sees the same scrubbed window', coatAt(nour) !== undefined && bots.every((b) => coatAt(b) === coatAt(nour)))
 
+const nefOpts: QuartierJoinOptions = { ...nour.base, district: 'nef' }
+const closes: number[] = []
+nour.monde.onLeave((code) => void closes.push(code))
+nour.quartier.onLeave((code) => void closes.push(code))
+const tab = new Client(URL_)
+const tabMonde = await tab.joinOrCreate<MondeStateView>(ROOM.monde, nour.base)
+tabMonde.onMessage('*', () => undefined)
+const tabQuartier = await tab.joinOrCreate<QuartierStateView>(ROOM.quartier, nefOpts)
+await sleep(400)
+const nourId = nour.base.identity.id
+check('a second tab takes the player over in both rooms', closes.length === 2 && closes.every((c) => c === CLOSE_TAKEN_OVER)
+  && !mila.quartier.state.avatars.has(nourId) && tabQuartier.state.avatars.has(nourId))
+check('the roster follows the newer tab', mila.monde.state.players.get(nourId)?.district === 'nef')
+const orphan = await rejects(new Client(URL_).joinOrCreate(ROOM.quartier, { ...intruder, district: DISTRICT }))
+check('a district join without a monde session is refused', orphan)
+
 walkers.forEach(clearInterval)
-await Promise.all(bots.flatMap((b) => [b.quartier.leave(), b.monde.leave()]))
+await Promise.all([...[mila, bastien].flatMap((b) => [b.quartier.leave(), b.monde.leave()]), tabQuartier.leave(), tabMonde.leave()])
 const failed = checks.filter(([, ok]) => !ok).length
 console.log(failed ? `${failed} échec(s)` : 'tout va bien à bord')
 process.exit(failed ? 1 : 0)

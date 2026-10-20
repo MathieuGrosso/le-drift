@@ -1,7 +1,7 @@
 import type { Client } from '@colyseus/core'
 import type { PlayerId } from '../../../src/shared/protocol'
 
-/** One live session per player per room: a second tab with the same identity takes over. */
+/** One live session per player per room; the monde room extends it across rooms (see MondePort). */
 export class Sessions {
   private readonly byClient = new Map<string, PlayerId>()
   private readonly byPlayer = new Map<PlayerId, Client>()
@@ -28,6 +28,10 @@ export class Sessions {
     if (!id || this.byPlayer.get(id)?.sessionId !== client.sessionId) return null
     this.byPlayer.delete(id)
     return id
+  }
+
+  clientOf(id: PlayerId): Client | null {
+    return this.byPlayer.get(id) ?? null
   }
 
   playerOf(client: Client): PlayerId | null {

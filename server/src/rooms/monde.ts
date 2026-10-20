@@ -1,12 +1,12 @@
-import { Room, type Client } from '@colyseus/core'
-import { LIMITS, windowCoat, type JoinOptions, type PlayerId, type ServerMessages } from '../../../src/shared/protocol'
+import { ErrorCode, Room, type Client } from '@colyseus/core'
+import { CLOSE_TAKEN_OVER, LIMITS, ROOM, windowCoat, type JoinOptions, type PlayerId, type ServerMessages } from '../../../src/shared/protocol'
 import { NET, TIME, WINDOWS } from '../../../src/core/tuning'
 import { authenticate } from '../identity'
 import { MondeState, PlayerCard } from '../state'
 import { clientMessages, joinOptions } from '../validate'
 import { REAL_MS_PER_GAME_HOUR, gameHoursAt } from '../clock'
 import { GUARDS } from '../config'
-import { createGuard, refuse } from './guard'
+import { createGuard, parseJoin, refuse, rejectJoin } from './guard'
 import { Sessions } from './sessions'
 import type { RoomDeps } from './deps'
 import type { MondePort } from './registry'
@@ -24,6 +24,7 @@ export function createMondeRoom(deps: RoomDeps) {
         if (patch.district !== undefined && card.district !== patch.district) card.district = patch.district
         if (patch.status !== undefined && card.status !== patch.status) card.status = patch.status
       },
+      online: (id) => this.sessions.clientOf(id) !== null,
     }
 
     override messages = {
@@ -73,23 +74,30 @@ export function createMondeRoom(deps: RoomDeps) {
     }
 
     override async onAuth(_client: Client, raw: unknown) {
-      const opts: JoinOptions = joinOptions.parse(raw)
+      const opts: JoinOptions = parseJoin(ROOM.monde, joinOptions, raw)
       const rec = await authenticate(deps.store, opts)
-      if (!rec) throw new Error('identity')
+      if (!rec) throw rejectJoin(ROOM.monde, 'identité', ErrorCode.AUTH_FAILED)
       return rec
     }
 
     override onJoin(client: Client): void {
       const rec = deps.store.player(client.auth.id)!
-      this.sessions.bind(client, rec.id)?.leave()
+      const replaced = this.sessions.bind(client, rec.id)
+      if (replaced) {
+        replaced.leave(CLOSE_TAKEN_OVER)
+        for (const q of deps.registry.quartiers()) q.evict(rec.id)
+      }
+      const live = [...deps.registry.quartiers()].find((q) => q.hosts(rec.id))
       this.state.players.set(rec.id, new PlayerCard({
-        id: rec.id, name: rec.profile.name, color: rec.profile.color, district: rec.save?.hero.district ?? 'ecluse',
+        id: rec.id, name: rec.profile.name, color: rec.profile.color,
+        district: live?.district() ?? rec.save?.hero.district ?? 'ecluse',
       }))
       const welcome: ServerMessages['welcome'] = { you: rec.id, save: rec.save, brains: deps.brains.enabled }
       client.send('welcome', welcome)
     }
 
-    override onDrop(client: Client): void {
+    override onDrop(client: Client, code?: number): void {
+      if (code === CLOSE_TAKEN_OVER) return this.onLeave(client)
       const id = this.sessions.playerOf(client)
       if (id) this.port.updateCard(id, { status: 'absent' })
       // Rejects on expiry (onLeave follows) and during shutdown: both are expected.

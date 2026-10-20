@@ -48,6 +48,7 @@ export function createNetSystem(): System {
   let brains = false
   let seatAsked: string | null = null
   let canRejoin = false
+  let takenOverHere = false
   let placement: Placement | null = null
   let starting = false
   let rejoinTimer: ReturnType<typeof setTimeout> | null = null
@@ -145,6 +146,7 @@ export function createNetSystem(): System {
   const connect = async () => {
     if (!ctx || !ui || starting || session) return
     starting = true
+    takenOverHere = false
     try {
       const endpoint = serverEndpoint()
       if (!(await probe(endpoint))) {
@@ -179,9 +181,15 @@ export function createNetSystem(): System {
           else if (st === 'online' && document.hidden) onVisibility()
         },
         message: onMessage,
-        lost: () => {
+        lost: (takenOver) => {
           if (session !== s) return
           session = null
+          if (takenOver) {
+            takenOverHere = true
+            canRejoin = true
+            void s.stop()
+            return
+          }
           void s.stop().then(() => {
             rejoinTimer = setTimeout(() => {
               rejoinTimer = null
@@ -305,7 +313,7 @@ export function createNetSystem(): System {
       presenceTimer -= dt
       if (presenceTimer <= 0) {
         presenceTimer = PRESENCE_SECONDS
-        ui.presence.render(status(), players(), me, canRejoin)
+        ui.presence.render(status(), players(), me, canRejoin, takenOverHere ? TEXT.takenOver : null)
       }
       if (online && session) {
         const m = session.mondeState

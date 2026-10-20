@@ -6,6 +6,9 @@ export const DEFAULT_PORT = 8787
 export const ROOM = { monde: 'monde', quartier: 'quartier' } as const
 export type RoomName = (typeof ROOM)[keyof typeof ROOM]
 
+/** Close code of a session replaced by a newer join of the same player (another tab). */
+export const CLOSE_TAKEN_OVER = 4100
+
 export const LIMITS = {
   nameMin: 2,
   nameMax: 20,
@@ -193,11 +196,13 @@ export interface QuartierStateView {
 }
 
 const UNSAFE_CHARS = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\u200b-\\u200f\\u2028-\\u202e\\u2066-\\u2069]', 'g')
+const MARKUP_TAG = /<\/?[a-z][^<>]*>/gi
 
 export function sanitizeText(raw: string, max: number): string {
   return raw
     .normalize('NFC')
     .replace(UNSAFE_CHARS, ' ')
+    .replace(MARKUP_TAG, '')
     .replace(/[<>]/g, '')
     .replace(/\s+/g, ' ')
     .trim()

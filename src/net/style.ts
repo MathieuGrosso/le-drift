@@ -20,6 +20,7 @@ const CSS = `
 .net-presence li i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .net-presence li span { opacity: 0.65; margin-left: auto; padding-left: 8px; }
 .net-presence li.absent { opacity: 0.5; }
+.net-presence .net-note { margin: 2px 0 8px; font-size: 12px; line-height: 1.35; }
 .net-presence button, .net-welcome button { font: inherit; border: 0; border-radius: 10px; padding: 6px 12px; cursor: pointer; background: #d8644e; color: #fff6e6; }
 .net-presence button.ghost, .net-welcome button.ghost { background: transparent; color: #3e3a5a; }
 .net-wheel { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; margin: -150px 0 0 -150px; display: none; pointer-events: auto; }

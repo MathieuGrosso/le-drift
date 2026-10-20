@@ -15,6 +15,7 @@ export const TEXT = {
   chatHint: 'Entrée pour parler',
   aboard: 'À bord',
   rejoin: 'Rejoindre le Drift',
+  takenOver: 'Tu as rejoint le Drift depuis un autre onglet. Rejoins-le ici pour reprendre la main.',
   solo: 'Seul à bord',
   connecting: 'Connexion…',
   reconnecting: 'Reconnexion…',

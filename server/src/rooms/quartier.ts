@@ -1,6 +1,6 @@
-import { Room, type Client } from '@colyseus/core'
+import { ErrorCode, Room, type Client } from '@colyseus/core'
 import {
-  LIMITS, type ChatLine, type PlayerCardView, type PlayerId, type QuartierJoinOptions,
+  CLOSE_TAKEN_OVER, LIMITS, ROOM, type ChatLine, type PlayerCardView, type PlayerId, type QuartierJoinOptions,
 } from '../../../src/shared/protocol'
 import { NET } from '../../../src/core/tuning'
 import { DISTRICT_BY_ID, type DistrictDef } from '../../../src/core/layout'
@@ -8,7 +8,7 @@ import type { DistrictId } from '../../../src/core/types'
 import { authenticate } from '../identity'
 import { Avatar, QuartierState } from '../state'
 import { clientMessages, quartierCreateOptions, quartierJoinOptions } from '../validate'
-import { createGuard, refuse } from './guard'
+import { createGuard, parseJoin, refuse, rejectJoin } from './guard'
 import { constrainMove, type Tracked } from './movement'
 import { Sessions } from './sessions'
 import type { RoomDeps } from './deps'
@@ -33,6 +33,9 @@ export function createQuartierRoom(deps: RoomDeps) {
         a.name = profile.name
         a.color = profile.color
       },
+      district: () => this.district,
+      hosts: (id) => this.sessions.clientOf(id) !== null,
+      evict: (id) => this.sessions.clientOf(id)?.leave(CLOSE_TAKEN_OVER),
     }
 
     override messages = {
@@ -91,11 +94,11 @@ export function createQuartierRoom(deps: RoomDeps) {
 
     /** Any client can ask to create a room: the district is validated and a live one is never replaced. */
     override onCreate(raw: unknown): void {
-      const { district } = quartierCreateOptions.parse(raw)
+      const { district } = parseJoin(ROOM.quartier, quartierCreateOptions, raw)
       this.district = district
       this.box = DISTRICT_BY_ID[district]
       this.setState(new QuartierState({ district }))
-      if (!deps.brains.rooms.addQuartier(this)) throw new Error(`quartier ${district} déjà ouvert`)
+      if (!deps.brains.rooms.addQuartier(this)) throw rejectJoin(ROOM.quartier, `${district} déjà ouvert`)
       this.setPatchRate(1000 / NET.sendHz)
       deps.registry.attachQuartier(this.port)
     }
@@ -107,16 +110,17 @@ export function createQuartierRoom(deps: RoomDeps) {
     }
 
     override async onAuth(_client: Client, raw: unknown) {
-      const opts: QuartierJoinOptions = quartierJoinOptions.parse(raw)
-      if (opts.district !== this.district) throw new Error('district')
+      const opts: QuartierJoinOptions = parseJoin(ROOM.quartier, quartierJoinOptions, raw)
+      if (opts.district !== this.district) throw rejectJoin(ROOM.quartier, `${opts.district} demandé dans ${this.district}`)
       const rec = await authenticate(deps.store, opts)
-      if (!rec) throw new Error('identity')
+      if (!rec) throw rejectJoin(ROOM.quartier, 'identité', ErrorCode.AUTH_FAILED)
+      if (!deps.registry.monde()?.online(rec.id)) throw rejectJoin(ROOM.quartier, 'pas à bord du Drift')
       return rec
     }
 
     override onJoin(client: Client): void {
       const rec = deps.store.player(client.auth.id)!
-      this.sessions.bind(client, rec.id)?.leave()
+      this.sessions.bind(client, rec.id)?.leave(CLOSE_TAKEN_OVER)
       const saved = rec.save?.hero.district === this.district ? rec.save.hero.localPosition : null
       const p = saved ?? { x: (this.box.x0 + this.box.x1) / 2, y: this.box.y0, z: (this.box.z0 + this.box.z1) / 2 }
       // at: 0 lets the first reported position replace this guess without spending the teleport.
@@ -127,7 +131,8 @@ export function createQuartierRoom(deps: RoomDeps) {
       deps.registry.monde()?.updateCard(rec.id, { district: this.district, status: 'actif' })
     }
 
-    override onDrop(client: Client): void {
+    override onDrop(client: Client, code?: number): void {
+      if (code === CLOSE_TAKEN_OVER) return this.onLeave(client)
       // Rejects on expiry (onLeave follows) and during shutdown: both are expected.
       this.allowReconnection(client, NET.reconnectSeconds).catch(() => undefined)
     }
