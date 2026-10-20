@@ -7,7 +7,7 @@ import type { Quarter } from './interiors/quarter'
 import type { Spot } from './interiors/types'
 import type { Mats } from './materials'
 import { PAL } from './palette'
-import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, ROLE_FEATS, touchLooks, writeLook, type Look, type Role as Fig } from './people'
+import { F, figureMaterial, figureParts, instanceLooks, lookFor, mask, RIG, ROLE_FEATS, touchInstances, writeLook, type Look, type Role as Fig } from './people'
 import { mapX, mapZ } from '../core/quarter'
 
 type PoseKind = 'stand' | 'look' | 'walk' | 'run' | 'sit' | 'eat' | 'talk' | 'clap' | 'cook' | 'lean' | 'write' | 'hand' | 'post' | 'sleep' | 'cheer'
@@ -169,7 +169,6 @@ export class Npcs {
       for (const key of parts) {
         instanceLooks(geo[key], count * PARTS_PER_NPC[key], false)
         const im = new THREE.InstancedMesh(geo[key], mat, count * PARTS_PER_NPC[key])
-        im.frustumCulled = false
         im.userData.fadeable = true
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
         im.name = `habitants:${name}:${key}`
@@ -415,8 +414,9 @@ export class Npcs {
       for (const [key, im] of Object.entries(b.meshes) as [PartKey, THREE.InstancedMesh][]) {
         im.count = b.used * PARTS_PER_NPC[key]
         im.visible = im.count > 0
-        im.instanceMatrix.needsUpdate = true
-        touchLooks(im.geometry)
+        if (!im.visible) continue
+        touchInstances(im)
+        im.computeBoundingSphere()
       }
     }
     this.group.visible = shown > 0

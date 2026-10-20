@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { DistrictId, Vec3 } from '../../core/types'
 import type { Mats } from '../materials'
 import { PAL } from '../palette'
-import { F, RIG, figureMaterial, instanceLooks, lookFor, mask, rigGeometry, ROLE_FEATS, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
+import { F, RIG, figureMaterial, instanceLooks, lookFor, mask, rigGeometry, ROLE_FEATS, touchInstances, writeLook, writePose, type Look, type Role } from '../people'
 
 type Pose = 'stand' | 'walk' | 'work' | 'sit' | 'sleep' | 'look'
 interface Stop { from: number; to: number; pose: Pose; at?: Vec3 & { yaw: number }; path?: { pts: Vec3[]; loop: boolean; speed: number } }
@@ -117,7 +117,6 @@ export class Folk {
       instanceLooks(geo, n, true)
       const im = new THREE.InstancedMesh(geo, mat, n)
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-      im.frustumCulled = false
       im.name = `habitants:${role}`
       this.meshes.set(role, im)
       this.group.add(im)
@@ -164,9 +163,9 @@ export class Folk {
     for (const [role, im] of this.meshes) {
       im.count = slots.get(role) ?? 0
       im.visible = im.count > 0
-      im.instanceMatrix.needsUpdate = true
-      touchLooks(im.geometry)
-      ;(im.geometry.getAttribute('iPose') as THREE.InstancedBufferAttribute).needsUpdate = true
+      if (!im.visible) continue
+      touchInstances(im)
+      im.computeBoundingSphere()
     }
   }
 

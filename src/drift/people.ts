@@ -71,7 +71,7 @@ interface Detail { blob: THREE.SphereGeometry; small: THREE.SphereGeometry; head
 const DETAIL: Record<'hi' | 'lo' | 'far', Detail> = {
   hi: { blob: new THREE.SphereGeometry(1, 12, 9), small: new THREE.SphereGeometry(1, 7, 5), head: new THREE.SphereGeometry(1, 18, 14), seg: 14 },
   lo: { blob: new THREE.SphereGeometry(1, 8, 6), small: new THREE.SphereGeometry(1, 5, 3), head: new THREE.SphereGeometry(1, 11, 8), seg: 8 },
-  far: { blob: new THREE.SphereGeometry(1, 6, 4), small: new THREE.SphereGeometry(1, 4, 2), head: new THREE.SphereGeometry(1, 7, 5), seg: 5 },
+  far: { blob: new THREE.SphereGeometry(1, 5, 3), small: new THREE.SphereGeometry(1, 4, 2), head: new THREE.SphereGeometry(1, 6, 4), seg: 4 },
 }
 
 const _q = new THREE.Quaternion()
@@ -292,15 +292,51 @@ export function rigGeometry(feats: readonly number[], detail: 'lo' | 'far'): THR
   const b = new FigB()
   const set = new Set(feats)
   const d = DETAIL[detail]
+  const far = detail === 'far'
   const T = (x: number, y: number, z: number) => new THREE.Matrix4().makeTranslation(x, y, z)
-  torso(new Part(b, T(0, RIG.hip, 0), d, L.body, set))
-  head(new Part(b, T(0, RIG.hip + RIG.headY, 0), d, L.head, set))
+  ;(far ? farTorso : torso)(new Part(b, T(0, RIG.hip, 0), d, L.body, set))
+  ;(far ? farHead : head)(new Part(b, T(0, RIG.hip + RIG.headY, 0), d, L.head, set))
   for (const s of [-1, 1]) {
-    arm(new Part(b, T(s * RIG.shX, RIG.hip + RIG.shY, 0).multiply(new THREE.Matrix4().makeRotationZ(s * 0.07)), d, s < 0 ? L.armL : L.armR, set))
-    thigh(new Part(b, T(s * RIG.legX, RIG.hip, 0), d, s < 0 ? L.thighL : L.thighR, set))
-    shin(new Part(b, T(s * RIG.legX, RIG.hip - RIG.thigh, 0), d, s < 0 ? L.shinL : L.shinR, set))
+    ;(far ? farArm : arm)(new Part(b, T(s * RIG.shX, RIG.hip + RIG.shY, 0).multiply(new THREE.Matrix4().makeRotationZ(s * 0.07)), d, s < 0 ? L.armL : L.armR, set))
+    ;(far ? farThigh : thigh)(new Part(b, T(s * RIG.legX, RIG.hip, 0), d, s < 0 ? L.thighL : L.thighR, set))
+    ;(far ? farShin : shin)(new Part(b, T(s * RIG.legX, RIG.hip - RIG.thigh, 0), d, s < 0 ? L.shinL : L.shinR, set))
   }
   return b.build()
+}
+
+// Silhouette only, a few pixels tall: body, head and the headgear that changes its outline.
+function farTorso(p: Part): void {
+  p.lathe([[0, -0.05], [1.0, -0.05], [1.1, 0.15], [1.0, 0.4], [0.55, 0.56], [0, 0.6]], 0.2, DEPTH, CH.cloth, W(1))
+  p.tube(0, -0.22, 0.28, 0, 0.29, 0.2, CH.cloth, W(0.95), F.smock, DEPTH, true)
+  p.arc(-0.34, 0.44, 0.24, 0.215, DEPTH, Math.PI - 0.95, 1.9, CH.fixed, WHITE, F.apron, -0.004)
+  p.lathe([[0.62, 0.0], [1.4, -0.2], [0.55, 0.02]], 0.19, 0.88, CH.accent, W(1), F.shawl, 0.56)
+}
+
+function farHead(p: Part): void {
+  const r = RIG.headR
+  p.geo(p.d.head, 0, 0, 0, r, r * 0.97, r * 0.98, CH.skin, W(1))
+  for (const f of [F.hairShort, F.hairBob, F.hairBun, F.pigtails, F.elder]) p.ell(0, r * 0.25, r * 0.12, r * 1.1, r * 0.85, r * 1.08, CH.hair, W(1), f)
+  p.ell(0, r * 0.75, r * 0.8, r * 0.48, r * 0.44, r * 0.44, CH.hair, W(1.05), F.hairBun)
+  p.ell(0, -r * 0.62, -r * 0.6, r * 0.62, r * 0.55, r * 0.42, CH.hair, W(1), F.beard)
+  p.ell(0, r * 1.15, 0, r * 1.25, r * 0.9, r * 1.2, CH.fixed, WHITE, F.toque)
+  p.ell(0, r * 0.62, -r * 0.1, r * 1.12, r * 0.55, r * 1.3, CH.accent, W(1), F.cap)
+  p.tube(0, r * 0.38, r * 1.05, 0, r * 2.1, r * 0.9, CH.fixed, STRAW, F.straw)
+  for (const f of [F.kerchief, F.beanie]) p.ell(0, r * 0.4, r * 0.06, r * 1.15, r * 0.8, r * 1.15, CH.accent, W(1), f)
+}
+
+function farArm(p: Part): void {
+  p.tube(0, -0.45, -0.02, 0, 0.058, 0.072, CH.cloth, W(0.95), 0, 1, true)
+  p.dot(0, -0.51, -0.006, 0.058, 0.078, 0.05, CH.hand, W(1))
+}
+
+function farThigh(p: Part): void {
+  p.tube(0, -RIG.thigh, 0.02, 0, 0.074, 0.092, CH.legs, W(1), 0, 1, true)
+}
+
+function farShin(p: Part): void {
+  p.tube(0, -0.24, 0, 0, 0.064, 0.074, CH.legs, W(0.96), 0, 1, true)
+  p.tube(0, -0.36, -0.24, 0, 0.074, 0.074, CH.fixed, BOOT, 0, 1, true)
+  p.ell(0, -0.355, -0.06, 0.078, 0.05, 0.13, CH.fixed, BOOT)
 }
 
 export const ROLE_FEATS: Record<Role, number[]> = {
@@ -390,8 +426,21 @@ export function writeLook(geo: THREE.BufferGeometry, i: number, look: Look, feat
   ;(geo.getAttribute('iCb') as THREE.InstancedBufferAttribute).setXYZW(i, pack(look.legs, true), pack(look.hand, true), featMask, shape)
 }
 
-export function touchLooks(geo: THREE.BufferGeometry): void {
-  for (const k of ['iCa', 'iCb']) (geo.getAttribute(k) as THREE.InstancedBufferAttribute).needsUpdate = true
+const INSTANCE_ATTRS = ['iCa', 'iCb', 'iPose'] as const
+
+// Uploads only the live instances: matrices, looks and pose.
+export function touchInstances(im: THREE.InstancedMesh): void {
+  touchRange(im.instanceMatrix, im.count)
+  for (const k of INSTANCE_ATTRS) {
+    const a = im.geometry.getAttribute(k) as THREE.InstancedBufferAttribute | undefined
+    if (a) touchRange(a, im.count)
+  }
+}
+
+function touchRange(a: THREE.BufferAttribute, count: number): void {
+  a.clearUpdateRanges()
+  a.addUpdateRange(0, count * a.itemSize)
+  a.needsUpdate = true
 }
 
 // freq (rad/s), phase, swing amplitude, sit bend (rad, thighs forward, shins back down).

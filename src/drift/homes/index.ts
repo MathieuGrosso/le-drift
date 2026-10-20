@@ -5,7 +5,7 @@ import { seededRng } from '../../core/rng'
 import { GeoBuilder } from '../builder'
 import type { Mats } from '../materials'
 import { PAL } from '../palette'
-import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, RIG, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
+import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, RIG, touchInstances, writeLook, writePose, type Look, type Role } from '../people'
 import { HOLE_UNIFORMS } from './holes'
 import { buildInterior, SEA_UNIFORMS, type Interior } from './interior'
 import { framePoint, type ClosedDoor, type HomeDef } from './plan'
@@ -182,9 +182,7 @@ export class Homes {
     for (const [role, im] of this.residents) {
       im.count = slots.get(role) ?? 0
       im.visible = im.count > 0
-      im.instanceMatrix.needsUpdate = true
-      touchLooks(im.geometry)
-      ;(im.geometry.getAttribute('iPose') as THREE.InstancedBufferAttribute).needsUpdate = true
+      if (im.visible) touchInstances(im)
     }
   }
 

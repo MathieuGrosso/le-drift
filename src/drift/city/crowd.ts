@@ -4,7 +4,7 @@ import { NAV, NPC_LOD } from '../../core/tuning'
 import type { DistrictId, QualityLevel, Vec3 } from '../../core/types'
 import type { DriftNavmesh } from '../nav/navmesh'
 import type { Mats } from '../materials'
-import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, ROLES, touchLooks, writeLook, writePose, type Look, type Role } from '../people'
+import { figureMaterial, instanceLooks, lookFor, rigGeometry, ROLE_FEATS, ROLES, touchInstances, writeLook, writePose, type Look, type Role } from '../people'
 import type { PathSpec, SpotSpec } from './kit'
 
 interface Walker {
@@ -42,15 +42,21 @@ const _e = new THREE.Euler()
 const _p = new THREE.Vector3()
 const _s = new THREE.Vector3()
 const _eye = new THREE.Vector3()
+const _view = new THREE.Matrix4()
+const _frustum = new THREE.Frustum()
+const _sphere = new THREE.Sphere()
 
 type CrowdLod = 'near' | 'far'
 const CROWD_LODS: readonly CrowdLod[] = ['near', 'far']
+const BODY_CENTER = 0.9
+const BODY_RADIUS = 1.1
 
 // The many: cheap residents walking district paths and holding spots, by the hour.
 export class Crowd {
   readonly group = new THREE.Group()
   private readonly walkers: Walker[] = []
-  private readonly meshes = new Map<`${Role}:${CrowdLod}`, THREE.InstancedMesh>()
+  private readonly meshes: THREE.InstancedMesh[] = []
+  private readonly slots: number[] = []
   private time = 0
   private active: ReadonlySet<DistrictId> | null = null
   private shown: ReadonlySet<DistrictId> | null = null
@@ -82,7 +88,8 @@ export class Crowd {
         im.frustumCulled = false
         im.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
         im.name = `foule:${role}:${lod}`
-        this.meshes.set(`${role}:${lod}`, im)
+        this.meshes.push(im)
+        this.slots.push(0)
         this.group.add(im)
       }
     }
@@ -196,13 +203,18 @@ export class Crowd {
     return out
   }
 
-  // Without a camera every walker keeps the near geometry.
-  update(dt: number, hours: number, camera?: THREE.Object3D): void {
+  // Without a camera every walker keeps the near geometry and none is culled.
+  update(dt: number, hours: number, camera?: THREE.Camera): void {
     this.time += dt
     const meal = hours >= 7.5 && hours < 8.5
-    const slots = new Map<string, number>()
-    for (const key of this.meshes.keys()) slots.set(key, 0)
-    if (camera) this.group.worldToLocal(camera.getWorldPosition(_eye))
+    const slots = this.slots
+    slots.fill(0)
+    if (camera) {
+      this.group.worldToLocal(camera.getWorldPosition(_eye))
+      this.group.updateWorldMatrix(true, false)
+      _view.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(this.group.matrixWorld)
+      _frustum.setFromProjectionMatrix(_view)
+    }
     const near2 = camera ? NPC_LOD.crowdNear * NPC_LOD.crowdNear : Infinity
     this.nav?.update(dt)
     for (let i = 0; i < this.walkers.length; i++) {
@@ -235,11 +247,12 @@ export class Crowd {
         }
       }
       if (!drawn) continue
+      if (camera && !_frustum.intersectsSphere(_sphere.set(_p.set(w.x, w.y + BODY_CENTER * w.scale, w.z), BODY_RADIUS * w.scale))) continue
       const d2 = (w.x - _eye.x) ** 2 + (w.y - _eye.y) ** 2 + (w.z - _eye.z) ** 2
-      const key = `${w.look.role}:${d2 < near2 ? 'near' : 'far'}` as const
-      const im = this.meshes.get(key)!
-      const slot = slots.get(key)!
-      slots.set(key, slot + 1)
+      const mi = ROLES.indexOf(w.look.role) * CROWD_LODS.length + (d2 < near2 ? 0 : 1)
+      const im = this.meshes[mi]!
+      const slot = slots[mi]!
+      slots[mi] = slot + 1
       _e.set(-lean, -w.yaw, roll, 'YXZ')
       _q.setFromEuler(_e)
       _m.compose(_p.set(w.x, w.y + bob, w.z), _q, _s.setScalar(w.scale))
@@ -247,18 +260,18 @@ export class Crowd {
       writeLook(im.geometry, slot, w.look)
       writePose(im.geometry, slot, w.speed * 5.5, w.phase * w.speed * 5.5, swing, bend)
     }
-    for (const [key, im] of this.meshes) {
-      im.count = slots.get(key)!
+    for (let i = 0; i < this.meshes.length; i++) {
+      const im = this.meshes[i]!
+      im.count = slots[i]!
       im.visible = im.count > 0
-      im.instanceMatrix.needsUpdate = true
-      touchLooks(im.geometry)
-      ;(im.geometry.getAttribute('iPose') as THREE.InstancedBufferAttribute).needsUpdate = true
+      if (im.count === 0) continue
+      touchInstances(im)
     }
   }
 
   dispose(): void {
     this.nav?.destroy()
-    for (const im of this.meshes.values()) im.geometry.dispose()
+    for (const im of this.meshes) im.geometry.dispose()
     this.group.removeFromParent()
   }
 }
