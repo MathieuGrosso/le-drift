@@ -211,7 +211,7 @@ float rd_beamAt(vec3 P, int i, out float along) {
   vec4 A = rdGlassA[i];
   vec4 B = rdGlassB[i];
   vec4 C = rdGlassC[i];
-  if (C.z <= 0.0) return 0.0;
+  if (C.z <= 0.0 || C.w > 0.5) return 0.0;
   vec3 rel = P - A.xyz;
   float front = dot(rel, B.xyz);
   if (front < 0.0) return 0.0;
@@ -221,7 +221,7 @@ float rd_beamAt(vec3 P, int i, out float along) {
   vec3 hit = rel + Lb * t;
   vec3 T = rd_glassT(B.xyz);
   vec2 uv = vec2(dot(hit, T), dot(hit, cross(B.xyz, T)));
-  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * rd_beamStreak(uv, A.w, i) * C.x * C.z * exp(-t * mix(0.09, 0.022, C.w)) * smoothstep(0.0, 0.25, front) * mix(1.0, 0.12, C.w);
+  return rd_glassMask(uv, A, B, C, 0.06 + t * 0.05) * rd_beamStreak(uv, A.w, i) * C.x * C.z * exp(-t * 0.09) * smoothstep(0.0, 0.25, front);
 }
 vec3 rd_glassLight(vec3 W, vec3 N, float foot, out vec3 patchLight) {
   vec3 fill = vec3(0.0);
