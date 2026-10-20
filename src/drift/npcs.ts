@@ -132,18 +132,24 @@ const _v = new THREE.Vector3()
 const _w = new THREE.Vector3()
 const _one = new THREE.Vector3(1, 1, 1)
 
+const DIALOGUE_RELEASE_S = 1.5
+
 export class Npcs {
   private readonly list: Npc[] = []
   private readonly batches = new Map<string, Batch>()
   private readonly overrides = new Map<string, { act: Activity; until: number }>()
   private standAll = 0
   private time = 0
+  private readonly held = new Map<string, number>()
+  private readonly offs: (() => void)[] = []
   private readonly seats: (Spot & { part: string })[]
   private readonly portholeSpots: (Spot & { part: string })[] = []
   readonly group = new THREE.Group()
 
   constructor(private readonly ctx: GameContext, mats: Mats, private readonly quarter: Quarter) {
     this.group.name = 'drift-habitants'
+    this.offs.push(ctx.bus.on('dialogue:start', ({ npcId }) => this.held.set(npcId, Infinity)))
+    this.offs.push(ctx.bus.on('dialogue:end', ({ npcId }) => this.held.set(npcId, this.time + DIALOGUE_RELEASE_S)))
     const mat = figureMaterial(mats, false)
     const defs = roster(ctx.rng('drift-habitants'))
     const n = defs.length
@@ -341,8 +347,12 @@ export class Npcs {
     for (const b of this.batches.values()) b.used = 0
     for (const n of this.list) {
       const ov = this.overrides.get(n.def.id)
+      const heldUntil = this.held.get(n.def.id)
+      if (heldUntil !== undefined && heldUntil <= this.time) this.held.delete(n.def.id)
+      const held = n.act !== null && heldUntil !== undefined && heldUntil > this.time
       let act: Activity
-      if (ov && ov.until > this.time) act = ov.act
+      if (held) act = n.act!
+      else if (ov && ov.until > this.time) act = ov.act
       else {
         if (ov) this.overrides.delete(n.def.id)
         act = this.schedule(n, h)
@@ -354,7 +364,7 @@ export class Npcs {
         continue
       }
       n.hiddenWritten = false
-      if (act.path) this.advance(n, act, dt)
+      if (act.path && !held) this.advance(n, act, dt)
       const vis = this.quarter.isDetailVisible(n.part)
       n.visible = vis
       if (!vis) continue
@@ -604,6 +614,7 @@ export class Npcs {
   }
 
   dispose(): void {
+    for (const off of this.offs.splice(0)) off()
     for (const b of this.batches.values()) for (const im of Object.values(b.meshes)) im.geometry.dispose()
     this.group.removeFromParent()
   }
