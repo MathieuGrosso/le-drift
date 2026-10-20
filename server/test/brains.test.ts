@@ -5,6 +5,7 @@ import type { NpcSay } from '../../src/shared/protocol'
 import { createBrains } from '../src/npc'
 import type { NpcBrains } from '../src/npc/brain'
 import { CONFIG } from '../src/config'
+import { SHEET_BY_ID } from '../src/npc/sheets'
 import { MondeState, QuartierState } from '../src/state'
 import { avatar, card, memoryStore } from './fakes'
 
@@ -44,7 +45,18 @@ test('without credentials the server boots scripted brains and never builds a cl
   live.push(brains)
   assert.equal(brains.enabled, false)
   assert.equal(built, 0)
-  assert.deepEqual(await brains.think('cuistot', { kind: 'talk', player: 'a', text: 'Bonjour' }), [])
+})
+
+test('scripted brains answer a player who talks with one of the NPC\'s written lines, privately', async () => {
+  const brains = await createBrains(memoryStore(), { credentials: async () => false })
+  live.push(brains)
+  const said = seat(brains)
+  await brains.think('cuistot', { kind: 'talk', player: 'a', text: 'Il reste du pain ?' })
+  assert.equal(said.length, 1)
+  assert.equal(said[0]!.to, 'a')
+  assert.ok(SHEET_BY_ID.get('cuistot')!.scripted.includes(said[0]!.text))
+  assert.deepEqual(await brains.think('cuistot', { kind: 'tick' }), [])
+  assert.deepEqual(await brains.think('grand-pere', { kind: 'talk', player: 'b', text: null }), [])
 })
 
 test('once the daily token budget is spent, an NPC answers with a scripted line instead of calling Claude', async () => {

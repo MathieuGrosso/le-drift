@@ -15,10 +15,34 @@ import { NpcRoomRegistry } from './rooms'
 import { SHEETS, SHEET_BY_ID } from './sheets'
 import { NPC_TUNING } from './tuning'
 
-/** Scripted mode: no orders are issued and clients keep their local routines and CHATTER lines. */
+/** A player may talk to an NPC only from its district, once per cooldown. */
+function createTalkGate(rooms: NpcRoomRegistry) {
+  const lastTalk = new Map<PlayerId, number>()
+  return (sheet: NpcSheet, player: PlayerId): boolean => {
+    const now = Date.now()
+    if (rooms.districtOf(player) !== sheet.district || now - (lastTalk.get(player) ?? 0) < NPC_TUNING.talkCooldownMs) return false
+    lastTalk.set(player, now)
+    return true
+  }
+}
+
+/** Scripted mode: no orders are issued, ticks do nothing, and a player who talks gets one of the NPC's written lines. */
 export function createScriptedBrains(): NpcBrains {
   const rooms = new NpcRoomRegistry()
-  return { enabled: false, rooms, think: async () => [], observe: () => undefined, dispose: () => undefined }
+  const mayTalk = createTalkGate(rooms)
+  return {
+    enabled: false,
+    rooms,
+    async think(npcId, trigger) {
+      const sheet = SHEET_BY_ID.get(npcId)
+      if (!sheet || trigger.kind !== 'talk' || !mayTalk(sheet, trigger.player)) return []
+      const actions = scriptedLine(sheet, trigger.player)
+      rooms.apply(sheet, actions, Date.now() + NPC_TUNING.orderMs)
+      return actions
+    },
+    observe: () => undefined,
+    dispose: () => undefined,
+  }
 }
 
 async function hasCredentials(): Promise<boolean> {
@@ -51,7 +75,7 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
   const memories = createMemories(store)
   const nextTick = new Map(SHEETS.map((s) => [s.id, Date.now() + jitter()]))
   const thinking = new Set<string>()
-  const lastTalk = new Map<PlayerId, number>()
+  const mayTalk = createTalkGate(rooms)
   const observed = createRateLimit(NPC_TUNING.observedPerPlayer, NPC_TUNING.observedWindowMs)
   let live = true
 
@@ -89,9 +113,7 @@ export function createClaudeBrains(store: Store, decide: DecideFn, take: () => b
   }
 
   const talk = async (sheet: NpcSheet, player: PlayerId, text: string | null): Promise<NpcAction[]> => {
-    const now = Date.now()
-    if (rooms.districtOf(player) !== sheet.district || now - (lastTalk.get(player) ?? 0) < NPC_TUNING.talkCooldownMs) return []
-    lastTalk.set(player, now)
+    if (!mayTalk(sheet, player)) return []
     const name = rooms.nameOf(player) ?? 'quelqu’un'
     const thought = live && !thinking.has(sheet.id) && take()
       ? call(sheet, { kind: 'talk', name, text, memory: memories.about(sheet.id, player) }, player)

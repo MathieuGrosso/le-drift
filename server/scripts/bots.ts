@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { Client, type Room } from '@colyseus/sdk'
 import {
   AVATAR_COLORS, DEFAULT_PORT, PROTOCOL_VERSION, ROOM,
-  type ChatLine, type ClientMessages, type JoinOptions, type MondeStateView, type QuartierJoinOptions,
+  type ChatLine, type ClientMessages, type JoinOptions, type MondeStateView, type NpcSay, type QuartierJoinOptions,
   type PlayerSave, type QuartierStateView, type ServerMessages,
 } from '../../src/shared/protocol'
 import { DISTRICT_BY_ID } from '../../src/core/layout'
@@ -21,6 +21,7 @@ interface Bot {
   monde: Room<unknown, MondeStateView>
   quartier: Room<unknown, QuartierStateView>
   chats: ChatLine[]
+  npcSays: NpcSay[]
   refused: ServerMessages['refused'][]
 }
 
@@ -43,8 +44,9 @@ async function join(name: string, color: number): Promise<Bot> {
   monde.onMessage('welcome', (m: ServerMessages['welcome']) => void (seen.welcome = m))
   const opts: QuartierJoinOptions = { ...base, district: DISTRICT }
   const quartier = await client.joinOrCreate<QuartierStateView>(ROOM.quartier, opts)
-  const bot: Bot = { name, base, welcome: seen.welcome, monde, quartier, chats: [], refused: [] }
+  const bot: Bot = { name, base, welcome: seen.welcome, monde, quartier, chats: [], npcSays: [], refused: [] }
   quartier.onMessage('chat', (m: ChatLine) => bot.chats.push(m))
+  quartier.onMessage('npc:say', (m: NpcSay) => bot.npcSays.push(m))
   for (const room of [monde, quartier]) {
     room.onMessage('refused', (m: ServerMessages['refused']) => bot.refused.push(m))
     room.onMessage('*', () => undefined)
@@ -90,6 +92,11 @@ check('a chat that sanitizes to nothing is refused, not kicked', bastien.refused
 check('a taken seat is refused', bastien.refused.some((r) => r.detail.includes('prise')))
 check('chat flood is rate-limited', nour.refused.some((r) => r.reason === 'rate'))
 check('a scrubbed window is shared', bots.every((b) => b.monde.state.windows.has(WINDOW)))
+
+send(mila.quartier, 'talk', { npcId: 'cuistot', text: 'Il reste du pain ?' })
+for (let waited = 0; waited < 15_000 && !mila.npcSays.length; waited += 200) await sleep(200)
+check('an NPC answers the player who talks to it, and only them', mila.npcSays.some((m) => m.npcId === 'cuistot' && m.to === mila.base.identity.id && m.text.length > 0)
+  && !bastien.npcSays.some((m) => m.to !== null))
 
 clearInterval(walkers[0])
 await sleep(GUARDS.teleportCooldownMs)
