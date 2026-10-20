@@ -7,7 +7,7 @@ import type {
   Box, CellSpec, ColliderSpec, DistrictPlan, DressSlot, FloorSpec, FloorStyle, HullSpec, LampSpec, LinkSpec, PortSpec,
   Rect, VoidSpec, WalkEdge, WalkNode, WaterSpec, WindowSpec,
 } from '../types'
-import { cellX, cellZ, DIRS, type Dir, type Fosse, type Grid, K, type Lot, opposite, walkable } from './grid'
+import { type CellRect, cellX, cellZ, DIRS, type Dir, type Grid, K, type Lot, opposite, walkable } from './grid'
 import { ARRIVAL, BRIDGE, DECK_AT, FOSSE, GRID, HULL, LAMPS, LEVELS, PORT, WATER, WINDOWS } from './tuning'
 
 export interface Door { lot: number; dir: Dir; storey: number; at: number; w: number }
@@ -597,27 +597,28 @@ function flatGround(g: Grid, x: number, z: number): boolean {
   const j = Math.floor((z - g.z0) / GRID)
   if (i < 0 || j < 0 || i >= g.nx || j >= g.nz) return false
   const c = j * g.nx + i
-  return walkable(g.kind[c]!) && !g.ramp[c] && !g.sunk[c] && !g.fixed[c] && g.h[c] === g.ground
+  return walkable(g.kind[c]!) && !g.ramp[c] && !g.sunk[c] && !g.fixed[c] && Math.abs(g.h[c]! - g.ground) <= WATER.depth + 0.01
 }
 
 // The arrival spot: on the main void's rim, looking down at its centre (the landmark's square).
 // The return tube booth stands ARRIVAL.side to the spawn's right, so that spot must be rim too.
-function overlook(g: Grid, f: Fosse): { c: number; yaw: number } | null {
+function overlook(g: Grid, v: CellRect, landing: number): { c: number; yaw: number } | null {
   const focus = g.focus!
-  const lx = cellX(g, f.landing % g.nx)
-  const lz = cellZ(g, Math.floor(f.landing / g.nx))
+  const lx = landing >= 0 ? cellX(g, landing % g.nx) : focus.x
+  const lz = landing >= 0 ? cellZ(g, Math.floor(landing / g.nx)) : focus.z
+  const inV = (i: number, j: number) => i >= v.i0 && i <= v.i1 && j >= v.j0 && j <= v.j1
   let best: { c: number; yaw: number; score: number } | null = null
   for (let c = 0; c < g.kind.length; c++) {
     const i = c % g.nx
     const j = Math.floor(c / g.nx)
     const x = cellX(g, i)
     const z = cellZ(g, j)
-    if (!flatGround(g, x, z)) continue
+    if (!flatGround(g, x, z) || inV(i, j)) continue
     const rim = ([1, 2, 3, 4] as const).some((d) => {
       const ni = i + DIRS[d][0]
       const nj = j + DIRS[d][1]
       const n = nj * g.nx + ni
-      return ni >= 0 && nj >= 0 && ni < g.nx && nj < g.nz && g.sunk[n] === 1 && !g.ramp[n] && g.h[n]! < g.ground - 1
+      return inV(ni, nj) && !g.ramp[n] && (g.sunk[n] ? g.h[n]! < g.ground - 1 : walkable(g.kind[n]!))
     })
     if (!rim) continue
     const yaw = heroYaw(focus.x - x, focus.z - z)
@@ -626,7 +627,7 @@ function overlook(g: Grid, f: Fosse): { c: number; yaw: number } | null {
     if (![ARRIVAL.side - 0.9, ARRIVAL.side + 0.9].every((s) => flatGround(g, x + rx * s, z + rz * s))) continue
     const bx = x + rx * ARRIVAL.side
     const bz = z + rz * ARRIVAL.side
-    const away = f.landing >= 0 ? Math.hypot(bx - lx, bz - lz) : ARRIVAL.clear
+    const away = landing >= 0 ? Math.hypot(bx - lx, bz - lz) : ARRIVAL.clear
     if (away < ARRIVAL.clear) continue
     const score = Math.hypot(x - lx, z - lz) - (g.main[c] ? ARRIVAL.mainBonus : 0)
     if (!best || score < best.score) best = { c, yaw, score }
@@ -635,13 +636,13 @@ function overlook(g: Grid, f: Fosse): { c: number; yaw: number } | null {
 }
 
 function arrival(g: Grid): { x: number; y: number; z: number; yaw: number } {
-  const f = g.fosses[0]
-  const o = f && g.focus ? overlook(g, f) : null
+  const v = g.voids[0]
+  const o = v && g.focus ? overlook(g, v, g.fosses[0]?.landing ?? -1) : null
   const c = o?.c ?? g.entries[0]?.head ?? g.hub
   const x = cellX(g, c % g.nx)
   const z = cellZ(g, Math.floor(c / g.nx))
   const yaw = o?.yaw ?? (g.focus ? heroYaw(g.focus.x - x, g.focus.z - z) : 0)
-  return { x, y: g.h[c]!, z, yaw }
+  return { x, y: Math.max(g.h[c]!, g.ground), z, yaw }
 }
 
 // The keel has no sea light: warm sconces along its hull skin keep the far walls readable.
