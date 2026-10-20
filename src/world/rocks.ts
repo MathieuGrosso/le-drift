@@ -113,47 +113,48 @@ export function rocksForChunk(rng: () => number, cx: number, cz: number): RockIn
   return out
 }
 
+// One BatchedMesh so each rock is frustum-culled on its own, through a porthole as in the sortie.
 export class RockLayer {
-  readonly meshes: THREE.InstancedMesh[]
+  readonly mesh: THREE.BatchedMesh
   readonly hullPoints: Float32Array[]
+  private readonly geometryIds: number[] = []
   private readonly m = new THREE.Matrix4()
   private readonly p = new THREE.Vector3()
   private readonly s = new THREE.Vector3()
 
   constructor(ctx: GameContext, parent: THREE.Object3D) {
     const material = makeMaterial(ctx, { color: 0xffffff, vertexColors: true, onShader: driftDeepShader })
-    this.meshes = []
-    this.hullPoints = []
-    for (const variant of [0, 1, 2] as RockVariant[]) {
-      const geo = rockGeometry(variant)
-      this.hullPoints.push(new Float32Array((geo.getAttribute('position') as THREE.BufferAttribute).array))
-      const mesh = new THREE.InstancedMesh(geo, material, CAPACITY[variant])
-      mesh.count = 0
-      mesh.castShadow = variant > 0
-      mesh.receiveShadow = true
-      mesh.frustumCulled = false
-      mesh.name = `world-rocks-${variant}`
-      parent.add(mesh)
-      this.meshes.push(mesh)
+    const geos = ([0, 1, 2] as RockVariant[]).map(rockGeometry)
+    this.hullPoints = geos.map((g) => new Float32Array((g.getAttribute('position') as THREE.BufferAttribute).array))
+    const vertices = geos.reduce((n, g) => n + g.getAttribute('position').count, 0)
+    const capacity = CAPACITY[0] + CAPACITY[1] + CAPACITY[2]
+    this.mesh = new THREE.BatchedMesh(capacity, vertices, 0, material)
+    for (const g of geos) {
+      this.geometryIds.push(this.mesh.addGeometry(g))
+      g.dispose()
     }
+    this.mesh.castShadow = true
+    this.mesh.receiveShadow = true
+    this.mesh.name = 'world-rocks'
+    parent.add(this.mesh)
   }
 
   rebuild(rocks: Iterable<RockInstance>): void {
     const counts = [0, 0, 0]
+    let used = 0
+    const mesh = this.mesh
     for (const r of rocks) {
-      const mesh = this.meshes[r.variant]!
-      const i = counts[r.variant]!
-      if (i >= CAPACITY[r.variant]) continue
+      if (counts[r.variant]! >= CAPACITY[r.variant]) continue
+      counts[r.variant]!++
+      const geometryId = this.geometryIds[r.variant]!
+      if (used < mesh.instanceCount) mesh.setGeometryIdAt(used, geometryId).setVisibleAt(used, true)
+      else mesh.addInstance(geometryId)
       this.m.compose(this.p.set(r.x, r.y, r.z), r.quat, this.s.set(r.sx, r.sy, r.sz))
-      mesh.setMatrixAt(i, this.m)
-      mesh.setColorAt(i, r.color)
-      counts[r.variant] = i + 1
+      mesh.setMatrixAt(used, this.m)
+      mesh.setColorAt(used, r.color)
+      used++
     }
-    this.meshes.forEach((mesh, v) => {
-      mesh.count = counts[v]!
-      mesh.instanceMatrix.needsUpdate = true
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-    })
+    for (let i = used; i < mesh.instanceCount; i++) mesh.setVisibleAt(i, false)
   }
 
   scaledHull(variant: RockVariant, sx: number, sy: number, sz: number): Float32Array {
@@ -168,12 +169,9 @@ export class RockLayer {
   }
 
   dispose(): void {
-    for (const mesh of this.meshes) {
-      mesh.removeFromParent()
-      mesh.geometry.dispose()
-      mesh.dispose()
-    }
-    const mat = this.meshes[0]?.material
-    if (mat && !Array.isArray(mat)) mat.dispose()
+    this.mesh.removeFromParent()
+    this.mesh.dispose()
+    const mat = this.mesh.material
+    if (!Array.isArray(mat)) mat.dispose()
   }
 }

@@ -10,6 +10,10 @@ import { heightAt } from './terrain'
 export const SEABED_COLLIDERS = false
 
 const FAR_EXTENT = 1280
+const FAR_TILES = 4
+const FAR_SKIRT = 14
+// Cell stride of a far tile by its distance to the eye; a stride cell must never straddle two chunks.
+const FAR_STRIDES: readonly [number, number][] = [[260, 1], [640, 2], [Infinity, 4]]
 const SKIRT = 2.5
 const N_CHUNKS = CHUNKS_PER_SIDE * CHUNKS_PER_SIDE
 const ROCK_COLLIDER_MIN = 1.1
@@ -28,6 +32,7 @@ interface FarTile {
   x0: number
   z0: number
   cells: number
+  stride: number
 }
 
 function resolution(level: QualityLevel): { seg: number; farStep: number } {
@@ -35,6 +40,14 @@ function resolution(level: QualityLevel): { seg: number; farStep: number } {
 }
 
 const key = (cx: number, cz: number) => cz * CHUNKS_PER_SIDE + cx
+
+function farEdgeVertex(edge: number, k: number, cells: number): number {
+  const tw = cells + 1
+  if (edge === 0) return k
+  if (edge === 1) return cells * tw + k
+  if (edge === 2) return k * tw
+  return k * tw + cells
+}
 
 export class TerrainStreamer {
   readonly group = new THREE.Group()
@@ -121,6 +134,7 @@ export class TerrainStreamer {
       else this.ctx.bus.emit('world:chunkLoaded', { cx, cz, lod: actual })
     }
 
+    this.updateFarStrides()
     if (this.farDirty) this.updateFarHoles()
     if (this.rocksDirty) this.updateRocks()
   }
@@ -326,17 +340,18 @@ export class TerrainStreamer {
     for (let j = 0; j < gw; j++) {
       for (let i = 0; i < gw; i++) grid[j * gw + i] = heightAt(-FAR_EXTENT + (i - 1) * step, -FAR_EXTENT + (j - 1) * step)
     }
-    const half = cellsPerSide / 2
-    for (let tz = 0; tz < 2; tz++) {
-      for (let tx = 0; tx < 2; tx++) {
-        const tw = half + 1
-        const pos = new Float32Array(tw * tw * 3)
-        const nor = new Float32Array(tw * tw * 3)
-        const col = new Float32Array(tw * tw * 3)
+    const cells = cellsPerSide / FAR_TILES
+    const tw = cells + 1
+    for (let tz = 0; tz < FAR_TILES; tz++) {
+      for (let tx = 0; tx < FAR_TILES; tx++) {
+        const count = tw * tw + 4 * tw
+        const pos = new Float32Array(count * 3)
+        const nor = new Float32Array(count * 3)
+        const col = new Float32Array(count * 3)
         for (let j = 0; j < tw; j++) {
           for (let i = 0; i < tw; i++) {
-            const gi = tx * half + i + 1
-            const gj = tz * half + j + 1
+            const gi = tx * cells + i + 1
+            const gj = tz * cells + j + 1
             const g = gj * gw + gi
             const h = grid[g]!
             const wx = -FAR_EXTENT + (gi - 1) * step
@@ -358,11 +373,23 @@ export class TerrainStreamer {
             col[v + 2] = c.b
           }
         }
+        for (let e = 0; e < 4; e++) {
+          for (let k = 0; k < tw; k++) {
+            const src = farEdgeVertex(e, k, cells) * 3
+            const dst = (tw * tw + e * tw + k) * 3
+            for (let c = 0; c < 3; c++) {
+              pos[dst + c] = pos[src + c]!
+              nor[dst + c] = nor[src + c]!
+              col[dst + c] = col[src + c]!
+            }
+            pos[dst + 1] = pos[src + 1]! - FAR_SKIRT
+          }
+        }
         const geo = new THREE.BufferGeometry()
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
         geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3))
         geo.setAttribute('color', new THREE.BufferAttribute(col, 3))
-        const index = new THREE.BufferAttribute(new Uint32Array(half * half * 6), 1)
+        const index = new THREE.BufferAttribute(new Uint32Array(cells * cells * 6 + 4 * cells * 12), 1)
         index.setUsage(THREE.DynamicDrawUsage)
         geo.setIndex(index)
         geo.computeBoundingSphere()
@@ -372,10 +399,25 @@ export class TerrainStreamer {
         mesh.matrixAutoUpdate = false
         mesh.updateMatrix()
         this.group.add(mesh)
-        this.far.push({ mesh, index, x0: -FAR_EXTENT + tx * half * step, z0: -FAR_EXTENT + tz * half * step, cells: half })
+        this.far.push({ mesh, index, x0: -FAR_EXTENT + tx * cells * step, z0: -FAR_EXTENT + tz * cells * step, cells, stride: 1 })
       }
     }
     this.farDirty = true
+  }
+
+  private updateFarStrides(): void {
+    const eye = this.ctx.camera.position
+    const span = this.farStep
+    for (const t of this.far) {
+      const size = t.cells * span
+      const dx = Math.max(t.x0 - eye.x, 0, eye.x - (t.x0 + size))
+      const dz = Math.max(t.z0 - eye.z, 0, eye.z - (t.z0 + size))
+      const d = Math.hypot(dx, dz)
+      const stride = FAR_STRIDES.find(([max]) => d < max)![1]
+      if (stride === t.stride) continue
+      t.stride = stride
+      this.farDirty = true
+    }
   }
 
   private updateFarHoles(): void {
@@ -384,20 +426,38 @@ export class TerrainStreamer {
     for (const t of this.far) {
       const arr = t.index.array as Uint32Array
       const tw = t.cells + 1
+      const s = t.stride
+      const coarse = t.cells / s
+      const hole = (ci: number, cj: number): boolean => {
+        const cx = Math.floor((t.x0 + (ci + 0.5) * s * step + 1024) / CHUNK_SIZE)
+        const cz = Math.floor((t.z0 + (cj + 0.5) * s * step + 1024) / CHUNK_SIZE)
+        return cx >= 0 && cz >= 0 && cx < CHUNKS_PER_SIDE && cz < CHUNKS_PER_SIDE && this.built.has(key(cx, cz))
+      }
       let n = 0
-      for (let j = 0; j < t.cells; j++) {
-        const z = t.z0 + (j + 0.5) * step
-        const cz = Math.floor((z + 1024) / CHUNK_SIZE)
-        for (let i = 0; i < t.cells; i++) {
-          const x = t.x0 + (i + 0.5) * step
-          const cx = Math.floor((x + 1024) / CHUNK_SIZE)
-          if (cx >= 0 && cz >= 0 && cx < CHUNKS_PER_SIDE && cz < CHUNKS_PER_SIDE && this.built.has(key(cx, cz))) continue
-          const a = j * tw + i
-          const b = a + 1
-          const c = a + tw
-          const d = c + 1
+      for (let cj = 0; cj < coarse; cj++) {
+        for (let ci = 0; ci < coarse; ci++) {
+          if (hole(ci, cj)) continue
+          const a = cj * s * tw + ci * s
+          const b = a + s
+          const c = a + s * tw
+          const d = c + s
           arr[n++] = a; arr[n++] = c; arr[n++] = b
           arr[n++] = b; arr[n++] = c; arr[n++] = d
+        }
+      }
+      for (let e = 0; e < 4; e++) {
+        for (let k = 0; k < coarse; k++) {
+          const ci = e < 2 ? k : e === 2 ? 0 : coarse - 1
+          const cj = e < 2 ? (e === 0 ? 0 : coarse - 1) : k
+          if (hole(ci, cj)) continue
+          const a = farEdgeVertex(e, k * s, t.cells)
+          const b = farEdgeVertex(e, k * s + s, t.cells)
+          const la = tw * tw + e * tw + k * s
+          const lb = la + s
+          arr[n++] = a; arr[n++] = la; arr[n++] = b
+          arr[n++] = b; arr[n++] = la; arr[n++] = lb
+          arr[n++] = a; arr[n++] = b; arr[n++] = la
+          arr[n++] = b; arr[n++] = lb; arr[n++] = la
         }
       }
       t.index.needsUpdate = true
