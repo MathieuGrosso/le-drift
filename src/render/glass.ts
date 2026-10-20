@@ -158,6 +158,7 @@ void main() {
 
   vec3 col;
   float a = 1.0;
+  float coverA = cover;
   if (!outside) {
     float fog = 0.0;
     if (rgCondense > 0.5 && rdCondensation > 0.001) {
@@ -193,10 +194,11 @@ void main() {
     }
     float soft = rd_noise(q * 2.2 + vSeed * 5.0) * 0.6 + n * 0.4;
     vec3 algae = mix(vec3(0.42, 0.62, 0.30), vec3(0.78, 0.90, 0.48), soft);
-    vec3 seen = rgLive > 0.5 ? tinted : seaFloor;
-    vec3 furBack = seen * mix(vec3(1.0), algae / max(algae.g, 1e-3), 0.55) * (0.6 + 0.3 * soft);
-    furBack += vec3(0.86, 0.95, 0.52) * rim * 0.3 * dayG;
-    col = mix(col, furBack, cover * (0.35 + 0.25 * thick));
+    // Algae seen from inside only tints the light through it: any luminance step reads as torn paper.
+    vec3 algaeHue = algae / max(dot(algae, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+    float overhead = smoothstep(0.25, 0.7, -V.y) * smoothstep(5.0, 22.0, dist);
+    coverA = smoothstep(thr - 0.22, thr + 0.3, mask) * on * (1.0 - 0.85 * overhead);
+    col *= mix(vec3(1.0), algaeHue * (0.92 + 0.08 * soft), coverA * (0.4 + 0.3 * thick));
     if (fog > 0.0) {
       float drops = 1.0 - smoothstep(0.0, 0.07, rd_cellEdge(q * 9.0 + vec2(0.0, rdTime * 0.01), 0.0));
       vec3 fogC = mix(rdCreme * 0.55, rdLampFill * 0.5 + rdCreme * 0.3, 0.45);
@@ -222,9 +224,9 @@ void main() {
     float hz;
     col = rd_applyHaze(col, vW, true, hz);
   }
-  float streak = smoothstep(0.93, 1.0, sin((vUv.x + vUv.y) * 9.0 + vSeed * 6.0)) * (1.0 - cover) * (0.05 + 0.2 * fres);
+  float streak = smoothstep(0.93, 1.0, sin((vUv.x + vUv.y) * 9.0 + vSeed * 6.0)) * (1.0 - coverA) * (0.05 + 0.2 * fres);
   col += rdPlafond * streak;
-  if (rgLive < 0.5) a = outside ? mix(0.4 + 0.5 * fres, 0.97, cover) : mix(0.12 + 0.4 * fres, 0.85, cover);
+  if (rgLive < 0.5) a = outside ? mix(0.4 + 0.5 * fres, 0.97, cover) : mix(0.12 + 0.4 * fres, 0.6, coverA);
   gl_FragColor = vec4(col, a);
 }
 `
