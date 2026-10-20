@@ -8,21 +8,19 @@ import type { ShipFrame } from './ship'
 
 const HULL_KINDS: ReadonlySet<ColliderKind> = new Set(['hull', 'hull-outside', 'interior', 'wall', 'floor', 'glass', 'window'])
 const KEEL_STEP: Record<QualityLevel, number> = { high: 4, medium: 5.5, low: 8 }
+const SWAY_REACH = 4
+const TILE = 40
 
 type Raycast = (origin: Vec3, dir: Vec3, max: number) => { point: Vec3; normal: Vec3; kind: ColliderKind | undefined } | null
 
 // The coat: weed beards under the keels and tufts on the flanks. "Anything that sits still in the sea grows a coat."
 export class HullCoat {
-  readonly mesh: THREE.Mesh
-  private readonly parts: PlantGeo[] = []
+  readonly group = new THREE.Group()
   private readonly done = new Set<DistrictId>()
-  private dirty = false
 
-  constructor(material: THREE.Material) {
-    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), material)
-    this.mesh.name = 'flora-manteau'
-    this.mesh.frustumCulled = false
-    this.mesh.matrixAutoUpdate = false
+  constructor(private readonly material: THREE.Material) {
+    this.group.name = 'flora-manteau'
+    this.group.matrixAutoUpdate = false
   }
 
   has(d: DistrictId): boolean {
@@ -32,7 +30,13 @@ export class HullCoat {
   scan(id: DistrictId, ship: ShipFrame, raycast: Raycast, rng: () => number, level: QualityLevel): number {
     if (this.done.has(id) || id === 'hauts') return 0
     const d = DISTRICT_BY_ID[id]
-    const g = new PlantGeo()
+    const tiles = new Map<string, PlantGeo>()
+    const tile = (at: THREE.Vector3): PlantGeo => {
+      const key = `${Math.floor(at.x / TILE)},${Math.floor(at.z / TILE)}`
+      let g = tiles.get(key)
+      if (!g) tiles.set(key, (g = new PlantGeo()))
+      return g
+    }
     const step = KEEL_STEP[level]
     const c = Math.cos(ship.heading)
     const s = Math.sin(ship.heading)
@@ -56,7 +60,7 @@ export class HullCoat {
         const n = 3 + Math.floor(rng() * 4)
         for (let k = 0; k < n; k++) {
           const at = new THREE.Vector3(l.x + (rng() - 0.5) * 1.8, l.y + 0.05, l.z + (rng() - 0.5) * 1.2)
-          beard(g, rng, at, 1.6 + rng() * 3.6)
+          beard(tile(at), rng, at, 1.6 + rng() * 3.6)
         }
       }
     }
@@ -75,7 +79,7 @@ export class HullCoat {
           const n = 1 + Math.floor(rng() * 3)
           for (let k = 0; k < n; k++) {
             const at = new THREE.Vector3(l.x - dx * 0.06 + (along === 'x' ? (rng() - 0.5) * 1.2 : 0), l.y - rng() * 0.6, l.z - dz * 0.06 + (along === 'z' ? (rng() - 0.5) * 1.2 : 0))
-            beard(g, rng, at, 0.5 + rng() * 1.6)
+            beard(tile(at), rng, at, 0.5 + rng() * 1.6)
           }
         }
       }
@@ -87,23 +91,23 @@ export class HullCoat {
     if (d.z1 >= B.z1 - 1) flank(0, B.z1 + 14, 0, -1, 'x', d.x0, d.x1)
     if (hits === 0) return 0
     this.done.add(id)
-    this.parts.push(g)
-    this.dirty = true
+    for (const [key, g] of tiles) {
+      const geo = g.build()
+      geo.computeBoundingBox()
+      geo.computeBoundingSphere()
+      geo.boundingBox!.expandByScalar(SWAY_REACH)
+      geo.boundingSphere!.radius += SWAY_REACH
+      const mesh = new THREE.Mesh(geo, this.material)
+      mesh.name = `flora-manteau-${id}:${key}`
+      mesh.matrixAutoUpdate = false
+      this.group.add(mesh)
+    }
     return hits
   }
 
-  flush(): void {
-    if (!this.dirty) return
-    this.dirty = false
-    const all = new PlantGeo()
-    for (const p of this.parts) all.merge(p)
-    this.mesh.geometry.dispose()
-    this.mesh.geometry = all.build()
-  }
-
   dispose(): void {
-    this.mesh.geometry.dispose()
-    this.mesh.removeFromParent()
+    for (const m of this.group.children) (m as THREE.Mesh).geometry.dispose()
+    this.group.removeFromParent()
   }
 }
 

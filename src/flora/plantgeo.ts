@@ -94,16 +94,6 @@ export class PlantGeo {
     }
   }
 
-  merge(other: PlantGeo): void {
-    const off = this.vertexCount
-    for (const v of other.pos) this.pos.push(v)
-    for (const v of other.nor) this.nor.push(v)
-    for (const v of other.col) this.col.push(v)
-    for (const v of other.sw) this.sw.push(v)
-    for (const v of other.sw2) this.sw2.push(v)
-    for (const i of other.idx) this.idx.push(i + off)
-  }
-
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3))

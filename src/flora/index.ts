@@ -207,7 +207,7 @@ export function createFloraSystem(): System {
     stalks = serre.stalks
 
     coat = new HullCoat(hullMat)
-    ship.group.add(coat.mesh)
+    ship.group.add(coat.group)
     for (const d of ctx.services.drift.loadedDistricts()) scanQueue.push({ id: d, wait: 3 })
   }
 
@@ -222,7 +222,6 @@ export function createFloraSystem(): System {
       const h = ctx.physics.raycast(o, d, max, { excludeKinds: ['kelp', 'prop', 'trigger', 'fauna', 'seat', 'door'] })
       return h ? { point: h.point, normal: h.normal, kind: h.tag?.kind } : null
     }, rng, level)
-    if (scanQueue.length === 0) coat.flush()
   }
 
   const updateGrowth = (ctx: GameContext, dt: number) => {
@@ -339,7 +338,7 @@ export function createFloraSystem(): System {
         seaOn = vis
         root.visible = vis
         if (drifters) drifters.group.visible = vis
-        if (coat) coat.mesh.visible = vis
+        if (coat) coat.group.visible = vis
       }
       const sortie = st.mode === 'sortie'
       if (blades) blades.mesh.visible = vis && sortie

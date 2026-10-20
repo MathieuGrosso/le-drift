@@ -19,6 +19,12 @@ interface Body {
   scale: number
 }
 
+const SWAY_REACH = 1.5
+const TURN_SLACK = 0.12
+
+const _frustum = new THREE.Frustum()
+const _vp = new THREE.Matrix4()
+const _sphere = new THREE.Sphere()
 const _m = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
 const _s = new THREE.Vector3()
@@ -75,14 +81,21 @@ export class Drifters {
   private rafts: THREE.InstancedMesh
   private readonly fb: Body[] = []
   private readonly rb: Body[] = []
+  private readonly frondR: number
+  private readonly raftR: number
+  private fCap = 0
+  private rCap = 0
 
   constructor(private readonly ctx: GameContext, material: THREE.Material, rng: () => number, level: QualityLevel) {
     this.group.name = 'flora-derive'
     const c = COUNTS.high
     this.fronds = new THREE.InstancedMesh(frondGeometry(rng), material, c.fronds)
     this.rafts = new THREE.InstancedMesh(raftGeometry(rng), material, c.rafts)
+    this.fronds.name = 'flora-derive-frondes'
+    this.rafts.name = 'flora-derive-radeaux'
+    this.frondR = this.reach(this.fronds)
+    this.raftR = this.reach(this.rafts)
     for (const m of [this.fronds, this.rafts]) {
-      m.frustumCulled = false
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
       m.userData.noShadow = true
       this.group.add(m)
@@ -90,6 +103,20 @@ export class Drifters {
     for (let i = 0; i < c.fronds; i++) this.fb.push(this.body(rng))
     for (let i = 0; i < c.rafts; i++) this.rb.push(this.body(rng))
     this.setQuality(level)
+  }
+
+  private reach(m: THREE.InstancedMesh): number {
+    m.geometry.computeBoundingSphere()
+    const s = m.geometry.boundingSphere!
+    s.radius += SWAY_REACH
+    return s.center.length() + s.radius
+  }
+
+  // The camera moves after flora updates, so last frame's frustum gets slack that grows with distance.
+  private inView(p: THREE.Vector3, r: number, cam: THREE.Vector3): boolean {
+    _sphere.center.copy(p)
+    _sphere.radius = r + p.distanceTo(cam) * TURN_SLACK
+    return _frustum.intersectsSphere(_sphere)
   }
 
   private body(rng: () => number): Body {
@@ -103,8 +130,8 @@ export class Drifters {
   }
 
   setQuality(level: QualityLevel): void {
-    this.fronds.count = COUNTS[level].fronds
-    this.rafts.count = COUNTS[level].rafts
+    this.fCap = COUNTS[level].fronds
+    this.rCap = COUNTS[level].rafts
   }
 
   private insideDrift(p: THREE.Vector3, margin: number): boolean {
@@ -142,8 +169,10 @@ export class Drifters {
 
   update(dt: number, cam: THREE.Vector3, rng: () => number, current: Vec3): void {
     const t = this.ctx.clock.elapsed
-    const fCount = this.fronds.count
-    for (let i = 0; i < fCount; i++) {
+    const camera = this.ctx.camera
+    _frustum.setFromProjectionMatrix(_vp.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse))
+    let shown = 0
+    for (let i = 0; i < this.fCap; i++) {
       const b = this.fb[i]!
       const dx = b.p.x - cam.x
       const dz = b.p.z - cam.z
@@ -156,13 +185,14 @@ export class Drifters {
       b.rot.x += b.spin.x * dt
       b.rot.y += b.spin.y * dt
       b.rot.z += b.spin.z * dt
+      if (!this.inView(b.p, this.frondR * b.scale, cam)) continue
       _q.setFromEuler(b.rot)
       _m.compose(b.p, _q, _s.setScalar(b.scale))
-      this.fronds.setMatrixAt(i, _m)
+      this.fronds.setMatrixAt(shown++, _m)
     }
-    this.fronds.instanceMatrix.needsUpdate = true
-    const rCount = this.rafts.count
-    for (let i = 0; i < rCount; i++) {
+    this.commit(this.fronds, shown)
+    shown = 0
+    for (let i = 0; i < this.rCap; i++) {
       const b = this.rb[i]!
       const dx = b.p.x - cam.x
       const dz = b.p.z - cam.z
@@ -170,12 +200,23 @@ export class Drifters {
       b.p.x += (current.x * 0.4 + Math.sin(t * 0.05 + i) * 0.05) * dt
       b.p.z += (current.z * 0.4 + Math.cos(t * 0.04 + i) * 0.05) * dt
       b.rot.y += b.spin.y * 0.15 * dt
+      if (!this.inView(b.p, this.raftR * b.scale * 1.6, cam)) continue
       _q.setFromEuler(b.rot)
       _p.set(b.p.x, b.p.y + Math.sin(t * 0.4 + i) * 0.08, b.p.z)
       _m.compose(_p, _q, _s.set(b.scale * 1.6, b.scale, b.scale * 1.6))
-      this.rafts.setMatrixAt(i, _m)
+      this.rafts.setMatrixAt(shown++, _m)
     }
-    this.rafts.instanceMatrix.needsUpdate = true
+    this.commit(this.rafts, shown)
+  }
+
+  private commit(m: THREE.InstancedMesh, shown: number): void {
+    m.count = shown
+    m.visible = shown > 0
+    if (shown === 0) return
+    m.instanceMatrix.clearUpdateRanges()
+    m.instanceMatrix.addUpdateRange(0, shown * 16)
+    m.instanceMatrix.needsUpdate = true
+    m.computeBoundingSphere()
   }
 
   dispose(): void {
