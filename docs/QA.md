@@ -30,8 +30,8 @@ Sévérités : **blocker** (bloque la partie ou un menu), **major** (visible, ca
 | QA-20 | minor | `src/gameplay/indoor.ts` | Invite « Sortir par l'écluse » affichée en haut de l'échelle, 6 m au-dessus de la porte — CORRIGÉ (commit 7046412) |
 | QA-21 | minor | `src/gameplay/text` | Astuce « [E] près de la porte ronde » en crochets bruts, chevauche le sous-titre — CORRIGÉ (commit bf5b7d4, 22cfa1b) |
 | QA-22 | minor | `src/fauna/curious.ts` | Les poissons curieux traversent Ilo et masquent le héros |
-| QA-23 | minor | `src/drift/city` | Câble de tyrolienne qui traverse la passerelle de la Nef |
-| QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef |
+| QA-23 | minor | `src/drift/city` | Câble de tyrolienne qui traverse la passerelle de la Nef — CORRIGÉ (commit 3917921 : poissons en papier pendus à leur corde ; câble non reproduit, aucun collider touché, il passe 5 m sous la passerelle) |
+| QA-24 | minor | `src/drift/city` | Panneaux d'affichage vierges (gris ou beige) dans la Nef — CORRIGÉ (commits 79efd1c linge, 3f27b4e portes de maisons) |
 | QA-25 | minor | `src/render`, `src/drift/interiors` | Cabine au réveil presque noire, moiré sur les cercles au sol |
 | QA-26 | minor | `src/net` | Avertissement Colyseus « Network offline » en solo |
 | QA-27 | minor | `vite.config.ts` | Un seul bundle de 4,1 Mo (avertissement de taille de chunk) — CORRIGÉ (commit bf5b7d4) |
