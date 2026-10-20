@@ -759,8 +759,9 @@ and the Grande Vitre's canopy.
 
 ### 5.7 Ilo and the others
 
-- Ilo (~16, 1.65 m, head 1/6), dark hair in a knot, goggles on the forehead, sleeveless indigo tunic over
-  a wetsuit, soft boots, the frottoir on his back, the poulie on his belt once owned.
+- Ilo (~16, 1.5 m, head 1/5, drawn like the crowd: round head, dot eyes), dark hair in a knot, goggles on a
+  headband, indigo tunic with sleeves and a skirt to mid-thigh, hood folded on the shoulders, wrapped
+  forearms and calves, soft boots, the frottoir on his back, the poulie on his belt once owned.
 - **Scarf**: coral, 1.6 m, verlet chain of 12 points with collision against the body capsules. In air:
   gravity, swings with every turn, stop and stair step, trails behind in a zip line and a tube; heavy and
   dark while `wetness > 0.5`. In water: buoyant, follows `currentAt` and velocity. **Never a rigid stick.**
