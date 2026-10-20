@@ -389,7 +389,8 @@ function paperFish(k: Kit, a: THREE.Vector3, b: THREE.Vector3, n: number): void 
   const dir = b.clone().sub(a)
   const yaw = Math.atan2(dir.x, dir.z) + Math.PI / 2
   for (let i = 1; i <= n; i++) {
-    const p = a.clone().lerp(b, i / (n + 1))
+    const hook = a.clone().lerp(b, i / (n + 1))
+    const p = hook.clone()
     p.y -= Math.sin((i / (n + 1)) * Math.PI) * 0.8 + 0.9
     const s = 0.7 + ((i * 7) % 3) * 0.18
     const col = C(k.pick(tints), 0.85)
@@ -401,7 +402,7 @@ function paperFish(k: Kit, a: THREE.Vector3, b: THREE.Vector3, n: number): void 
       const e = V(0.62 * s, 0.06 * s, sz * 0.2 * s).applyQuaternion(rot).add(p)
       k.b.sphere(e.x, e.y, e.z, 0.08 * s, 0.08 * s, 0.03 * s, C(PAL.creme))
     }
-    k.beam(p.x, p.y + 0.3 * s, p.z, p.x, p.y + 0.9, p.z, 0.015, C(PAL.corde))
+    k.beam(p.x, p.y + 0.3 * s, p.z, hook.x, hook.y, hook.z, 0.02, C(PAL.corde))
   }
 }
 
