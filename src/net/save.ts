@@ -1,7 +1,7 @@
 import { resetToNewGame } from '../core/save'
 import { NET } from '../core/tuning'
-import type { GameContext, GameState } from '../core/types'
-import { LIMITS, type ClientMessages, type PlayerSave, type ServerMessages } from '../shared/protocol'
+import type { DriftService, GameContext, GameState, Vec3 } from '../core/types'
+import { LIMITS, type ClientMessages, type PlayerId, type PlayerSave, type ServerMessages } from '../shared/protocol'
 
 export function toPlayerSave(s: GameState): PlayerSave {
   const local = s.hero.localPosition
@@ -53,7 +53,7 @@ export function adoptWelcome(ctx: GameContext, w: ServerMessages['welcome'], rem
  * Same placement as a new solo game's `enterRoom('cabine')` or the saved spot; outside, the hero is left where they swim.
  * District and room come from the position, never from the save: older saves paired a spot with another district.
  */
-export function place(ctx: GameContext, where: Placement): void {
+export function place(ctx: GameContext, where: Placement, me: PlayerId): void {
   const drift = ctx.services.drift
   const hero = ctx.services.hero
   if (!drift || !hero || ctx.state.mode !== 'inside') return
@@ -65,9 +65,28 @@ export function place(ctx: GameContext, where: Placement): void {
     return
   }
   const spawn = drift.roomSpawn('cabine')
-  const local = drift.toLocal(spawn.position)
+  const local = cabinSpot(drift, drift.toLocal(spawn.position), me)
   Object.assign(ctx.state.hero, { room: 'cabine', district: drift.districtAt(local), medium: 'air', wetness: 0, localPosition: local })
-  hero.teleport(spawn.position, spawn.yaw)
+  hero.teleportLocal(local, spawn.yaw - drift.pose().heading)
+}
+
+// Every new player opens their eyes in the same cabin: each one gets their own spot in it.
+const CABIN_SPOTS: readonly (readonly [number, number])[] = [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0.8, 0.8], [-0.8, 0.8]]
+const SNAP_TOLERANCE_M = 0.25
+
+function cabinSpot(drift: DriftService, spawn: Vec3, me: PlayerId): Vec3 {
+  let h = 0
+  for (const ch of me) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  const nav = drift.navmesh()
+  for (let i = 0; i < CABIN_SPOTS.length; i++) {
+    const [dx, dz] = CABIN_SPOTS[(h + i) % CABIN_SPOTS.length]!
+    const p = { x: spawn.x + dx, y: spawn.y, z: spawn.z + dz }
+    if (drift.roomAt(drift.toWorld(p)) !== 'cabine') continue
+    if (!nav) return p
+    const s = nav.snap(p)
+    if (s && Math.hypot(s.x - p.x, s.z - p.z) < SNAP_TOLERANCE_M && Math.abs(s.y - p.y) < SNAP_TOLERANCE_M) return p
+  }
+  return spawn
 }
 
 /** Mirrors each local save to the server, debounced; localStorage keeps its own copy. */

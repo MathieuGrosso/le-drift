@@ -13,6 +13,8 @@ export interface SessionSink {
   message: Dispatch
   /** The server forgot us (reconnection window expired or it restarted), or another tab took this player over. */
   lost(takenOver: boolean): void
+  /** A quartier room was joined: the server knows nothing yet of where the hero stands. */
+  entered(): void
 }
 
 const SERVER_MESSAGES: readonly ServerMessageType[] = ['welcome', 'chat', 'emote', 'npc:say', 'npc:give', 'npc:quest', 'refused']
@@ -29,6 +31,7 @@ export class Session {
   private district: DistrictId | null = null
   private generation = 0
   private readonly leaving = new WeakSet<object>()
+  private readonly synced = new WeakSet<object>()
   private current: NetStatus = 'solo'
 
   constructor(endpoint: string, private readonly identity: Identity, private profile: Profile, private readonly sink: SessionSink) {
@@ -39,22 +42,23 @@ export class Session {
     return this.current
   }
 
+  // A joined room's state is empty until its first patch: callers only ever see a synced one.
   get mondeState(): MondeStateView | null {
-    return this.monde?.state ?? null
+    return this.monde && this.synced.has(this.monde) ? this.monde.state : null
   }
 
   get quartierState(): QuartierStateView | null {
-    return this.quartier?.state ?? null
+    return this.quartier && this.synced.has(this.quartier) ? this.quartier.state : null
   }
 
-  async start(district: DistrictId): Promise<boolean> {
+  /** Joins the monde only: the player shows in a district once `enter` is called, after the title screen. */
+  async start(): Promise<boolean> {
     this.setStatus('connecting')
     try {
       const opts: JoinOptions = { protocol: PROTOCOL_VERSION, identity: this.identity, profile: this.profile }
       const monde = await this.client.joinOrCreate<MondeStateView>(ROOM.monde, opts)
       this.monde = monde
       this.wire(monde, (code) => this.sink.lost(code === CLOSE_TAKEN_OVER))
-      await this.enter(district)
       this.setStatus('online')
       return true
     } catch (err) {
@@ -77,6 +81,7 @@ export class Session {
     }
     const prev = this.quartier
     this.quartier = next
+    this.sink.entered()
     this.wire(next, (code) => {
       // A shutdown or a takeover closes the monde too: its loss decides, rejoining here would only fail or steal back.
       if (this.quartier !== next || code === CloseCode.SERVER_SHUTDOWN || code === CLOSE_TAKEN_OVER) return
@@ -117,6 +122,7 @@ export class Session {
   }
 
   private wire(room: MondeRoom | QuartierRoom, onLost: (code: number) => void): void {
+    room.onStateChange.once(() => this.synced.add(room))
     for (const type of SERVER_MESSAGES) {
       room.onMessage(type, (payload: ServerMessages[typeof type]) => this.sink.message(type, payload))
     }

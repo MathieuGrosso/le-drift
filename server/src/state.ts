@@ -1,11 +1,12 @@
 import { MapSchema, schema, t, type SchemaType } from '@colyseus/schema'
+import type { PlayerCardView } from '../../src/shared/protocol'
 
 export const PlayerCard = schema({
   id: t.string(),
   name: t.string(),
   color: t.uint32(),
   district: t.string(),
-  status: t.string<'actif' | 'absent' | 'dort' | 'dehors'>().default('actif'),
+  status: t.string<PlayerCardView['status']>().default('accueil'),
 }, 'PlayerCard')
 export type PlayerCard = SchemaType<typeof PlayerCard>
 

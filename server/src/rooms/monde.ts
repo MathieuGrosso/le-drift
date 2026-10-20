@@ -90,7 +90,7 @@ export function createMondeRoom(deps: RoomDeps) {
       const live = [...deps.registry.quartiers()].find((q) => q.hosts(rec.id))
       this.state.players.set(rec.id, new PlayerCard({
         id: rec.id, name: rec.profile.name, color: rec.profile.color,
-        district: live?.district() ?? rec.save?.hero.district ?? 'ecluse',
+        district: live?.district() ?? rec.save?.hero.district ?? 'ecluse', status: live ? 'actif' : 'accueil',
       }))
       const welcome: ServerMessages['welcome'] = { you: rec.id, save: rec.save, brains: deps.brains.enabled }
       client.send('welcome', welcome)
@@ -106,7 +106,7 @@ export function createMondeRoom(deps: RoomDeps) {
 
     override onReconnect(client: Client): void {
       const id = this.sessions.rebind(client)
-      if (id) this.port.updateCard(id, { status: 'actif' })
+      if (id) this.port.updateCard(id, { status: [...deps.registry.quartiers()].some((q) => q.hosts(id)) ? 'actif' : 'accueil' })
     }
 
     override onLeave(client: Client): void {

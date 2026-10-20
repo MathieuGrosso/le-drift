@@ -4,7 +4,7 @@ import type { PlayerCardView, PlayerId } from '../shared/protocol'
 import { el, hexColor } from './style'
 import { TEXT } from './text'
 
-const STATUS_LABEL: Record<PlayerCardView['status'], string> = { actif: '', absent: 'absent', dort: 'dort', dehors: 'dehors' }
+const STATUS_LABEL: Record<PlayerCardView['status'], string> = { actif: '', absent: 'absent', dort: 'dort', dehors: 'dehors', accueil: 'à l’accueil' }
 
 function districtName(id: string): string {
   return id in DISTRICT_BY_ID ? DISTRICT_BY_ID[id as DistrictId].nom : id
@@ -33,11 +33,11 @@ export class Presence {
     parent.appendChild(this.root)
   }
 
-  render(status: NetStatus, players: readonly PlayerCardView[], me: PlayerId | null, canRejoin: boolean, note: string | null): void {
-    const sig = `${status}|${canRejoin}|${note}|${players.map((p) => `${p.id}${p.name}${p.color}${p.district}${p.status}`).join(',')}`
+  render(status: NetStatus, players: readonly PlayerCardView[], me: PlayerId | null, canRejoin: boolean, note: string | null, title: boolean): void {
+    const sig = `${status}|${canRejoin}|${note}|${title}|${players.map((p) => `${p.id}${p.name}${p.color}${p.district}${p.status}`).join(',')}`
     if (sig === this.signature) return
     this.signature = sig
-    this.root.style.display = status === 'solo' && !canRejoin ? 'none' : ''
+    this.root.style.display = title || (status === 'solo' && !canRejoin) ? 'none' : ''
     this.rejoin.style.display = status === 'solo' && canRejoin ? '' : 'none'
     this.note.textContent = note ?? ''
     this.note.style.display = status === 'solo' && note ? '' : 'none'
@@ -48,7 +48,7 @@ export class Presence {
       const li = el('li', p.status === 'absent' ? 'absent' : '')
       const dot = el('i')
       dot.style.background = hexColor(p.color)
-      const where = [districtName(p.district), STATUS_LABEL[p.status]].filter(Boolean).join(' · ')
+      const where = p.status === 'accueil' ? STATUS_LABEL.accueil : [districtName(p.district), STATUS_LABEL[p.status]].filter(Boolean).join(' · ')
       li.append(dot, document.createTextNode(p.id === me ? `${p.name} (toi)` : p.name), el('span', '', where))
       return li
     }))

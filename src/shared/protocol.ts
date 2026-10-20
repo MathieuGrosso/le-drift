@@ -148,7 +148,8 @@ export interface PlayerCardView {
   name: string
   color: number
   district: string
-  status: 'actif' | 'absent' | 'dort' | 'dehors'
+  /** `accueil`: aboard but still on the title screen, in no district. */
+  status: 'actif' | 'absent' | 'dort' | 'dehors' | 'accueil'
 }
 
 export interface NpcCardView {

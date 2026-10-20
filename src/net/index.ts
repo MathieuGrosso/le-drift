@@ -24,8 +24,6 @@ const AVATAR_MODES: ReadonlySet<HeroMode> = new Set<AvatarMode>([
 const PRESENCE_SECONDS = 1
 const NPC_HEAD = 1.9
 const ME = 'moi'
-// A server that just shut down still answers for a moment; rejoining at once would hit it while it dies.
-const REJOIN_DELAY_MS = 3000
 
 function titleGone(): boolean {
   const el = document.getElementById('loading')
@@ -52,6 +50,10 @@ export function createNetSystem(): System {
   let placement: Placement | null = null
   let starting = false
   let rejoinTimer: ReturnType<typeof setTimeout> | null = null
+  let rejoinMs: number = NET.rejoinFirstMs
+  let autoRejoin = false
+  let inDistrict = false
+  let lastMoveAt = 0
   let sendTimer = 0
   let presenceTimer = 0
   let lastMove = ''
@@ -146,6 +148,23 @@ export function createNetSystem(): System {
     world?.release()
     save?.cancel()
     me = null
+    inDistrict = false
+  }
+
+  // A server that just shut down still answers for a moment: the first retry waits, the next ones back off.
+  const scheduleRejoin = () => {
+    if (!autoRejoin || rejoinTimer) return
+    rejoinTimer = setTimeout(() => {
+      rejoinTimer = null
+      void connect()
+    }, rejoinMs)
+    rejoinMs = Math.min(rejoinMs * 2, NET.rejoinMaxMs)
+  }
+
+  const rejoinNow = () => {
+    if (rejoinTimer) clearTimeout(rejoinTimer)
+    rejoinTimer = null
+    void connect()
   }
 
   const connect = async () => {
@@ -156,6 +175,7 @@ export function createNetSystem(): System {
       const endpoint = serverEndpoint()
       if (!(await probe(endpoint))) {
         canRejoin = true
+        scheduleRejoin()
         return
       }
       let profile: Profile | null = loadProfile()
@@ -163,6 +183,7 @@ export function createNetSystem(): System {
         const picked = await askProfile(loadProfile())
         if (!picked) {
           canRejoin = true
+          autoRejoin = false
           return
         }
         profile = storeProfile(picked)
@@ -189,25 +210,30 @@ export function createNetSystem(): System {
         lost: (takenOver) => {
           if (session !== s) return
           session = null
+          canRejoin = true
           if (takenOver) {
             takenOverHere = true
-            canRejoin = true
+            autoRejoin = false
             void s.stop()
             return
           }
-          void s.stop().then(() => {
-            rejoinTimer = setTimeout(() => {
-              rejoinTimer = null
-              void connect()
-            }, REJOIN_DELAY_MS)
-          })
+          autoRejoin = true
+          rejoinMs = NET.rejoinFirstMs
+          void s.stop().then(scheduleRejoin)
+        },
+        entered: () => {
+          lastMove = ''
         },
       })
       session = s
-      if (!(await s.start(c.state.hero.district))) {
+      if (!(await s.start())) {
         session = null
         canRejoin = true
-      } else canRejoin = false
+        scheduleRejoin()
+      } else {
+        canRejoin = false
+        autoRejoin = false
+      }
     } finally {
       starting = false
     }
@@ -222,8 +248,9 @@ export function createNetSystem(): System {
       p: [local.x, local.y, local.z], yaw: h.yaw - drift.pose().heading, mode: avatarMode(h.mode), outside: c.state.mode === 'sortie',
     }
     const key = `${move.p.map((x) => x.toFixed(2)).join()}|${move.yaw.toFixed(2)}|${move.mode}|${move.outside}`
-    if (key === lastMove) return
+    if (key === lastMove && c.clock.elapsed - lastMoveAt < NET.moveKeepaliveSeconds) return
     lastMove = key
+    lastMoveAt = c.clock.elapsed
     session.send('move', move)
   }
 
@@ -258,7 +285,7 @@ export function createNetSystem(): System {
         overlay: new Overlay(root, c.camera),
         chat: new ChatBox(root, (text) => service.chat(text), online),
         wheel: new EmoteWheel(root, (emote: EmoteId) => service.emote(emote), online),
-        presence: new Presence(root, () => void connect()),
+        presence: new Presence(root, rejoinNow),
       }
       avatars = new RemoteAvatars(c)
       npcs = new NpcExecutor(c, {
@@ -272,7 +299,7 @@ export function createNetSystem(): System {
       save = new RemoteSave(c.state, (m) => session?.send('save', m))
       unsubs.push(
         c.bus.on('district:entered', ({ district }) => {
-          session?.enter(district).catch(() => undefined)
+          if (inDistrict) session?.enter(district).catch(() => undefined)
         }),
         c.bus.on('hero:seat', ({ seatId }) => {
           if (status() === 'online') session?.send('sit', { seatId })
@@ -303,17 +330,26 @@ export function createNetSystem(): System {
 
     update(dt, c) {
       if (!ui || !avatars) return
-      if (placement && titleGone()) {
-        place(c, placement)
-        placement = null
-        session?.enter(c.state.hero.district).catch(() => undefined)
-      }
       const online = status() === 'online'
+      const title = !titleGone()
+      if (!title && placement && me) {
+        place(c, placement, me)
+        placement = null
+      }
+      // A player still on the title screen is aboard but stands nowhere yet.
+      if (!title && online && me && session && !inDistrict) {
+        inDistrict = true
+        session.enter(c.state.hero.district).catch(() => {
+          setTimeout(() => {
+            inDistrict = false
+          }, NET.rejoinFirstMs)
+        })
+      }
       ui.chat.show(online)
       presenceTimer -= dt
       if (presenceTimer <= 0) {
         presenceTimer = PRESENCE_SECONDS
-        ui.presence.render(status(), players(), me, canRejoin, takenOverHere ? TEXT.takenOver : null)
+        ui.presence.render(status(), players(), me, canRejoin, takenOverHere ? TEXT.takenOver : null, title)
       }
       if (online && session) {
         const m = session.mondeState
