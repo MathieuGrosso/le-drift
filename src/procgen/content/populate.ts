@@ -58,7 +58,9 @@ function sample(t: Track, s: number): { at: Vec3; cell: string; dir: XZ } {
 
 function mainTrack(plan: DistrictPlan, shell: DistrictShell, rng: Rng): Track {
   const { nodes, edges } = shell.walk
-  const main = edges.filter((e) => e.main)
+  // A stair port's node is the other district's landing: points spread toward it would hang in the stairwell.
+  const stairs = new Set(plan.ports.filter((p) => p.kind === 'escalier').map((p) => `p:${p.id}`))
+  const main = edges.filter((e) => e.main && !stairs.has(e.a) && !stairs.has(e.b))
   if (main.length > 0) {
     const byId = new Map(nodes.map((n) => [n.id, n]))
     const adj = new Map<string, string[]>()

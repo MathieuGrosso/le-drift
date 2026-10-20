@@ -37,6 +37,8 @@ interface Slot {
 }
 
 const UP = new THREE.Vector3(0, 1, 0)
+// Ports sit on the district boundary: the audit reaches a few metres into the neighbour so they are interior.
+const AUDIT_PAD = 3
 const _q = new THREE.Quaternion()
 
 function boxDist(p: DistrictPlan, l: Vec3): number {
@@ -171,10 +173,14 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
     const q = ctx.quality.level
     const max = STREAM.maxBuilt[q]
     const ranked = slots.map((s) => ({ s, d: boxDist(s.plan, hero) })).sort((a, b) => a.d - b.d)
+    // The district under or over a stair port carries the stair's other landing: it rides along past the cap.
+    const here = slots.find((s) => inBox(s.plan.bounds, hero))
+    const stairs = new Set(here?.plan.ports.filter((p) => p.kind === 'escalier').map((p) => p.to))
     ranked.forEach(({ s, d }, rank) => {
-      const wanted = d < STREAM.buildDist && rank < max
+      const pinned = s === arrival?.slot || stairs.has(s.plan.id)
+      const wanted = d < STREAM.buildDist && (rank < max || pinned)
       if (wanted && !s.built && !s.job) s.job = buildJob(s)
-      if (s.built && s !== arrival?.slot && (d > STREAM.disposeDist || rank >= max + 1)) release(s)
+      if (s.built && !pinned && (d > STREAM.disposeDist || rank >= max + 1)) release(s)
     })
   }
 
@@ -216,20 +222,27 @@ export function createProcgen(host: ProcgenHost): ProcgenWorld {
   let pendingArr = arr && slots.some((s) => s.plan.id === arr) ? arr : null
 
   if (debug) {
+    // Needs the district built and stepped once (rapier queries see colliders after a step): spawn(id) first.
     const audit = (id: string, step = 1, stuck = false): AuditReport | null => {
       const slot = slots.find((s) => s.plan.id === id)
-      if (!slot) return null
-      if (!slot.built) finish(slot)
-      const b = slot.built!
+      if (!slot?.built) return null
+      const b = slot.built
       const sp = b.cells.find((c) => c.id === id)!.spawn
       const targets = [
         ...b.shell.ports.map((p) => ({ id: p.port, at: p.at })),
         ...b.content.points.map((p) => ({ id: p.id, at: p.at })),
       ]
-      return auditWalk(ctx, host.pose(), { box: slot.plan.bounds, step, seed: sp, targets, stuckCheck: stuck })
+      const links = [
+        ...b.shell.links.map((k) => ({ from: k.from, to: k.to })),
+        ...b.anchors.flatMap((a) => (a.kind === 'ladder' ? [{ from: a.bottom, to: a.top }] : a.kind === 'zip' ? [{ from: a.from, to: a.to }] : [])),
+      ]
+      const pb = slot.plan.bounds
+      const box = { ...pb, x0: pb.x0 - AUDIT_PAD, x1: pb.x1 + AUDIT_PAD, z0: pb.z0 - AUDIT_PAD, z1: pb.z1 + AUDIT_PAD }
+      return auditWalk(ctx, host.pose(), { box, step, seed: sp, targets, links, stuckCheck: stuck })
     }
     const built = () => slots.filter((s) => s.built).map((s) => s.plan.id)
-    Object.assign(window as unknown as Record<string, unknown>, { __procgen: { audit, auditBox: (o: Parameters<typeof auditWalk>[2]) => auditWalk(ctx, host.pose(), o), built, plan: ship } })
+    const points = (id: string) => slots.find((s) => s.plan.id === id)?.built?.content.points ?? []
+    Object.assign(window as unknown as Record<string, unknown>, { __procgen: { audit, auditBox: (o: Parameters<typeof auditWalk>[2]) => auditWalk(ctx, host.pose(), o), built, points, plan: ship } })
   }
 
   console.info(`[procgen] ${ship.districts.length} arrondissements, seed ${ship.seed.toString(16)} v${ship.version}, quality ${ctx.quality.level}`)

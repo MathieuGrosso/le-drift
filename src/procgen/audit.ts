@@ -24,6 +24,8 @@ export interface AuditOptions {
   step: number
   seed: Vec3
   targets?: readonly { id: string; at: Vec3 }[]
+  // Climbs the hero takes as links (ladders, stairs the grid misses), both ways.
+  links?: readonly { from: Vec3; to: Vec3 }[]
   stuckCheck?: boolean
 }
 
@@ -124,6 +126,27 @@ export function auditWalk(ctx: GameContext, pose: DriftPose, opt: AuditOptions):
     }
   }
 
+  const nearest = (p: Vec3) => {
+    let best = -1
+    let bd = Infinity
+    nodes.forEach((n, i) => {
+      const d = Math.hypot(n.x - p.x, (n.y - p.y) * 2, n.z - p.z)
+      if (d < bd) {
+        bd = d
+        best = i
+      }
+    })
+    return bd < opt.step * 1.5 ? best : -1
+  }
+  for (const l of opt.links ?? []) {
+    const a = nearest(l.from)
+    const c = nearest(l.to)
+    if (a < 0 || c < 0) continue
+    adj[a]!.push(c)
+    adj[c]!.push(a)
+    edges += 2
+  }
+
   const comp = new Int32Array(nodes.length).fill(-1)
   const sizes: number[] = []
   for (let i = 0; i < nodes.length; i++) {
@@ -144,18 +167,6 @@ export function auditWalk(ctx: GameContext, pose: DriftPose, opt: AuditOptions):
     sizes.push(size)
   }
 
-  const nearest = (p: Vec3) => {
-    let best = -1
-    let bd = Infinity
-    nodes.forEach((n, i) => {
-      const d = Math.hypot(n.x - p.x, (n.y - p.y) * 2, n.z - p.z)
-      if (d < bd) {
-        bd = d
-        best = i
-      }
-    })
-    return bd < opt.step * 1.5 ? best : -1
-  }
   const seed = nearest(opt.seed)
   const seedComp = seed >= 0 ? comp[seed]! : -2
   const targets = (opt.targets ?? []).map((t) => {
