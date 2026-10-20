@@ -65,11 +65,11 @@ function gradeFn(m: GradeMood): (rgb: [number, number, number]) => void {
     l *= k
     const mid = smooth(0.03, 0.15, l) * (1 - smooth(0.45, 0.85, l))
     const sat = m.saturation - m.midDesat * mid - 0.08 * smooth(0.5, 1, l)
-    const fade = 1 - smooth(0, 0.05, l)
     const toeRgb = [toe.r, toe.g, toe.b]
     for (let i = 0; i < 3; i++) {
-      const v = (l + (c[i]! * k - l) * sat) * m.gain[i]!
-      c[i] = Math.min(1, Math.max(v, toeRgb[i]! * 0.5) + toeRgb[i]! * 0.5 * fade)
+      const v = Math.max(0, (l + (c[i]! * k - l) * sat) * m.gain[i]!)
+      const t = Math.max(toeRgb[i]!, 1e-4)
+      c[i] = Math.min(1, v + t * Math.exp(-v / t))
     }
   }
 }

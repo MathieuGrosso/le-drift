@@ -173,7 +173,7 @@ export const POST = {
     radius: 1.1, falloff: 1.0, intensity: 2.6, indoorScale: 0.6, tintMix: 0.55, floor: 0.4,
     levels: { high: { k: 1, mode: 'Medium' }, medium: { k: 0.85, mode: 'Low' }, low: { k: 0, mode: 'Performance' } },
   },
-  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.46, minOut: 0.86, minIn: 0.82, maxOut: 1.18, maxIn: 1.9, maxInNight: 1.15 },
+  exposure: { rate: 1.6, keyOut: 0.36, keyIn: 0.46, minOut: 0.86, minIn: 0.82, maxOut: 1.18, maxIn: 1.9, maxInNight: 1.6 },
   shoulder: 0.82,
   vignette: { outdoor: 0.35, indoor: 0.28 },
 } as const
