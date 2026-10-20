@@ -12,6 +12,7 @@ const REEL_HOLD = 1
 const DOOR_REACH = 1.7
 const DOOR_CONE = 0.6
 const SAS_FLOOR_REACH = 1.5
+const SAS_DOOR_REACH = 5
 
 const BED = /^(lit|couchette|bunk|bed|hamac)/
 const SEAT = /^(banc|siege|chaise|tabouret|seat)/
@@ -128,7 +129,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
   uses.on(STALL, (id) => ({ label: PROMPTS.etal, kind: 'stall', reach: 2.2, run: () => gp.menus.market(id) }))
   uses.on(BOARD, () => ({ label: PROMPTS.tableau, kind: 'npc', run: () => gp.quests.talk('mme-rouille') }))
   uses.on(POT, () => ({ label: PROMPTS.cuisiner, kind: 'marmite', reach: 2.2, run: () => gp.quests.talk('cuistot') }))
-  uses.on(ROOF, () => ({ label: PROMPTS.sortir, kind: 'airlock', run: () => void airlock('out', 'echelle-toit') }))
+  uses.on(ROOF, () => ({ label: PROMPTS.sortirToit, kind: 'airlock', run: () => void airlock('out', 'echelle-toit') }))
   uses.on(SAS, () => ({ label: PROMPTS.sortir, kind: 'airlock', run: () => void airlock('out') }))
 
   const rayDoor = (out: Candidate[]) => {
@@ -140,7 +141,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     const owner = tag.ownerId ?? ''
     const outer = owner === 'sas-exterieure' ? 'sas' : owner === 'toit-exterieure' ? 'echelle-toit' : null
     if (outer && ctx.state.hero.medium === 'air') {
-      out.push({ id: owner, kind: 'airlock', label: PROMPTS.sortir, key: 'interact', dist: hit.distance, run: () => void airlock('out', outer) })
+      out.push({ id: owner, kind: 'airlock', label: outer === 'sas' ? PROMPTS.sortir : PROMPTS.sortirToit, key: 'interact', dist: hit.distance, run: () => void airlock('out', outer) })
     } else if (tag.kind === 'door' && owner && !ZIP.test(owner) && !TUBE.test(owner)) {
       const open = !!ctx.state.drift.doors[owner]
       out.push({ id: owner, kind: 'door', label: open ? PROMPTS.fermer : PROMPTS.ouvrir, key: 'interact', dist: hit.distance, run: () => ctx.services.drift?.openDoor(owner, !open) })
@@ -169,11 +170,17 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
     if (!best) return
     const owner = best.o.id
     const outer = owner === 'sas-exterieure' ? 'sas' : owner === 'toit-exterieure' ? 'echelle-toit' : null
-    if (outer) out.push({ id: owner, kind: 'airlock', label: PROMPTS.sortir, key: 'interact', dist: best.d, run: () => void airlock('out', outer) })
+    if (outer) out.push({ id: owner, kind: 'airlock', label: outer === 'sas' ? PROMPTS.sortir : PROMPTS.sortirToit, key: 'interact', dist: best.d, run: () => void airlock('out', outer) })
     else {
       const open = !!ctx.state.drift.doors[owner]
       out.push({ id: owner, kind: 'door', label: open ? PROMPTS.fermer : PROMPTS.ouvrir, key: 'interact', dist: best.d, run: () => ctx.services.drift?.openDoor(owner, !open) })
     }
+  }
+
+  const nearLockDoor = () => {
+    const door = gp.sites.where('sas-exterieure')
+    const p = gp.heroLocal()
+    return !door || Math.hypot(door.x - p.x, door.z - p.z) < SAS_DOOR_REACH
   }
 
   const roomFallbacks = (out: Candidate[]) => {
@@ -186,7 +193,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
       case 'sas':
         if (gp.heroLocal().y - (ctx.services.drift?.cellSpawn('sas')?.local.y ?? 0) > SAS_FLOOR_REACH) break
         if (boardPending()) add('tableau', 'npc', PROMPTS.tableau, 2.7, () => gp.quests.talk('mme-rouille'))
-        else add('sas', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out'))
+        else if (nearLockDoor()) add('sas', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out'))
         break
       case 'salle-des-cartes':
         add('table-carte', 'chart-table', PROMPTS.carte, 2.6, () => gp.quests.chartTable())
@@ -198,7 +205,7 @@ export function createIndoor(gp: Gp, uses: Uses): Indoor {
         add('marmite-cuisine', 'marmite', PROMPTS.cuisiner, 2.7, () => gp.quests.talk('cuistot'))
         break
       case 'echelle-toit':
-        add('trappe', 'airlock', PROMPTS.sortir, 2.5, () => void airlock('out', 'echelle-toit'))
+        add('trappe', 'airlock', PROMPTS.sortirToit, 2.5, () => void airlock('out', 'echelle-toit'))
         break
       default:
         break

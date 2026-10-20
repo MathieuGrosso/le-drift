@@ -130,6 +130,7 @@ export const PROMPTS = {
   entrerSas: 'Entrer dans le sas',
   rentrer: 'Rentrer',
   sortir: "Sortir par l'écluse",
+  sortirToit: 'Sortir par la trappe du toit',
   ouvrir: 'Ouvrir',
   fermer: 'Fermer',
   asseoir: "S'asseoir",
